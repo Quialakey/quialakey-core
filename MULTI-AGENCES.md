@@ -17,7 +17,8 @@
 6. Copier `deployment-template/deploy.yml` vers `.github/workflows/deploy-agency.yml`.
 7. Dans GitHub, regler `Settings > Pages > Source` sur `GitHub Actions`.
 8. Lancer une premiere fois le workflow `Deploy Quialakey agency`.
-9. Ajouter le nom du depot a la variable `AGENCY_REPOSITORIES` de `quialakey-core`.
+9. Dans le jeton GitHub `quialakey-core-agency-dispatch`, ajouter le nouveau depot a la liste des depots autorises.
+10. Ajouter le nom du depot a la variable `AGENCY_REPOSITORIES` de `quialakey-core`.
 
 ## Diffuser le code commun
 
@@ -27,6 +28,8 @@ Le depot maitre utilise `.github/workflows/distribute-agencies.yml`. Il attend :
 - un secret GitHub `AGENCY_DISPATCH_TOKEN` autorise a envoyer un `repository_dispatch` a ces depots.
 
 Une modification poussee sur `master` declenche alors le deploiement de chaque agence. Les fichiers `agency.json` ne sont jamais remplaces et les projets Supabase restent independants.
+
+Dans le dossier Codex principal, le remote `origin` pointe vers `Quialakey/quialakey-core`. Le remote `agency` conserve un acces direct au depot `Quialakey/century21lesminimes` pour les rares modifications propres a cette agence.
 
 ## Securite
 
