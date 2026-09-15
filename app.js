@@ -34,7 +34,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-2";
+const appBuildVersion = "20260915-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -189,13 +189,13 @@ function removeDiacritics(value) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function createCategoryId(label = "Ligne") {
+function createCategoryId(label = "Catégorie") {
   const slug =
     removeDiacritics(label)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 24) || "ligne";
+      .slice(0, 24) || "categorie";
   return `${slug}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 6)}`;
 }
 
@@ -228,7 +228,7 @@ function sortAddressReplacements(replacements) {
 }
 
 function normalizeCategorySetting(category, index, usedIds) {
-  const fallbackLabel = defaultCategoryLabels[index] || `Ligne ${index + 1}`;
+  const fallbackLabel = defaultCategoryLabels[index] || `Catégorie ${index + 1}`;
   const rawLabel = typeof category === "string" ? category : category?.label;
   const label = String(rawLabel || fallbackLabel).trim() || fallbackLabel;
   const preferredDefaultId = defaultCategoryLabels.includes(label) ? label : "";
@@ -5901,7 +5901,7 @@ function updateSettingsDraftFromDom() {
       const previous = previousCategories[Number(item.dataset.settingsCategoryIndex)] || {};
       const labelInput = item.querySelector("[data-settings-category-label]");
       const prefixInput = item.querySelector("[data-settings-category-prefix]");
-      const label = labelInput?.value.trim() || defaultCategoryLabels[index] || `Ligne ${index + 1}`;
+      const label = labelInput?.value.trim() || defaultCategoryLabels[index] || `Catégorie ${index + 1}`;
       const prefix = prefixInput ? prefixInput.value.trim() : String(previous.prefix || "").trim();
       return { ...previous, label, prefix };
     });
@@ -5943,7 +5943,7 @@ function setSettingsDraftRowCount(rowCount) {
 
   while (nextCategories.length < safeRowCount) {
     const usedIds = new Set(nextCategories.map((category) => category.id));
-    const label = defaultCategoryLabels[nextCategories.length] || `Ligne ${nextCategories.length + 1}`;
+    const label = defaultCategoryLabels[nextCategories.length] || `Catégorie ${nextCategories.length + 1}`;
     const id = defaultCategoryLabels.includes(label) && !usedIds.has(label) ? label : createCategoryId(label);
     nextCategories.push({ id, label, prefix: defaultCategoryPrefixes[label] || label, aliases: [] });
   }
@@ -5964,7 +5964,7 @@ function createSettingsCategoryRow(category, index) {
   item.dataset.settingsCategoryIndex = String(index);
   indexBadge.className = "settings-row-index";
   indexBadge.textContent = String(index + 1);
-  nameLabel.textContent = "Nom de la ligne";
+  nameLabel.textContent = "Nom de la catégorie";
   nameInput.type = "text";
   nameInput.value = category.label;
   nameInput.dataset.settingsCategoryLabel = "true";

@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260915-2" />
-    <link rel="stylesheet" href="styles.css?v=20260915-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260915-3" />
+    <link rel="stylesheet" href="styles.css?v=20260915-3" />
   </head>
   <body class="is-access-loading">
     <button id="cloudSleepOverlay" class="cloud-sleep-overlay" type="button" aria-label="Réactiver le tableau" hidden>
@@ -440,11 +440,11 @@
             <div id="settingsOrganizationContent" class="settings-organization-content">
               <div class="settings-grid">
                 <label>
-                  Nombre de lignes
+                  Nombre de catégories
                   <input id="settingsRowCountInput" type="number" min="1" max="12" step="1" />
                 </label>
                 <label>
-                  Cases par ligne
+                  Cases par catégorie
                   <input id="settingsSlotsInput" type="number" min="10" max="60" step="2" />
                 </label>
               </div>
@@ -549,10 +549,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20260915-2"></script>
+    <script src="agency-config.js?v=20260915-3"></script>
     <script>
       (() => {
-        const fallbackVersion = "20260915-2";
+        const fallbackVersion = "20260915-3";
         const loadApp = () => {
           const script = document.createElement("script");
           script.src = `app.js?v=${encodeURIComponent(fallbackVersion)}`;
