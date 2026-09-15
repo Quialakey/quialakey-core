@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-7";
+const appBuildVersion = "20260915-8";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -88,6 +88,7 @@ const pendingLocalEditGraceMs = 12 * 1000;
 const recentKeySlotMemoryMs = 12 * 1000;
 const runtimeStorageFallback = new Map();
 let isApplyingCloudState = false;
+let isResettingTableData = false;
 const browserStorage = (() => {
   try {
     return window.localStorage;
@@ -2638,7 +2639,7 @@ async function writeStorageKeyToCloudNow(storageKey, options = {}) {
         throw versionError;
       }
       if (value !== null) {
-        value = prepareStorageValueForCloud(storageKey, value, remoteRow?.value ?? null);
+        value = prepareStorageValueForCloud(storageKey, value, remoteRow?.value ?? null, options);
         setRuntimeStorageValue(storageKey, value);
       }
       let { error } =
@@ -2654,7 +2655,7 @@ async function writeStorageKeyToCloudNow(storageKey, options = {}) {
           .maybeSingle();
         if (latestRemoteError) throw latestRemoteError;
         if (latestRemoteRow?.value) {
-          value = prepareStorageValueForCloud(storageKey, value, latestRemoteRow.value);
+          value = prepareStorageValueForCloud(storageKey, value, latestRemoteRow.value, options);
           setRuntimeStorageValue(storageKey, value);
         }
         updatedAt = new Date().toISOString();
@@ -2762,6 +2763,7 @@ function subscribeToCloudChanges() {
       "postgres_changes",
       { event: "*", schema: "public", table: "app_state" },
       (payload) => {
+        if (isResettingTableData) return;
         const storageKey = payload.new?.key || payload.old?.key || "";
         const slotStorageKey = getKeyStorageKeyFromSlotCloudKey(storageKey);
         if ((getCloudBaseStorageKeys().includes(storageKey) || slotStorageKey) && deferCloudRefreshDuringKeyWork()) return;
@@ -2832,7 +2834,7 @@ async function reloadCompleteCloudState() {
 
 async function loadStorageFromCloud(options = {}) {
   const force = Boolean(options.force);
-  if (!supabaseClient || isCloudSleeping || isAppInBackground()) return;
+  if (!supabaseClient || isCloudSleeping || isAppInBackground() || isResettingTableData) return;
   if (isPhotoImporting) return;
   if (deferCloudRefreshDuringKeyWork()) return;
   if (isCloudCheckRunning) {
@@ -6260,23 +6262,28 @@ async function syncResetDataToCloud() {
   });
   savePendingCloudKeys();
   saveDirtyKeySlots();
-  await Promise.all(getResettableStorageKeys().map((storageKey) => writeStorageKeyToCloudNow(storageKey, { force: true })));
+  await Promise.all(
+    getResettableStorageKeys().map((storageKey) =>
+      writeStorageKeyToCloudNow(storageKey, { force: true, fullReplace: true }),
+    ),
+  );
 }
 
-async function resetAllTableData() {
-  const firstConfirmation = window.confirm(
-    "Cette action va supprimer toutes les fiches de clés enregistrées des tableaux Location et Transaction, ainsi que les archives, les historiques, les intervenants, les sauvegardes et le mot de passe. Seule l'organisation des catégories, des cases et des lignes sera conservée. Continuer ?",
-  );
-  if (!firstConfirmation) return;
+async function waitForCurrentCloudLoadToFinish() {
+  const timeoutAt = Date.now() + 10 * 1000;
+  while (isCloudCheckRunning && Date.now() < timeoutAt) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (isCloudCheckRunning) throw new Error("Une actualisation Supabase est toujours en cours.");
+}
 
-  const typedConfirmation = window.prompt('Pour confirmer, tape exactement : REINITIALISER');
-  if (typedConfirmation !== "REINITIALISER") return;
-
+async function performTableDataReset() {
   cloudSyncTimers.forEach((timer) => clearTimeout(timer));
   cloudSyncTimers.clear();
   directCloudFlushTimers.forEach((timer) => clearTimeout(timer));
   directCloudFlushTimers.clear();
   await pendingCloudSync.catch(() => {});
+  await waitForCurrentCloudLoadToFinish();
   pendingCloudSync = Promise.resolve();
   dirtyCloudKeys = new Set();
   failedCloudSyncKeys = new Set();
@@ -6314,14 +6321,31 @@ async function resetAllTableData() {
   renderSettingsPanel();
   render();
   updateUndoButton();
+  await syncResetDataToCloud();
+}
 
+async function resetAllTableData() {
+  const firstConfirmation = window.confirm(
+    "Cette action va supprimer toutes les fiches de clés enregistrées des tableaux Location et Transaction, ainsi que les archives, les historiques, les intervenants, les sauvegardes et le mot de passe. Seule l'organisation des catégories, des cases et des lignes sera conservée. Continuer ?",
+  );
+  if (!firstConfirmation) return;
+
+  const typedConfirmation = window.prompt('Pour confirmer, tape exactement : REINITIALISER');
+  if (typedConfirmation !== "REINITIALISER") return;
+
+  let didReset = false;
+  isResettingTableData = true;
   try {
-    await syncResetDataToCloud();
-    await loadStorageFromCloud({ force: true });
+    await performTableDataReset();
+    didReset = true;
   } catch (error) {
     console.warn("Supabase reset failed", error.message);
-    alert("La réinitialisation locale est faite, mais l'effacement en ligne a échoué. Vérifie la connexion puis réessaie.");
+    alert("La réinitialisation n'a pas pu être terminée. Vérifie la connexion puis réessaie.");
+  } finally {
+    isResettingTableData = false;
   }
+
+  if (didReset) await loadStorageFromCloud({ force: true, full: true });
 }
 
 function importAllDataBackup(file) {
