@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-8";
+const appBuildVersion = "20260915-9";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -75,12 +75,16 @@ const automaticBackupRetentionCount = 2;
 const automaticBackupWeekday = 5;
 const automaticBackupHour = 12;
 const automaticBackupMinute = 0;
-const cloudPollIntervalMs = 2000;
-const mobileCloudPollIntervalMs = 2000;
-const cloudInteractionRefreshThrottleMs = 2000;
-const cloudWakeRefreshDelays = [0, 2500];
+const cloudPollIntervalMs = 900;
+const mobileCloudPollIntervalMs = 900;
+const cloudSafetyRefreshIntervalMs = 10 * 1000;
+const fullCloudRefreshIntervalMs = 60 * 1000;
+const cloudInteractionRefreshThrottleMs = 700;
+const cloudWakeRefreshDelays = [0, 800, 2500];
 const initialCloudLoadRetryDelays = [0, 700, 1800, 3500];
 const cloudInactivityTimeoutMs = 3 * 60 * 1000;
+const cloudReadRequestTimeoutMs = 6 * 1000;
+const cloudWriteRequestTimeoutMs = 12 * 1000;
 const cloudWriteDebounceMs = 300;
 const keySlotWriteMaxAttempts = 8;
 const keySlotWriteRetryBaseDelayMs = 90;
@@ -512,31 +516,46 @@ function createRestSupabaseClient(projectUrl, publishableKey) {
         };
       }
       const query = this.params.toString();
-      const response = await fetch(`${restBaseUrl}/${this.table}${query ? `?${query}` : ""}`, {
-        method: this.method,
-        headers: {
-          ...baseHeaders,
-          Accept: "application/json",
-          ...(this.body ? { "Content-Type": "application/json" } : {}),
-          ...(this.prefer ? { Prefer: this.prefer } : {}),
-        },
-        ...(this.body ? { body: this.body } : {}),
-        cache: "no-store",
-      });
+      const controller = new AbortController();
+      const timeoutMs = this.method === "GET" ? cloudReadRequestTimeoutMs : cloudWriteRequestTimeoutMs;
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      if (!response.ok) {
-        let message = response.statusText || "Supabase request failed";
-        try {
-          const payload = await response.json();
-          message = payload?.message || payload?.details || message;
-        } catch {}
-        return { data: null, error: { message } };
+      try {
+        const response = await fetch(`${restBaseUrl}/${this.table}${query ? `?${query}` : ""}`, {
+          method: this.method,
+          headers: {
+            ...baseHeaders,
+            Accept: "application/json",
+            ...(this.body ? { "Content-Type": "application/json" } : {}),
+            ...(this.prefer ? { Prefer: this.prefer } : {}),
+          },
+          ...(this.body ? { body: this.body } : {}),
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          let message = response.statusText || "Supabase request failed";
+          try {
+            const payload = await response.json();
+            message = payload?.message || payload?.details || message;
+          } catch {}
+          return { data: null, error: { message } };
+        }
+
+        if (response.status === 204) return { data: null, error: null };
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+        return { data: this.readSingle ? (Array.isArray(data) ? data[0] || null : data) : data, error: null };
+      } catch (error) {
+        const timedOut = error?.name === "AbortError";
+        return {
+          data: null,
+          error: { message: timedOut ? "Supabase ne repond pas dans le delai attendu." : error.message },
+        };
+      } finally {
+        clearTimeout(timeout);
       }
-
-      if (response.status === 204) return { data: null, error: null };
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : null;
-      return { data: this.readSingle ? (Array.isArray(data) ? data[0] || null : data) : data, error: null };
     }
   }
 
@@ -755,6 +774,8 @@ let hasLoadedCloudState = false;
 let hasCompletedInitialCloudLoad = false;
 let isCloudCheckRunning = false;
 let shouldReloadCloudAfterCurrentCheck = false;
+let shouldFullyReloadCloudAfterCurrentCheck = false;
+let isCloudHeartbeatCheckRunning = false;
 let initialCloudLoadPromise = null;
 let lastSlotCloudSeenAt = "";
 let lastAutomaticCloudRefreshAt = 0;
@@ -914,7 +935,7 @@ function enterCloudSleep() {
 
 function scheduleCloudSleep() {
   clearTimeout(cloudInactivityTimer);
-  if (isCloudSleeping) {
+  if (isCloudSleeping || !isAppInBackground()) {
     cloudInactivityTimer = null;
     return;
   }
@@ -929,6 +950,7 @@ function recordCloudActivity() {
 }
 
 function enforceCloudSleepAfterInactivity() {
+  if (!isAppInBackground()) return false;
   if (isCloudSleeping) return true;
   if (Date.now() - lastCloudActivityAt < cloudInactivityTimeoutMs) return false;
   enterCloudSleep();
@@ -949,9 +971,9 @@ function resumeCloudSyncFromInactivity() {
   if (!wasSleeping) return false;
 
   lastAutomaticCloudRefreshAt = 0;
-  setTimeout(async () => {
-    await loadStorageFromCloud({ force: true, full: true });
-    await ensureMissedAutomaticBackupOnOpen();
+  setTimeout(() => {
+    queueWakeCloudRefreshes();
+    void ensureMissedAutomaticBackupOnOpen();
   }, 0);
   return true;
 }
@@ -1039,6 +1061,11 @@ async function ensureInitialCloudStateLoaded() {
 }
 
 function refreshCloudAfterForeground() {
+  if (isCloudSleeping) {
+    resumeCloudSyncFromInactivity();
+    return;
+  }
+
   if (!hasCompletedInitialCloudLoad) {
     clearPrematureCloudSleepForInitialLoad();
     ensureInitialCloudStateLoaded().then((loaded) => {
@@ -1068,7 +1095,7 @@ function requestAutomaticCloudRefresh(options = {}) {
   const run = () => {
     lastAutomaticCloudRefreshAt = Date.now();
     retryFailedCloudSyncs().catch((error) => console.warn("Supabase retry failed", error.message));
-    loadStorageFromCloud({ force, full: true });
+    loadStorageFromCloud({ force, full: Boolean(options.full) });
   };
 
   clearTimeout(automaticCloudRefreshTimer);
@@ -1077,17 +1104,27 @@ function requestAutomaticCloudRefresh(options = {}) {
 }
 
 function queueWakeCloudRefreshes() {
-  cloudWakeRefreshDelays.forEach((delay) => {
+  cloudWakeRefreshDelays.forEach((delay, index) => {
     setTimeout(() => {
-      requestAutomaticCloudRefresh({ force: true, immediate: delay === 0 });
+      requestAutomaticCloudRefresh({
+        force: true,
+        full: index === cloudWakeRefreshDelays.length - 1,
+        immediate: delay === 0 || index === cloudWakeRefreshDelays.length - 1,
+      });
     }, delay);
   });
 }
 
 function startAutomaticCloudRefreshLoop() {
   setInterval(() => {
-    requestAutomaticCloudRefresh({ force: true });
+    checkCloudSyncHeartbeat();
   }, getAutomaticCloudPollInterval());
+  setInterval(() => {
+    requestAutomaticCloudRefresh({ force: true });
+  }, cloudSafetyRefreshIntervalMs);
+  setInterval(() => {
+    requestAutomaticCloudRefresh({ force: true, full: true, immediate: true });
+  }, fullCloudRefreshIntervalMs);
 }
 
 function loadTileViewMode() {
@@ -1823,6 +1860,7 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
       }
       throw writeError;
     }
+    scheduleCloudSyncHeartbeat(0);
 
     const { data: confirmedRows, error: confirmationError } = await supabaseClient
       .from("app_state")
@@ -2290,6 +2328,41 @@ async function touchCloudSyncHeartbeat() {
   }
 
   if (error) throw error;
+  cloudRowVersions.set(cloudSyncHeartbeatStorageKey, updatedAt);
+  saveCloudRowVersions();
+}
+
+async function checkCloudSyncHeartbeat() {
+  if (
+    !supabaseClient ||
+    isCloudSleeping ||
+    isAppInBackground() ||
+    isCloudHeartbeatCheckRunning ||
+    isCloudCheckRunning ||
+    isResettingTableData
+  ) {
+    return;
+  }
+
+  isCloudHeartbeatCheckRunning = true;
+  try {
+    const { data: remoteRow, error } = await supabaseClient
+      .from("app_state")
+      .select("key,updated_at")
+      .eq("key", cloudSyncHeartbeatStorageKey)
+      .maybeSingle();
+    if (error) return;
+    if (!remoteRow) {
+      await touchCloudSyncHeartbeat();
+      return;
+    }
+    if (cloudRowVersions.get(cloudSyncHeartbeatStorageKey) === (remoteRow.updated_at || "")) return;
+    requestAutomaticCloudRefresh({ force: true, immediate: true });
+  } catch (error) {
+    console.warn("Supabase heartbeat check failed", error.message);
+  } finally {
+    isCloudHeartbeatCheckRunning = false;
+  }
 }
 
 function scheduleStorageKeySync(storageKey, delay = cloudWriteDebounceMs) {
@@ -2839,6 +2912,7 @@ async function loadStorageFromCloud(options = {}) {
   if (deferCloudRefreshDuringKeyWork()) return;
   if (isCloudCheckRunning) {
     shouldReloadCloudAfterCurrentCheck = shouldReloadCloudAfterCurrentCheck || force;
+    shouldFullyReloadCloudAfterCurrentCheck = shouldFullyReloadCloudAfterCurrentCheck || Boolean(options.full);
     return;
   }
   if (!force && hasLoadedCloudState && document.visibilityState === "hidden") return;
@@ -2916,16 +2990,15 @@ async function loadStorageFromCloud(options = {}) {
       return;
     }
 
-    const [{ data: baseMetadata, error: metadataError }, slotMetadata] = await Promise.all([
-      supabaseClient
-        .from("app_state")
-        .select("key,updated_at")
-        .in("key", getCloudBaseStorageKeys()),
-      loadKeySlotCloudRows("key,updated_at"),
-    ]);
+    const { data: allMetadata, error: metadataError } = await supabaseClient
+      .from("app_state")
+      .select("key,updated_at");
     if (metadataError) throw metadataError;
     if (deferCloudRefreshDuringKeyWork()) return;
-    const metadata = [...(Array.isArray(baseMetadata) ? baseMetadata : []), ...slotMetadata];
+    const cloudBaseStorageKeys = new Set(getCloudBaseStorageKeys());
+    const metadata = (Array.isArray(allMetadata) ? allMetadata : []).filter(
+      (row) => cloudBaseStorageKeys.has(row.key) || isKeySlotCloudKey(row.key),
+    );
     if (!Array.isArray(metadata)) return;
 
     const metadataByKey = new Map(metadata.map((row) => [row.key, row]));
@@ -3002,8 +3075,10 @@ async function loadStorageFromCloud(options = {}) {
     isApplyingCloudState = false;
     isCloudCheckRunning = false;
     if (shouldReloadCloudAfterCurrentCheck) {
+      const shouldReloadFully = shouldFullyReloadCloudAfterCurrentCheck;
       shouldReloadCloudAfterCurrentCheck = false;
-      setTimeout(() => loadStorageFromCloud({ force: true, full: true }), 0);
+      shouldFullyReloadCloudAfterCurrentCheck = false;
+      setTimeout(() => loadStorageFromCloud({ force: true, full: shouldReloadFully }), 0);
     }
   }
 }

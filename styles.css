@@ -57,6 +57,35 @@ body.is-access-loading .access-lock {
   display: none;
 }
 
+.startup-loading {
+  display: none;
+}
+
+body.is-access-loading .startup-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  color: #ffffff;
+  background: #17392d;
+}
+
+.startup-loading img {
+  width: min(360px, 76vw);
+  height: auto;
+  border-radius: 6px;
+}
+
+.startup-loading span {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
 .cloud-sleep-overlay {
   position: fixed;
   inset: 0;

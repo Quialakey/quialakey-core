@@ -18,10 +18,14 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260915-8" />
-    <link rel="stylesheet" href="styles.css?v=20260915-8" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260915-9" />
+    <link rel="stylesheet" href="styles.css?v=20260915-9" />
   </head>
   <body class="is-access-loading">
+    <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
+      <img src="quialakey-logo-banniere-20260907-2.jpg" alt="Quialakey" />
+      <span>Ouverture du tableau...</span>
+    </div>
     <button id="cloudSleepOverlay" class="cloud-sleep-overlay" type="button" aria-label="Réactiver le tableau" hidden>
       <span>Tableau en veille</span>
     </button>
@@ -49,11 +53,19 @@
     <script>
       (() => {
         try {
-          const settings = JSON.parse(localStorage.getItem("cles-table-settings-v1") || "null");
+          const pathAgencyId = location.pathname.split("/").filter(Boolean)[0] || "default-agency";
+          const storagePrefix = `quialakey:${pathAgencyId}:`;
+          const settings = JSON.parse(
+            localStorage.getItem(`${storagePrefix}cles-table-settings-v1`) ||
+              localStorage.getItem("cles-table-settings-v1") ||
+              "null",
+          );
           if (!settings) return;
 
           const lockVersion = String(settings.accessLockVersion || 1);
-          const isUnlocked = localStorage.getItem("quialakey-access-unlocked-v1") === lockVersion;
+          const isUnlocked =
+            (localStorage.getItem(`${storagePrefix}quialakey-access-unlocked-v1`) ||
+              localStorage.getItem("quialakey-access-unlocked-v1")) === lockVersion;
           const shouldLock = settings.accessLockEnabled === true && !isUnlocked;
           document.body.classList.remove("is-access-loading");
           document.body.classList.toggle("is-access-locked", shouldLock);
@@ -553,13 +565,19 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20260915-8"></script>
+    <script src="agency-config.js?v=20260915-9"></script>
     <script>
       (() => {
-        const fallbackVersion = "20260915-8";
+        const fallbackVersion = "20260915-9";
+        let loadAttempts = 0;
         const loadApp = () => {
+          loadAttempts += 1;
           const script = document.createElement("script");
           script.src = `app.js?v=${encodeURIComponent(fallbackVersion)}`;
+          script.addEventListener("error", () => {
+            script.remove();
+            if (loadAttempts < 3) window.setTimeout(loadApp, loadAttempts * 500);
+          });
           document.body.append(script);
         };
 
