@@ -1,7 +1,7 @@
 const workerUrl = new URL(self.location.href);
 const agencyCacheId = String(workerUrl.searchParams.get("agency") || "default-agency").replace(/[^a-z0-9-]/gi, "-");
 const runtimeCachePrefix = `quialakey-runtime-${agencyCacheId}-`;
-const runtimeCacheName = `${runtimeCachePrefix}20260915-1`;
+const runtimeCacheName = `${runtimeCachePrefix}20260915-2`;
 
 self.addEventListener("install", () => {
   self.skipWaiting();
