@@ -1,5 +1,7 @@
--- Quialakey - installation complete Supabase
--- Ce fichier peut etre colle en une seule fois dans le SQL Editor Supabase.
+-- Quialakey - installation complete Supabase (fichier unique)
+-- Collez et executez uniquement ce fichier dans le SQL Editor Supabase.
+-- Il contient la table, les droits, Realtime et les protections contre les
+-- anciennes ecritures et l'effacement involontaire d'une fiche renseignee.
 -- Il est reexecutable sans supprimer les donnees deja presentes.
 -- L'application actuelle utilise la cle anon sans Supabase Auth : les droits
 -- anon ci-dessous sont donc necessaires. Le code d'acces affiche par Quialakey
@@ -61,10 +63,9 @@ to anon
 using (true);
 
 
--- 3. FONCTIONS HISTORIQUES DE PROTECTION DES FICHES ET DES PHOTOS
--- Elles restent installees pour permettre la reutilisation du script sur un
--- ancien projet. L'application actuelle utilise toutefois une ligne Supabase
--- par fiche, ce qui rend inutile la fusion du tableau complet par declencheur.
+-- 3. FONCTIONS COMMUNES DE PROTECTION DES FICHES ET DES PHOTOS
+-- Elles servent au verrou secondaire ci-dessous et permettent aussi de
+-- reutiliser ce script sans risque sur une ancienne installation.
 create or replace function public.key_state_score(item jsonb)
 returns integer
 language sql

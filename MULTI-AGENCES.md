@@ -10,7 +10,7 @@
 ## Creer une agence
 
 1. Creer un projet Supabase vide.
-2. Executer `quialakey-supabase-complet.sql` dans son SQL Editor.
+2. Executer uniquement `quialakey-supabase-complet.sql` dans son SQL Editor. Ce fichier unique installe aussi les protections des fiches.
 3. Copier le Project URL et uniquement la Publishable key.
 4. Creer un depot GitHub public vide sous le compte `Quialakey`.
 5. Copier `deployment-template/agency.json` vers `agency.json` dans ce depot et renseigner les quatre valeurs.
