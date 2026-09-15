@@ -102,6 +102,17 @@ body.is-access-loading .startup-loading {
   backdrop-filter: grayscale(0.9) blur(1px);
   -webkit-backdrop-filter: grayscale(0.9) blur(1px);
   cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+.cloud-sleep-overlay.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .cloud-sleep-overlay span {

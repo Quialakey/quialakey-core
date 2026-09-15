@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-13";
+const appBuildVersion = "20260915-14";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260915-13-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260915-14-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -786,6 +786,7 @@ let directCloudFlushTimers = new Map();
 let isKeyWorkProtected = false;
 let hasDeferredCloudRefreshForKeyWork = false;
 let cloudInactivityTimer = null;
+let cloudInactivityWatchdogTimer = null;
 let isCloudSleeping = false;
 let hasStartedCloudInactivityTracking = false;
 let lastCloudActivityAt = Date.now();
@@ -923,11 +924,22 @@ function pauseCloudWorkWhileBackgrounded() {
   savePendingCloudKeys();
 }
 
+function setCloudSleepOverlayVisible(visible) {
+  document.body.classList.toggle("is-cloud-sleeping", visible);
+  if (!cloudSleepOverlay) return;
+  cloudSleepOverlay.hidden = !visible;
+  cloudSleepOverlay.classList.toggle("is-visible", visible);
+  cloudSleepOverlay.setAttribute("aria-hidden", String(!visible));
+  if (visible) cloudSleepOverlay.getBoundingClientRect();
+}
+
 function enterCloudSleep() {
-  if (isCloudSleeping) return;
+  if (isCloudSleeping) {
+    setCloudSleepOverlayVisible(true);
+    return;
+  }
   isCloudSleeping = true;
-  document.body.classList.add("is-cloud-sleeping");
-  if (cloudSleepOverlay) cloudSleepOverlay.hidden = false;
+  setCloudSleepOverlayVisible(true);
   clearTimeout(cloudInactivityTimer);
   cloudInactivityTimer = null;
   clearScheduledCloudWorkForSleep();
@@ -961,8 +973,7 @@ function resumeCloudSyncFromInactivity() {
   const wasSleeping = isCloudSleeping;
   isCloudSleeping = false;
   lastCloudActivityAt = Date.now();
-  document.body.classList.remove("is-cloud-sleeping");
-  if (cloudSleepOverlay) cloudSleepOverlay.hidden = true;
+  setCloudSleepOverlayVisible(false);
   scheduleCloudSleep();
   if (!hasCompletedInitialCloudLoad) {
     void ensureInitialCloudStateLoaded();
@@ -989,6 +1000,10 @@ function startCloudInactivityTracking() {
     );
   });
   scheduleCloudSleep();
+  cloudInactivityWatchdogTimer = setInterval(() => {
+    if (isCloudSleeping) return;
+    if (!isAppInBackground()) enforceCloudSleepAfterInactivity();
+  }, 1000);
 }
 
 function canCheckPublishedAppVersion() {
@@ -1032,9 +1047,9 @@ async function ensureFreshPublishedAppVersion() {
 
 function clearPrematureCloudSleepForInitialLoad() {
   if (hasCompletedInitialCloudLoad) return;
+  if (isCloudSleeping) return;
   isCloudSleeping = false;
-  document.body.classList.remove("is-cloud-sleeping");
-  if (cloudSleepOverlay) cloudSleepOverlay.hidden = true;
+  setCloudSleepOverlayVisible(false);
 }
 
 async function ensureInitialCloudStateLoaded() {
@@ -1062,7 +1077,7 @@ async function ensureInitialCloudStateLoaded() {
 
 function refreshCloudAfterForeground() {
   if (isCloudSleeping) {
-    resumeCloudSyncFromInactivity();
+    setCloudSleepOverlayVisible(true);
     return;
   }
 
@@ -9263,12 +9278,12 @@ async function initializeApp() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
-    if (isPhoneOrTabletDevice() && hasCompletedInitialCloudLoad) enterCloudSleep();
+    if (isPhoneOrTabletDevice()) enterCloudSleep();
     else pauseCloudWorkWhileBackgrounded();
   } else refreshCloudAfterForeground();
 });
 window.addEventListener("pagehide", () => {
-  if (isPhoneOrTabletDevice() && hasCompletedInitialCloudLoad) enterCloudSleep();
+  if (isPhoneOrTabletDevice()) enterCloudSleep();
   else pauseCloudWorkWhileBackgrounded();
 });
 window.addEventListener("online", () => {
