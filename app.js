@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-12";
+const appBuildVersion = "20260915-13";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260915-12-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260915-13-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -936,7 +936,7 @@ function enterCloudSleep() {
 
 function scheduleCloudSleep() {
   clearTimeout(cloudInactivityTimer);
-  if (isCloudSleeping || !isAppInBackground()) {
+  if (isCloudSleeping) {
     cloudInactivityTimer = null;
     return;
   }
@@ -951,7 +951,6 @@ function recordCloudActivity() {
 }
 
 function enforceCloudSleepAfterInactivity() {
-  if (!isAppInBackground()) return false;
   if (isCloudSleeping) return true;
   if (Date.now() - lastCloudActivityAt < cloudInactivityTimeoutMs) return false;
   enterCloudSleep();
