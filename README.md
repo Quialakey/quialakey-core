@@ -7,12 +7,14 @@ Code maître partagé de l'application Quialakey. Chaque agence possède son pro
 | Agence | Dépôt de déploiement | Tableau en ligne | Données | État |
 | --- | --- | --- | --- | --- |
 | Century 21 Les Minimes | [`century21lesminimes`](https://github.com/Quialakey/century21lesminimes) | [Ouvrir le tableau](https://quialakey.github.io/century21lesminimes/) | Projet Supabase indépendant | Actif |
+| Quialakey Century 21 | [`quialakeycentury21`](https://github.com/Quialakey/quialakeycentury21) | [Ouvrir le tableau](https://quialakey.github.io/quialakeycentury21/) | Projet Supabase indépendant | Actif |
 
 ## Organisation
 
 ```text
 quialakey-core
-└── century21lesminimes
+├── century21lesminimes
+└── quialakeycentury21
 ```
 
 Les changements publiés dans `quialakey-core` déclenchent automatiquement le redéploiement de chaque agence enregistrée. Les données d'une agence ne sont jamais partagées avec une autre.
