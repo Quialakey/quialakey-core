@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-11";
+const appBuildVersion = "20260915-12";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,14 +65,14 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260915-11-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260915-12-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
 const automaticBackupKeyPrefix = "cles-auto-backup-";
 const keySlotRecoveryBackupPrefix = "cles-key-recovery-v1::";
 const keySlotRecoveryRetentionCount = 5;
-const automaticBackupsEnabled = true;
+const automaticBackupsEnabled = false;
 const automaticBackupRetentionCount = 14;
 const automaticBackupHour = 12;
 const automaticBackupMinute = 0;
