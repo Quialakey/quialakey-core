@@ -187,14 +187,24 @@ end;
 $$;
 
 
--- 4. NEUTRALISATION DE L'ANCIEN DECLENCHEUR SUR LE TABLEAU COMPLET
--- Les lignes "...::slot::..." sont maintenant la source fiable. Reactiver la
--- fusion ci-dessus empecherait certaines suppressions volontaires de fiches.
+-- 4. PROTECTION DES FICHES CONTRE UNE ANCIENNE CASE VIDE
+-- Les lignes "...::slot::..." sont la source fiable. Une fiche renseignee ne
+-- peut devenir vide que si l'application transmet la validation issue d'une
+-- suppression, d'un deplacement ou d'un transfert confirme.
 create or replace function public.protect_app_state_key_rows()
 returns trigger
 language plpgsql
 as $$
 begin
+  if old.key ~ '^cles-(immobilieres|transaction)-v1::slot::'
+    and public.key_state_score(old.value) > 0
+    and public.key_state_score(new.value) = 0 then
+    if length(trim(coalesce(new.value->>'_quialakeyClearAuthorizedAt', ''))) = 0 then
+      raise exception 'Suppression automatique bloquee : utilisez une action de suppression, deplacement ou transfert confirmee.';
+    end if;
+  end if;
+
+  new.value := new.value - '_quialakeyClearAuthorizedAt';
   return new;
 end;
 $$;

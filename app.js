@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-10";
+const appBuildVersion = "20260915-11";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,14 +65,15 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260915-10-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260915-11-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
 const automaticBackupKeyPrefix = "cles-auto-backup-";
-const automaticBackupsEnabled = false;
-const automaticBackupRetentionCount = 2;
-const automaticBackupWeekday = 5;
+const keySlotRecoveryBackupPrefix = "cles-key-recovery-v1::";
+const keySlotRecoveryRetentionCount = 5;
+const automaticBackupsEnabled = true;
+const automaticBackupRetentionCount = 14;
 const automaticBackupHour = 12;
 const automaticBackupMinute = 0;
 const cloudPollIntervalMs = 900;
@@ -1408,6 +1409,42 @@ function isKeySlotCloudKey(cloudKey) {
   return Boolean(getKeyStorageKeyFromSlotCloudKey(cloudKey));
 }
 
+function getKeySlotRecoveryPrefix(storageKey, keyId) {
+  return `${keySlotRecoveryBackupPrefix}${storageKey}::${keyId}::`;
+}
+
+async function pruneKeySlotRecoveryBackups(storageKey, keyId) {
+  const prefix = getKeySlotRecoveryPrefix(storageKey, keyId);
+  const { data, error } = await supabaseClient
+    .from("app_state")
+    .select("key")
+    .like("key", `${prefix}%`)
+    .order("key", { ascending: false });
+  if (error || !Array.isArray(data)) return;
+
+  const oldKeys = data.slice(keySlotRecoveryRetentionCount).map((row) => row.key);
+  await Promise.all(oldKeys.map((key) => supabaseClient.from("app_state").delete().eq("key", key)));
+}
+
+async function createKeySlotRecoveryBackup(storageKey, keyId, remoteRow) {
+  const remoteKey = normalizeCloudSlotKey(remoteRow);
+  if (!isKeyFilled(remoteKey)) return;
+
+  const savedAt = new Date().toISOString();
+  const backupKey = `${getKeySlotRecoveryPrefix(storageKey, keyId)}${savedAt}-${Math.random().toString(16).slice(2)}`;
+  const payload = {
+    version: 1,
+    savedAt,
+    storageKey,
+    keyId,
+    reason: "before-explicit-clear",
+    key: remoteKey,
+  };
+  const { error } = await supabaseClient.from("app_state").upsert(getCloudWritePayload(backupKey, payload, savedAt));
+  if (error) throw error;
+  void pruneKeySlotRecoveryBackups(storageKey, keyId).catch(() => {});
+}
+
 function parseCloudObjectValue(value) {
   if (typeof value === "string") {
     try {
@@ -1810,6 +1847,7 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
   if (!intendedValues.size) return new Map();
 
   intendedValues.forEach((value, keyId) => rememberPendingKeySlotWrite(storageKey, keyId, value));
+  const recoveryBackupsCreated = new Set();
 
   for (let attempt = 0; attempt < keySlotWriteMaxAttempts; attempt += 1) {
     const cloudKeys = uniqueKeyIds.map((keyId) => getKeySlotCloudKey(storageKey, keyId));
@@ -1820,6 +1858,27 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
     if (readError) throw readError;
 
     const remoteRowsByKey = new Map((Array.isArray(remoteRows) ? remoteRows : []).map((row) => [row.key, row]));
+    for (const keyId of uniqueKeyIds) {
+      const cloudKey = getKeySlotCloudKey(storageKey, keyId);
+      const remoteRow = remoteRowsByKey.get(cloudKey);
+      if (!remoteRow?.value) continue;
+
+      const intendedValue = intendedValues.get(keyId);
+      const remoteValue = normalizeCloudSlotKey(remoteRow);
+      if (!isKeyFilled(remoteValue) || isKeyFilled(intendedValue)) continue;
+
+      const pendingWrite = getPendingKeySlotWrite(cloudKey);
+      if (!pendingWrite?.allowClear) {
+        intendedValues.set(keyId, remoteValue);
+        rememberPendingKeySlotWrite(storageKey, keyId, remoteValue);
+        continue;
+      }
+
+      if (!recoveryBackupsCreated.has(cloudKey)) {
+        await createKeySlotRecoveryBackup(storageKey, keyId, remoteRow);
+        recoveryBackupsCreated.add(cloudKey);
+      }
+    }
     const allRowsAlreadyConfirmed = cloudKeys.every((cloudKey) => {
       const remoteRow = remoteRowsByKey.get(cloudKey);
       return remoteRow && cloudRowMatchesPendingKeySlotWrite(remoteRow);
@@ -1847,11 +1906,18 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
     const updatedAt = new Date().toISOString();
     const payloads = uniqueKeyIds.map((keyId) => {
       const cloudKey = getKeySlotCloudKey(storageKey, keyId);
+      const intendedValue = intendedValues.get(keyId);
+      const remoteRow = remoteRowsByKey.get(cloudKey);
+      const isAuthorizedClear =
+        getPendingKeySlotWrite(cloudKey)?.allowClear &&
+        remoteRow?.value &&
+        isKeyFilled(normalizeCloudSlotKey(remoteRow)) &&
+        !isKeyFilled(intendedValue);
       return getCloudWritePayload(
         cloudKey,
-        intendedValues.get(keyId),
+        isAuthorizedClear ? { ...intendedValue, _quialakeyClearAuthorizedAt: updatedAt } : intendedValue,
         updatedAt,
-        remoteRowsByKey.get(cloudKey)?.updated_at || null,
+        remoteRow?.updated_at || null,
       );
     });
     const { error: writeError } = await supabaseClient.from("app_state").upsert(payloads);
@@ -1963,12 +2029,15 @@ function rememberPendingKeySlotWrite(storageKey, keyId, value) {
   if (!storageKey || !keyId || !value) return;
   const cloudKey = getKeySlotCloudKey(storageKey, keyId);
   const normalizedValue = normalizeKey({ ...value, id: keyId });
+  const previousWrite = getPendingKeySlotWrite(cloudKey);
+  const memoryKey = getRecentKeySlotMemoryKey(storageKey, keyId);
   pendingKeySlotWrites.set(cloudKey, {
     storageKey,
     keyId,
     value: normalizedValue,
     comparableValue: getComparableKeySlotValue(normalizedValue),
     savedAt: Date.now(),
+    allowClear: Boolean(previousWrite?.allowClear || recentlyClearedKeySlots.has(memoryKey)),
   });
   savePendingKeySlotWrites();
 }
@@ -4925,18 +4994,14 @@ async function pruneOldAutomaticBackups() {
 function getAutomaticBackupTargetDate(date = new Date()) {
   const target = new Date(date);
   target.setHours(automaticBackupHour, automaticBackupMinute, 0, 0);
-  const daysUntilBackup = (automaticBackupWeekday - target.getDay() + 7) % 7;
-  target.setDate(target.getDate() + daysUntilBackup);
-  if (target <= date) target.setDate(target.getDate() + 7);
+  if (target <= date) target.setDate(target.getDate() + 1);
   return target;
 }
 
 function getLatestAutomaticBackupDate(date = new Date()) {
   const latest = new Date(date);
   latest.setHours(automaticBackupHour, automaticBackupMinute, 0, 0);
-  const daysSinceBackup = (latest.getDay() - automaticBackupWeekday + 7) % 7;
-  latest.setDate(latest.getDate() - daysSinceBackup);
-  if (latest > date) latest.setDate(latest.getDate() - 7);
+  if (latest > date) latest.setDate(latest.getDate() - 1);
   return latest;
 }
 
@@ -4995,7 +5060,6 @@ function scheduleAutomaticBackup() {
 async function ensureTodaysAutomaticBackupIfLate() {
   if (!automaticBackupsEnabled) return;
   const now = new Date();
-  if (now.getDay() !== automaticBackupWeekday) return;
   if (now.getHours() < automaticBackupHour || (now.getHours() === automaticBackupHour && now.getMinutes() < automaticBackupMinute)) return;
   try {
     await createAutomaticBackup();

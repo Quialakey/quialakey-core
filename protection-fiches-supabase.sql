@@ -101,6 +101,15 @@ returns trigger
 language plpgsql
 as $$
 begin
+  if old.key ~ '^cles-(immobilieres|transaction)-v1::slot::'
+    and public.key_state_score(old.value) > 0
+    and public.key_state_score(new.value) = 0 then
+    if length(trim(coalesce(new.value->>'_quialakeyClearAuthorizedAt', ''))) = 0 then
+      raise exception 'Suppression automatique bloquee : utilisez une action de suppression, deplacement ou transfert confirmee.';
+    end if;
+  end if;
+
+  new.value := new.value - '_quialakeyClearAuthorizedAt';
   return new;
 end;
 $$;
