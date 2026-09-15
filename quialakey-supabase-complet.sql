@@ -253,6 +253,19 @@ begin
 end;
 $$;
 
+
+-- 7. INITIALISATION D'UNE BASE NEUVE
+-- Cette ligne permet au premier navigateur de distinguer une base vide valide
+-- d'un projet Supabase mal configure, sans importer d'anciennes donnees.
+insert into public.app_state (key, value, updated_at, expected_updated_at)
+values (
+  'cles-cloud-sync-heartbeat-v1',
+  jsonb_build_object('version', 'initial', 'initializedAt', now()),
+  now(),
+  null
+)
+on conflict (key) do nothing;
+
 commit;
 
 

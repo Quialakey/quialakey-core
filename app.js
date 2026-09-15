@@ -34,7 +34,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260914-2";
+const appBuildVersion = "20260915-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -2807,13 +2807,29 @@ async function loadStorageFromCloud(options = {}) {
       ]);
       if (error) throw error;
       if (legacyKeyRowsError) throw legacyKeyRowsError;
-      if ((!Array.isArray(data) || !data.length) && (!Array.isArray(legacyKeyRows) || !legacyKeyRows.length) && !slotRows.length) {
-        console.warn("Supabase initial load returned no app state rows; cloud writes remain locked.");
-        return;
+      const cloudBaseRows = Array.isArray(data) ? [...data] : [];
+      if (!cloudBaseRows.length && (!Array.isArray(legacyKeyRows) || !legacyKeyRows.length) && !slotRows.length) {
+        if (shouldMigrateLegacyStorage) {
+          console.warn("Supabase initial load returned no app state rows; cloud writes remain locked.");
+          return;
+        }
+
+        const initializedAt = new Date().toISOString();
+        const initialHeartbeat = {
+          version: appBuildVersion,
+          initializedAt,
+        };
+        const cloudUpdatedAt = await upsertCloudRowWithFreshVersion(cloudSyncHeartbeatStorageKey, initialHeartbeat);
+        if (!cloudUpdatedAt) return;
+        cloudBaseRows.push({
+          key: cloudSyncHeartbeatStorageKey,
+          value: initialHeartbeat,
+          updated_at: cloudUpdatedAt,
+        });
       }
 
       isApplyingCloudState = true;
-      (Array.isArray(data) ? data : []).forEach((row) => {
+      cloudBaseRows.forEach((row) => {
         if (row.key === cloudSyncHeartbeatStorageKey) {
           cloudRowVersions.set(row.key, row.updated_at || "");
           return;
