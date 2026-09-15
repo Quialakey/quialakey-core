@@ -8,6 +8,7 @@ const defaultCategoryPrefixes = {
   Autre: "A",
 };
 const defaultSlotsPerCategory = 20;
+const defaultCasesPerLine = defaultSlotsPerCategory / 2;
 const defaultAddressReplacements = [
   { id: "avenue", word: "Avenue", replacement: "Av." },
   { id: "boulevard", word: "Boulevard", replacement: "Blv." },
@@ -34,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-3";
+const appBuildVersion = "20260915-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -213,6 +214,7 @@ function getDefaultTableSettings() {
       aliases: [],
     })),
     slotsPerCategory: defaultSlotsPerCategory,
+    casesPerLine: defaultCasesPerLine,
     addressReplacements: defaultAddressReplacements.map((item) => ({ ...item })),
     saleCelebrationEnabled: true,
     accessCode: defaultAccessCode,
@@ -260,6 +262,12 @@ function normalizeEvenSlotCount(value, fallback = defaultSlotsPerCategory) {
   return clamped % 2 === 0 ? clamped : Math.min(60, clamped + 1);
 }
 
+function normalizeCasesPerLine(value, slotsPerCategory = defaultSlotsPerCategory, fallback = defaultCasesPerLine) {
+  const parsed = Number.parseInt(value, 10);
+  const safeFallback = Math.max(1, Math.min(slotsPerCategory, fallback));
+  return Math.max(1, Math.min(slotsPerCategory, Number.isFinite(parsed) ? parsed : safeFallback));
+}
+
 function normalizeTableSettings(value) {
   const parsed = typeof value === "string" ? parseStorageValue(value) : value;
   const fallback = getDefaultTableSettings();
@@ -271,6 +279,8 @@ function normalizeTableSettings(value) {
     .map((category, index) => normalizeCategorySetting(category, index, usedIds))
     .filter((category) => category.label);
   const slotsPerCategory = normalizeEvenSlotCount(source.slotsPerCategory, fallback.slotsPerCategory);
+  const legacyCasesPerLine = Math.max(1, Math.ceil(slotsPerCategory / 2));
+  const casesPerLine = normalizeCasesPerLine(source.casesPerLine, slotsPerCategory, legacyCasesPerLine);
   const normalizedAddressReplacements = (Array.isArray(source.addressReplacements) ? source.addressReplacements : fallback.addressReplacements)
     .map(normalizeAddressReplacement)
     .filter(Boolean);
@@ -293,6 +303,7 @@ function normalizeTableSettings(value) {
     agencyName,
     categories: categories.length ? categories : fallback.categories,
     slotsPerCategory,
+    casesPerLine,
     addressReplacements,
     saleCelebrationEnabled,
     accessCode,
@@ -315,6 +326,10 @@ function getVisibleCategoryIds() {
 
 function getSlotsPerCategory() {
   return tableSettings?.slotsPerCategory || defaultSlotsPerCategory;
+}
+
+function getCasesPerLine() {
+  return tableSettings?.casesPerLine || defaultCasesPerLine;
 }
 
 function getAddressReplacements() {
@@ -656,6 +671,7 @@ const closeSettingsBtn = document.querySelector("#closeSettingsBtn");
 const settingsForm = document.querySelector("#settingsForm");
 const settingsAgencyNameInput = document.querySelector("#settingsAgencyNameInput");
 const settingsRowCountInput = document.querySelector("#settingsRowCountInput");
+const settingsCasesPerLineInput = document.querySelector("#settingsCasesPerLineInput");
 const settingsSlotsInput = document.querySelector("#settingsSlotsInput");
 const settingsCategoriesList = document.querySelector("#settingsCategoriesList");
 const settingsReplacementsList = document.querySelector("#settingsReplacementsList");
@@ -5910,6 +5926,13 @@ function updateSettingsDraftFromDom() {
   if (settingsSlotsInput) {
     settingsDraft.slotsPerCategory = normalizeEvenSlotCount(settingsSlotsInput.value);
   }
+  if (settingsCasesPerLineInput) {
+    settingsDraft.casesPerLine = normalizeCasesPerLine(
+      settingsCasesPerLineInput.value,
+      settingsDraft.slotsPerCategory,
+      settingsDraft.casesPerLine,
+    );
+  }
   if (settingsCelebrationInput) {
     settingsDraft.saleCelebrationEnabled = settingsCelebrationInput.checked;
   }
@@ -6045,6 +6068,10 @@ function renderSettingsPanel() {
 
   if (settingsAgencyNameInput) settingsAgencyNameInput.value = settingsDraft.agencyName || "Agence";
   if (settingsRowCountInput) settingsRowCountInput.value = String(settingsDraft.categories.length);
+  if (settingsCasesPerLineInput) {
+    settingsCasesPerLineInput.max = String(settingsDraft.slotsPerCategory || defaultSlotsPerCategory);
+    settingsCasesPerLineInput.value = String(settingsDraft.casesPerLine || defaultCasesPerLine);
+  }
   if (settingsSlotsInput) settingsSlotsInput.value = String(settingsDraft.slotsPerCategory || defaultSlotsPerCategory);
   if (settingsCelebrationInput) settingsCelebrationInput.checked = settingsDraft.saleCelebrationEnabled !== false;
   if (settingsAccessLockInput) settingsAccessLockInput.checked = settingsDraft.accessLockEnabled !== false;
@@ -6764,7 +6791,7 @@ function renderGrid() {
 
     const keyRow = document.createElement("div");
     keyRow.className = "key-row";
-    keyRow.style.setProperty("--key-column-count", String(getSlotsPerCategory() / 2));
+    keyRow.style.setProperty("--key-column-count", String(getCasesPerLine()));
 
     const visibleKeys = keys
       .filter((key) => key.category === category.id && key.number <= getSlotsPerCategory())
@@ -8848,9 +8875,21 @@ settingsRowCountInput?.addEventListener("change", () => {
   setSettingsDraftRowCount(settingsRowCountInput.value);
   renderSettingsPanel();
 });
+settingsCasesPerLineInput?.addEventListener("blur", () => {
+  const slotsPerCategory = normalizeEvenSlotCount(settingsSlotsInput?.value);
+  settingsCasesPerLineInput.value = String(
+    normalizeCasesPerLine(settingsCasesPerLineInput.value, slotsPerCategory, defaultCasesPerLine),
+  );
+});
 settingsSlotsInput?.addEventListener("blur", () => {
   const slots = normalizeEvenSlotCount(settingsSlotsInput.value);
   settingsSlotsInput.value = String(slots);
+  if (settingsCasesPerLineInput) {
+    settingsCasesPerLineInput.max = String(slots);
+    settingsCasesPerLineInput.value = String(
+      normalizeCasesPerLine(settingsCasesPerLineInput.value, slots, defaultCasesPerLine),
+    );
+  }
 });
 addSettingsReplacementBtn?.addEventListener("click", () => {
   if (!settingsDraft) settingsDraft = cloneTableSettings();
