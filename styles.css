@@ -1498,6 +1498,14 @@ textarea {
   min-height: 210px;
 }
 
+@media (min-width: 721px) {
+  .key-grid[data-view-mode="text"] .category-title {
+    align-self: start;
+    height: 84px;
+    min-height: 84px;
+  }
+}
+
 .key-delete-button {
   position: absolute;
   top: 0;
