@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-9";
+const appBuildVersion = "20260915-10";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260911-5-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260915-10-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -1339,9 +1339,7 @@ function loadActiveRegistry() {
 }
 
 function saveActiveRegistry() {
-  markLocalEdit();
   setRuntimeStorageValue(registryStorageKey, activeRegistry);
-  scheduleStorageKeySync(registryStorageKey);
 }
 
 function getBackupStorageKeys() {
@@ -1358,8 +1356,12 @@ function getBackupStorageKeys() {
   ];
 }
 
+function getCloudStorageKeys() {
+  return getBackupStorageKeys().filter((storageKey) => storageKey !== registryStorageKey);
+}
+
 function getCloudBaseStorageKeys() {
-  return [...getBackupStorageKeys(), cloudSyncHeartbeatStorageKey];
+  return [...getCloudStorageKeys(), cloudSyncHeartbeatStorageKey];
 }
 
 function getKeyStorageKeys() {
@@ -2050,6 +2052,12 @@ function waitForKeySlotRetry(attempt) {
 }
 
 function resetLegacySyncMetadataIfNeeded() {
+  dirtyCloudKeys.delete(registryStorageKey);
+  failedCloudSyncKeys.delete(registryStorageKey);
+  cloudRowVersions.delete(registryStorageKey);
+  savePendingCloudKeys();
+  saveCloudRowVersions();
+
   const previousVersion = getRuntimeStorageValue(syncMetadataVersionStorageKey) || "";
   if (previousVersion === syncMetadataVersion) return;
   const isSameSupabaseProject = previousVersion.endsWith(`-${supabaseProjectRef}`);
@@ -2160,7 +2168,7 @@ function getSyncStorageKeyForCloudKey(cloudKey) {
 
 function getPendingCloudSyncKeys() {
   pruneStalePendingKeyStorageFlags();
-  return getBackupStorageKeys().filter(hasPendingStorageKeyChange);
+  return getCloudStorageKeys().filter(hasPendingStorageKeyChange);
 }
 
 function clearDirtyKeySlots(storageKey) {
@@ -2366,7 +2374,7 @@ async function checkCloudSyncHeartbeat() {
 }
 
 function scheduleStorageKeySync(storageKey, delay = cloudWriteDebounceMs) {
-  if (!supabaseClient) return;
+  if (!supabaseClient || storageKey === registryStorageKey) return;
   dirtyCloudKeys.add(storageKey);
   if (isKeysStorageKey(storageKey)) rememberDirtyKeySlotSnapshots(storageKey);
   savePendingCloudKeys();
@@ -2494,6 +2502,12 @@ async function writeFullKeyStorageMirrorToCloud(storageKey, savedKeys) {
 }
 
 function syncStorageKeyToCloud(storageKey, options = {}) {
+  if (storageKey === registryStorageKey) {
+    dirtyCloudKeys.delete(storageKey);
+    failedCloudSyncKeys.delete(storageKey);
+    savePendingCloudKeys();
+    return Promise.resolve();
+  }
   if (!supabaseClient) return Promise.resolve();
   if (isCloudSleeping || isAppInBackground()) {
     dirtyCloudKeys.add(storageKey);
@@ -2618,7 +2632,7 @@ function retryFailedCloudSyncs() {
 }
 
 function syncAllStorageToCloud() {
-  return Promise.all(getBackupStorageKeys().map((storageKey) => syncStorageKeyToCloud(storageKey, { force: true })));
+  return Promise.all(getCloudStorageKeys().map((storageKey) => syncStorageKeyToCloud(storageKey, { force: true })));
 }
 
 function syncCurrentRegistryToCloud() {
@@ -2861,7 +2875,7 @@ function subscribeToCloudChanges() {
 
 async function reloadCompleteCloudState() {
   const pendingStorageKeys = new Set(getPendingCloudSyncKeys());
-  const previousStorage = new Map(getBackupStorageKeys().map((key) => [key, getRuntimeStorageValue(key)]));
+  const previousStorage = new Map(getCloudStorageKeys().map((key) => [key, getRuntimeStorageValue(key)]));
   const fullBaseStorageKeys = getCloudBaseStorageKeys();
   const [{ data: baseRows, error: baseRowsError }, slotRows] = await Promise.all([
     supabaseClient
@@ -2895,7 +2909,7 @@ async function reloadCompleteCloudState() {
   saveCloudRowVersions();
   hasResolvedInitialAccessSettings = true;
 
-  const hasChanged = getBackupStorageKeys().some(
+  const hasChanged = getCloudStorageKeys().some(
     (key) => previousStorage.get(key) !== getRuntimeStorageValue(key),
   );
   if (hasChanged) {
@@ -2982,7 +2996,7 @@ async function loadStorageFromCloud(options = {}) {
       saveCloudRowVersions();
       await syncCurrentRegistryToCloud();
       if (pendingStartupKeys.size) {
-        const syncablePendingKeys = [...pendingStartupKeys].filter((key) => getBackupStorageKeys().includes(key));
+        const syncablePendingKeys = [...pendingStartupKeys].filter((key) => getCloudStorageKeys().includes(key));
         await Promise.all(syncablePendingKeys.map((key) => syncStorageKeyToCloud(key)));
       }
       updateAccessLockState();
