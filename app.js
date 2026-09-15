@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-6";
+const appBuildVersion = "20260915-7";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -6230,13 +6230,21 @@ async function deleteAutomaticBackupsFromCloud() {
   if (error) throw error;
 }
 
-function resetAccessSettings() {
-  tableSettings = normalizeTableSettings({
-    ...tableSettings,
+function getResetTableSettings(settings = tableSettings) {
+  const organization = normalizeTableSettings(settings);
+  return normalizeTableSettings({
+    ...getDefaultTableSettings(),
+    categories: JSON.parse(JSON.stringify(organization.categories)),
+    slotsPerCategory: organization.slotsPerCategory,
+    casesPerLine: organization.casesPerLine,
     accessCode: defaultAccessCode,
     accessLockEnabled: false,
     accessLockVersion: Date.now(),
   });
+}
+
+function resetTableSettingsKeepingOrganization() {
+  tableSettings = getResetTableSettings();
   setRuntimeStorageValue(tableSettingsStorageKey, JSON.stringify(tableSettings));
   removeRuntimeStorageValue(accessUnlockedStorageKey);
   updateAccessLockState();
@@ -6257,7 +6265,7 @@ async function syncResetDataToCloud() {
 
 async function resetAllTableData() {
   const firstConfirmation = window.confirm(
-    "Cette action va effacer les tableaux Location et Transaction, les archives, les historiques, les intervenants, les sauvegardes et le mot de passe. Les réglages d'organisation du tableau seront conservés. Continuer ?",
+    "Cette action va supprimer toutes les fiches de clés enregistrées des tableaux Location et Transaction, ainsi que les archives, les historiques, les intervenants, les sauvegardes et le mot de passe. Seule l'organisation des catégories, des cases et des lignes sera conservée. Continuer ?",
   );
   if (!firstConfirmation) return;
 
@@ -6266,23 +6274,34 @@ async function resetAllTableData() {
 
   cloudSyncTimers.forEach((timer) => clearTimeout(timer));
   cloudSyncTimers.clear();
+  directCloudFlushTimers.forEach((timer) => clearTimeout(timer));
+  directCloudFlushTimers.clear();
+  await pendingCloudSync.catch(() => {});
+  pendingCloudSync = Promise.resolve();
   dirtyCloudKeys = new Set();
   failedCloudSyncKeys = new Set();
   dirtyKeySlots = new Map();
+  pendingKeySlotWrites = new Map();
+  recentlyForcedKeySlots.clear();
+  recentlyClearedKeySlots.clear();
   cloudRowVersions = new Map();
   savePendingCloudKeys();
   saveDirtyKeySlots();
+  savePendingKeySlotWrites();
   saveCloudRowVersions();
 
   getResettableStorageKeys().forEach((storageKey) => {
-    if (!isKeysStorageKey(storageKey)) setRuntimeStorageValue(storageKey, "[]");
+    if (!isKeysStorageKey(storageKey) && storageKey !== tableSettingsStorageKey) {
+      setRuntimeStorageValue(storageKey, "[]");
+    }
   });
   removeAutomaticBackupsFromLocalStorage();
-  resetAccessSettings();
+  resetTableSettingsKeepingOrganization();
   Object.values(registryConfig).forEach((config) => {
     setRuntimeStorageValue(config.keysStorageKey, JSON.stringify(makeInitialKeys()));
   });
 
+  undoSnapshot = null;
   activeKeyInfoDraft = null;
   pendingNewKeyDraft = null;
   selectedId = null;
@@ -6291,6 +6310,8 @@ async function resetAllTableData() {
   contacts = loadContacts();
   keys = loadKeys();
   archives = loadArchives();
+  settingsDraft = cloneTableSettings();
+  renderSettingsPanel();
   render();
   updateUndoButton();
 
