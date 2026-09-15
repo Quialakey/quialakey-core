@@ -1500,8 +1500,8 @@ textarea {
 
 @media (min-width: 721px) {
   .key-grid[data-view-mode="text"] .category-title {
-    align-self: start;
-    height: 84px;
+    align-self: stretch;
+    height: auto;
     min-height: 84px;
   }
 }
