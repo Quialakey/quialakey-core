@@ -1361,6 +1361,22 @@ h3 {
   font-weight: 600;
 }
 
+.settings-row[draggable="true"] .settings-category-drag-handle {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.settings-categories-list.is-touch-dragging {
+  touch-action: none;
+  user-select: none;
+}
+
+.settings-row.dragging {
+  cursor: grabbing;
+  opacity: 0.52;
+}
+
 .settings-secondary-button,
 .settings-remove-button,
 .settings-save-button,

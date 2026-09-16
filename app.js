@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260916-2";
+const appBuildVersion = "20260916-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260916-2-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260916-3-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -740,6 +740,7 @@ let archivesCloseTimer = null;
 let detailCloseTimer = null;
 let draggedContactId = null;
 let touchContactDrag = null;
+let touchSettingsCategoryDrag = null;
 let editingContactId = null;
 let hoveredKeyId = null;
 let isDetailPanelHovered = false;
@@ -6154,8 +6155,11 @@ function createSettingsCategoryRow(category, index) {
 
   item.className = "settings-row";
   item.dataset.settingsCategoryIndex = String(index);
-  indexBadge.className = "settings-row-index";
+  item.dataset.settingsCategoryId = category.id;
+  item.draggable = true;
+  indexBadge.className = "settings-row-index settings-category-drag-handle";
   indexBadge.textContent = String(index + 1);
+  indexBadge.title = `Déplacer la catégorie ${category.label}`;
   nameLabel.textContent = "Nom de la catégorie";
   nameInput.type = "text";
   nameInput.value = category.label;
@@ -6175,7 +6179,9 @@ function createSettingsCategoryRow(category, index) {
   removeButton.disabled = settingsDraft.categories.length <= 1;
   removeButton.addEventListener("click", () => {
     updateSettingsDraftFromDom();
-    settingsDraft.categories.splice(index, 1);
+    const currentIndex = settingsDraft.categories.findIndex((savedCategory) => savedCategory.id === category.id);
+    if (currentIndex < 0) return;
+    settingsDraft.categories.splice(currentIndex, 1);
     if (settingsRowCountInput) settingsRowCountInput.value = String(settingsDraft.categories.length);
     renderSettingsPanel();
   });
@@ -6184,6 +6190,48 @@ function createSettingsCategoryRow(category, index) {
   prefixLabel.append(prefixInput);
   item.append(indexBadge, nameLabel, prefixLabel, removeButton);
   return item;
+}
+
+function saveSettingsCategoryOrderFromList() {
+  if (!settingsDraft || !settingsCategoriesList) return;
+  updateSettingsDraftFromDom();
+  const items = [...settingsCategoriesList.querySelectorAll("[data-settings-category-id]")];
+  items.forEach((item, index) => {
+    item.dataset.settingsCategoryIndex = String(index);
+    const indexBadge = item.querySelector(".settings-row-index");
+    if (indexBadge) indexBadge.textContent = String(index + 1);
+  });
+}
+
+function moveDraggedSettingsCategoryToPoint(clientY) {
+  if (!settingsCategoriesList) return;
+  const draggedItem = settingsCategoriesList.querySelector(".dragging");
+  if (!draggedItem) return;
+
+  const target = [...settingsCategoriesList.querySelectorAll("[data-settings-category-id]:not(.dragging)")].find((item) => {
+    const rect = item.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  });
+  settingsCategoriesList.insertBefore(draggedItem, target || null);
+}
+
+function startTouchSettingsCategoryDrag(item, pointerId, clientY) {
+  if (!settingsCategoriesList) return;
+  touchSettingsCategoryDrag = { item, pointerId };
+  settingsCategoriesList.classList.add("is-touch-dragging");
+  item.classList.add("dragging");
+  item.setPointerCapture?.(pointerId);
+  moveDraggedSettingsCategoryToPoint(clientY);
+}
+
+function stopTouchSettingsCategoryDrag() {
+  if (!touchSettingsCategoryDrag || !settingsCategoriesList) return;
+
+  saveSettingsCategoryOrderFromList();
+  touchSettingsCategoryDrag.item.releasePointerCapture?.(touchSettingsCategoryDrag.pointerId);
+  touchSettingsCategoryDrag.item.classList.remove("dragging");
+  settingsCategoriesList.classList.remove("is-touch-dragging");
+  touchSettingsCategoryDrag = null;
 }
 
 function createSettingsReplacementRow(replacement, index) {
@@ -9086,6 +9134,79 @@ settingsRowCountInput?.addEventListener("change", () => {
   updateSettingsDraftFromDom();
   setSettingsDraftRowCount(settingsRowCountInput.value);
   renderSettingsPanel();
+});
+settingsCategoriesList?.addEventListener("dragstart", (event) => {
+  const item = event.target.closest("[data-settings-category-id]");
+  if (!item || !event.target.closest(".settings-category-drag-handle")) {
+    event.preventDefault();
+    return;
+  }
+
+  item.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", item.dataset.settingsCategoryId);
+});
+settingsCategoriesList?.addEventListener("dragend", () => {
+  saveSettingsCategoryOrderFromList();
+  settingsCategoriesList.classList.remove("is-touch-dragging");
+  settingsCategoriesList.querySelectorAll(".dragging").forEach((item) => item.classList.remove("dragging"));
+});
+settingsCategoriesList?.addEventListener("dragover", (event) => {
+  if (!settingsCategoriesList.querySelector(".dragging")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  moveDraggedSettingsCategoryToPoint(event.clientY);
+});
+settingsCategoriesList?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  saveSettingsCategoryOrderFromList();
+});
+settingsCategoriesList?.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse") return;
+  const handle = event.target.closest(".settings-category-drag-handle");
+  const item = handle?.closest("[data-settings-category-id]");
+  if (!item) return;
+
+  const timer = setTimeout(() => startTouchSettingsCategoryDrag(item, event.pointerId, event.clientY), 220);
+  touchSettingsCategoryDrag = {
+    item,
+    pointerId: event.pointerId,
+    timer,
+    startX: event.clientX,
+    startY: event.clientY,
+  };
+});
+settingsCategoriesList?.addEventListener("pointermove", (event) => {
+  if (!touchSettingsCategoryDrag || touchSettingsCategoryDrag.pointerId !== event.pointerId) return;
+
+  if (touchSettingsCategoryDrag.timer) {
+    const moved = Math.hypot(
+      event.clientX - touchSettingsCategoryDrag.startX,
+      event.clientY - touchSettingsCategoryDrag.startY,
+    );
+    if (moved > 10) {
+      clearTimeout(touchSettingsCategoryDrag.timer);
+      touchSettingsCategoryDrag = null;
+    }
+    return;
+  }
+
+  event.preventDefault();
+  moveDraggedSettingsCategoryToPoint(event.clientY);
+});
+settingsCategoriesList?.addEventListener("pointerup", (event) => {
+  if (!touchSettingsCategoryDrag || touchSettingsCategoryDrag.pointerId !== event.pointerId) return;
+  if (touchSettingsCategoryDrag.timer) {
+    clearTimeout(touchSettingsCategoryDrag.timer);
+    touchSettingsCategoryDrag = null;
+    return;
+  }
+  stopTouchSettingsCategoryDrag();
+});
+settingsCategoriesList?.addEventListener("pointercancel", (event) => {
+  if (!touchSettingsCategoryDrag || touchSettingsCategoryDrag.pointerId !== event.pointerId) return;
+  if (touchSettingsCategoryDrag.timer) clearTimeout(touchSettingsCategoryDrag.timer);
+  stopTouchSettingsCategoryDrag();
 });
 settingsCasesPerLineInput?.addEventListener("blur", () => {
   const slotsPerCategory = normalizeEvenSlotCount(settingsSlotsInput?.value);
