@@ -2333,16 +2333,19 @@ body.is-moving-key .photo-hover {
 
 .status-pill {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  gap: 3px;
   padding: 0;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 800;
   background: transparent;
 }
 
 .set-status {
-  padding: 7px 10px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 5px 4px;
   border-radius: 999px;
   color: var(--green);
   background: #caebd5;
