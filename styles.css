@@ -1361,7 +1361,7 @@ h3 {
   font-weight: 600;
 }
 
-.settings-row[draggable="true"] .settings-category-drag-handle {
+.settings-category-drag-handle[draggable="true"] {
   cursor: grab;
   touch-action: pan-y;
   user-select: none;

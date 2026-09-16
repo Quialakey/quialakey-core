@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260916-3";
+const appBuildVersion = "20260917-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260916-3-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260917-1-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -343,7 +343,8 @@ function getAddressReplacements() {
 }
 
 function getCategorySetting(categoryId) {
-  return getTableCategories().find((category) => category.id === categoryId || category.label === categoryId);
+  const categories = getTableCategories();
+  return categories.find((category) => category.id === categoryId) || categories.find((category) => category.label === categoryId);
 }
 
 function getAllKnownCategorySettings() {
@@ -6156,10 +6157,10 @@ function createSettingsCategoryRow(category, index) {
   item.className = "settings-row";
   item.dataset.settingsCategoryIndex = String(index);
   item.dataset.settingsCategoryId = category.id;
-  item.draggable = true;
   indexBadge.className = "settings-row-index settings-category-drag-handle";
   indexBadge.textContent = String(index + 1);
   indexBadge.title = `Déplacer la catégorie ${category.label}`;
+  indexBadge.draggable = true;
   nameLabel.textContent = "Nom de la catégorie";
   nameInput.type = "text";
   nameInput.value = category.label;
