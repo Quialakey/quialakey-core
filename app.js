@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260915-14";
+const appBuildVersion = "20260916-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -65,7 +65,7 @@ const supabaseProjectRef = (() => {
     return agencyId;
   }
 })();
-const syncMetadataVersion = `20260915-14-${supabaseProjectRef}`;
+const syncMetadataVersion = `20260916-1-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
@@ -2921,8 +2921,8 @@ function markKeyControlActionForSync(keyId, options = {}) {
 
 async function finishKeyControlAction(keyId, options = {}) {
   markKeyControlActionForSync(keyId, options);
-  await syncCloudAfterAction();
   closeKeyPanelAfterAction();
+  await syncCloudAfterAction();
 }
 
 function subscribeToCloudChanges() {
