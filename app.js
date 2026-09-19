@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260917-1";
+const appBuildVersion = "20260919-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -264,7 +264,7 @@ function normalizeAddressReplacement(item) {
 
 function normalizeEvenSlotCount(value, fallback = defaultSlotsPerCategory) {
   const parsed = Number.parseInt(value, 10);
-  const clamped = Math.max(10, Math.min(60, Number.isFinite(parsed) ? parsed : fallback));
+  const clamped = Math.max(6, Math.min(60, Number.isFinite(parsed) ? parsed : fallback));
   return clamped % 2 === 0 ? clamped : Math.min(60, clamped + 1);
 }
 
