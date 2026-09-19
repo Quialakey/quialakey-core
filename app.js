@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260919-1";
+const appBuildVersion = "20260919-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4735,15 +4735,6 @@ function htmlEscape(value) {
     .replaceAll('"', "&quot;");
 }
 
-function utf8ToBase64(value) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
 function keyToCsvRows(key, archive = null) {
   const rows = [];
   const base = {
@@ -4794,7 +4785,53 @@ function keyToCsvRows(key, archive = null) {
   return rows;
 }
 
-function exportKeyExcel(key, archive = null) {
+let excelExportLibraryPromise = null;
+
+function loadExcelExportLibrary() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (!excelExportLibraryPromise) {
+    excelExportLibraryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const timeout = window.setTimeout(() => finish(new Error("Chargement de l'export trop long.")), 15000);
+      function finish(error) {
+        window.clearTimeout(timeout);
+        script.onload = null;
+        script.onerror = null;
+        if (error) {
+          script.remove();
+          reject(error);
+        } else {
+          resolve(window.ExcelJS);
+        }
+      }
+      script.src = "vendor/exceljs-4.4.0.min.js";
+      script.onload = () => finish(window.ExcelJS ? null : new Error("Export Excel indisponible."));
+      script.onerror = () => finish(new Error("Impossible de charger l'export Excel."));
+      document.head.append(script);
+    }).catch((error) => {
+      excelExportLibraryPromise = null;
+      throw error;
+    });
+  }
+  return excelExportLibraryPromise;
+}
+
+async function getExcelSignatureSize(dataUrl) {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error("Signature illisible.");
+  const scale = Math.min(1, 160 / image.naturalWidth, 64 / image.naturalHeight);
+  return { width: image.naturalWidth * scale, height: image.naturalHeight * scale };
+}
+
+async function createKeyExcelWorkbook(rows) {
+  const ExcelJS = await loadExcelExportLibrary();
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Quialakey";
+  const sheet = workbook.addWorksheet("Fiche de cle", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
   const headers = [
     "Emplacement",
     "Adresse",
@@ -4815,54 +4852,93 @@ function exportKeyExcel(key, archive = null) {
     "Signé",
     "Signature manuscrite",
   ];
-  const rows = keyToCsvRows(key, archive);
-  const imageParts = [];
-  const tableRows = rows.map((row, rowIndex) => {
-    const values = [
-    row.emplacement,
-    row.adresse,
-    row.codePostal,
-    row.ville,
-    row.proprietaire,
-    row.prenomProprietaire,
-    row.notes,
-    row.archive,
-    row.dateArchive,
-    row.jeu,
-    row.statutJeu,
-    row.mouvement,
-    row.intervenant,
-    row.telephone,
-    row.commentaire,
-    row.dateMouvement,
-    row.signe,
-    ];
-    let signatureCell = "";
-    const signatureMatch = row.signatureManuscrite.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
-    if (signatureMatch) {
-      const extension = signatureMatch[1].includes("jpeg") ? "jpg" : signatureMatch[1].split("/")[1].replace("+xml", "");
-      const location = `signature-${rowIndex + 1}.${extension}`;
-      signatureCell = `<img src="${location}" width="240" height="105" alt="Signature manuscrite">`;
-      imageParts.push({ mime: signatureMatch[1], location, data: signatureMatch[2] });
-    }
-    return `<tr>${values.map((value) => `<td>${htmlEscape(value)}</td>`).join("")}<td>${signatureCell}</td></tr>`;
+  const widths = [16, 32, 12, 22, 30, 24, 34, 20, 23, 12, 16, 16, 30, 20, 34, 23, 10, 26];
+  sheet.columns = headers.map((header, index) => ({ header, width: widths[index] }));
+  const border = { style: "thin", color: { argb: "FFD0D5D8" } };
+  const headerRow = sheet.getRow(1);
+  headerRow.height = 42;
+  headerRow.eachCell((cell) => {
+    cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2C6074" } };
+    cell.alignment = { vertical: "middle", wrapText: true };
+    cell.border = { top: border, bottom: border, left: border, right: border };
   });
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:11pt}th,td{border:1px solid #999;padding:5px;vertical-align:middle}th{background:#ddd;font-weight:bold}td:last-child{width:250px;height:115px}</style></head><body><table><thead><tr>${headers.map((header) => `<th>${htmlEscape(header)}</th>`).join("")}</tr></thead><tbody>${tableRows.join("")}</tbody></table></body></html>`;
-  const boundary = `----cles-export-${Date.now()}`;
-  const parts = [
-    `MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary="${boundary}"\r\n\r\n`,
-    `--${boundary}\r\nContent-Type: text/html; charset="utf-8"\r\nContent-Transfer-Encoding: base64\r\nContent-Location: fiche.html\r\n\r\n${utf8ToBase64(html)}\r\n`,
-    ...imageParts.map((image) => `--${boundary}\r\nContent-Type: ${image.mime}\r\nContent-Transfer-Encoding: base64\r\nContent-Location: ${image.location}\r\n\r\n${image.data}\r\n`),
-    `--${boundary}--\r\n`,
-  ];
-  const blob = new Blob(parts, { type: "application/vnd.ms-excel" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const archiveSuffix = archive ? `-${archive.reason}` : "";
-  link.href = url;
-  link.download = `${key.id}${archiveSuffix}-export.xls`;
-  link.click();
-  URL.revokeObjectURL(url);
+  for (const row of rows) {
+    const values = [
+      row.emplacement,
+      row.adresse,
+      row.codePostal,
+      row.ville,
+      row.proprietaire,
+      row.prenomProprietaire,
+      row.notes,
+      row.archive,
+      row.dateArchive,
+      row.jeu,
+      row.statutJeu,
+      row.mouvement,
+      row.intervenant,
+      row.telephone,
+      row.commentaire,
+      row.dateMouvement,
+      row.signe,
+      "",
+    ];
+    const excelRow = sheet.addRow(values.map((value) => String(value ?? "")));
+    const textLines = Math.max(...values.map((value, index) =>
+      String(value ?? "").split(/\r?\n/).reduce((count, line) =>
+        count + Math.max(1, Math.ceil(line.length / Math.max(1, widths[index] - 3))), 0)));
+    excelRow.height = Math.min(409, Math.max(row.signatureManuscrite ? 66 : 32, textLines * 15 + 12));
+    excelRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = { name: "Calibri", size: 11 };
+      cell.alignment = { vertical: "middle", wrapText: true };
+      cell.numFmt = "@";
+      cell.border = { top: border, bottom: border, left: border, right: border };
+    });
+    if (row.signatureManuscrite) {
+      const match = row.signatureManuscrite.match(/^data:image\/(png|jpeg|gif);base64,/i);
+      if (!match) throw new Error(`Format de signature non reconnu, mouvement ${excelRow.number - 1}.`);
+      const size = await getExcelSignatureSize(row.signatureManuscrite);
+      const imageId = workbook.addImage({ base64: row.signatureManuscrite, extension: match[1].toLowerCase() });
+      // Explicit cell bounds avoid ExcelJS's oneCellAnchor output, rejected by Excel 2007.
+      const emuPerPixel = 9525;
+      const top = (excelRow.height / 0.75 - size.height) / 2;
+      sheet.addImage(imageId, {
+        tl: {
+          nativeCol: 17, nativeRow: excelRow.number - 1,
+          nativeColOff: 8 * emuPerPixel, nativeRowOff: Math.round(top * emuPerPixel),
+        },
+        br: {
+          nativeCol: 17, nativeRow: excelRow.number - 1,
+          nativeColOff: Math.round((8 + size.width) * emuPerPixel),
+          nativeRowOff: Math.round((top + size.height) * emuPerPixel),
+        },
+        editAs: "oneCell",
+      });
+    }
+  }
+  return workbook;
+}
+
+async function exportKeyExcel(key, archive = null) {
+  try {
+    const workbook = await createKeyExcelWorkbook(keyToCsvRows(key, archive));
+    const blob = new Blob([await workbook.xlsx.writeBuffer()], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const archiveSuffix = archive ? `-${archive.reason}` : "";
+    link.href = url;
+    link.download = `${key.id}${archiveSuffix}-export.xlsx`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    console.warn("Key Excel export failed", error);
+    alert("L'export n'a pas pu être créé avec toutes ses signatures. Réessayez après avoir actualisé le tableau.");
+  }
 }
 
 function exportFilledDataCsv() {
