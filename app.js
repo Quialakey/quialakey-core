@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260921-1";
+const appBuildVersion = "20260921-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -640,6 +640,7 @@ const checkinBtn = document.querySelector("#checkinBtn");
 const rentedBtn = document.querySelector("#rentedBtn");
 const removedBtn = document.querySelector("#removedBtn");
 const reservedBtn = document.querySelector("#reservedBtn");
+const duplicateKeyBtn = document.querySelector("#duplicateKeyBtn");
 const transferKeyBtn = document.querySelector("#transferKeyBtn");
 const exportKeyCsvBtn = document.querySelector("#exportKeyCsvBtn");
 const signatureCanvas = document.querySelector("#signatureCanvas");
@@ -3256,6 +3257,7 @@ function updateRegistryHeader() {
   document.title = "Quialakey";
   registryToggleBtn.textContent = config.toggleLabel;
   rentedBtn.textContent = config.archiveActionLabel;
+  duplicateKeyBtn.textContent = `Dupliquer dans ${config.title}`;
   transferKeyBtn.textContent = `Transférer vers ${targetConfig.title}`;
   rentedArchiveTitle.textContent = config.rentedArchiveTitle;
   compromisesTabBtn.hidden = activeRegistry !== "transaction";
@@ -4228,6 +4230,68 @@ async function moveKeyToSlot(sourceId, targetId, options = {}) {
   selectedSetId = "main";
   resetKeyInfoEditUnlock(null);
   endKeyWorkProtection();
+  saveKeys();
+  render();
+  await syncCloudAfterAction();
+}
+
+function findNearestEmptyKeySlot(sourceKey, sourceKeys = keys) {
+  if (!sourceKey) return null;
+  return (
+    sourceKeys
+      .filter((key) => key.id !== sourceKey.id && key.category === sourceKey.category && !isKeyFilled(key))
+      .sort((first, second) => {
+        const firstDistance = Math.abs(Number(first.number) - Number(sourceKey.number));
+        const secondDistance = Math.abs(Number(second.number) - Number(sourceKey.number));
+        if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+        const firstIsAfter = Number(first.number) > Number(sourceKey.number);
+        const secondIsAfter = Number(second.number) > Number(sourceKey.number);
+        if (firstIsAfter !== secondIsAfter) return firstIsAfter ? -1 : 1;
+        return Number(first.number) - Number(second.number);
+      })[0] || null
+  );
+}
+
+async function duplicateSelectedKeyInCurrentRegistry() {
+  if (selectedArchiveRecord) return;
+  captureActiveKeyInfoDraft();
+  endKeyWorkProtection({ refresh: false });
+  await loadStorageFromCloud({ force: true });
+
+  const sourceKey = getSelectedKey();
+  if (!sourceKey || !isKeyFilled(sourceKey)) {
+    alert("Aucune fiche renseignée à dupliquer.");
+    return;
+  }
+
+  const targetKey = findNearestEmptyKeySlot(sourceKey);
+  if (!targetKey) {
+    alert(`Aucune case libre dans la catégorie ${getCategoryLabel(sourceKey.category)}.`);
+    return;
+  }
+
+  const ownerText = sourceKey.owner ? ` de ${formatOwner(sourceKey.owner)}` : "";
+  if (!confirm(
+    `Dupliquer ${keyLabel(sourceKey)}${ownerText} dans ${keyLabel(targetKey)} du tableau ${getRegistryConfig().title} ?\n\nLa fiche d'origine restera dans ${keyLabel(sourceKey)}.`,
+  )) return;
+
+  rememberUndoStep();
+  const sourceContent = cloneKeyContent(sourceKey);
+  keys = keys.map((key) => (key.id === targetKey.id ? applyKeyContent(key, sourceContent) : key));
+  rememberForcedKeySlot(targetKey.id, sourceContent);
+  markDirtyKeySlot(targetKey.id);
+  forgetFilledClearedKeySlots(keys);
+  selectedId = targetKey.id;
+  selectedArchiveRecord = null;
+  selectedSetId = sourceKey.sets.some((set) => set.id === selectedSetId) ? selectedSetId : "main";
+  activeKeyInfoDraft = null;
+  resetKeyInfoEditUnlock(getSelectedKey());
+  clearSignature();
+  logActivity(
+    "Duplication",
+    `${keyLabel(targetKey)}${sourceKey.owner ? ` - ${formatOwner(sourceKey.owner)}` : ""}`,
+    `Depuis ${keyLabel(sourceKey)} - ${getRegistryConfig().title}`,
+  );
   saveKeys();
   render();
   await syncCloudAfterAction();
@@ -7645,6 +7709,7 @@ function renderPanel() {
   reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey;
   rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
+  duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   keySetCountSelect.disabled = isReadOnlyArchive;
   propertyInput.disabled = isArchiveView;
@@ -9479,6 +9544,9 @@ exportKeyCsvBtn.addEventListener("click", () => {
 });
 transferKeyBtn.addEventListener("click", () => {
   void transferSelectedKeyToOtherRegistry();
+});
+duplicateKeyBtn.addEventListener("click", () => {
+  void duplicateSelectedKeyInCurrentRegistry();
 });
 keySetPhotoList.addEventListener("change", (event) => {
   const input = event.target;
