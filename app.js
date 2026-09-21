@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260919-2";
+const appBuildVersion = "20260921-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -3518,6 +3518,7 @@ function normalizeArchive(record) {
     reason: record.reason || record.archiveReason || "rented",
     archivedAt: record.archivedAt || new Date().toISOString(),
     compromiseSignedAt: record.compromiseSignedAt || "",
+    recovery: record.recovery || null,
     key: normalizeKey(record.key || record),
   };
 }
@@ -7675,10 +7676,11 @@ function renderPanel() {
     displayedHistory.unshift({
       id: `${selectedArchiveRecord.id}-removed`,
       type: "removed",
+      actionLabel: selectedArchiveRecord.recovery ? "Archive restaurée" : "Archivé",
       person: "",
       company: "",
       phone: "",
-      note: "",
+      note: selectedArchiveRecord.recovery?.note || "",
       signature: "",
       date: formatArchiveDate(selectedArchiveRecord.archivedAt),
     });
@@ -8490,11 +8492,82 @@ async function cancelReservation(reservationId) {
   await syncCloudAfterAction();
 }
 
+const pendingArchiveSlots = new Set();
+
+function serializeArchiveForComparison(value) {
+  return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([first], [second]) => first.localeCompare(second)))
+    : item);
+}
+
+async function confirmArchiveBeforeClearing(record, registry, sourceSnapshot) {
+  const config = registryConfig[registry];
+  const operationId = `${config.keysStorageKey}:${record.key.id}`;
+  if (pendingArchiveSlots.has(operationId)) return false;
+  pendingArchiveSlots.add(operationId);
+  try {
+    if (!supabaseClient) throw new Error("Supabase indisponible.");
+    if (registry !== activeRegistry || JSON.stringify(keys.find((key) => key.id === record.key.id)) !== sourceSnapshot) {
+      throw new Error("La fiche a changé pendant l'archivage.");
+    }
+    // The archive must be durable before any empty-slot snapshot can be queued.
+    await syncStorageKeyToCloud(config.archivesStorageKey);
+    if (hasPendingStorageKeyChange(config.archivesStorageKey)) {
+      throw new Error("Des archives attendent encore leur synchronisation.");
+    }
+    const operation = pendingCloudSync.catch(() => {}).then(async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { data: remote, error: readError } = await supabaseClient.from("app_state")
+          .select("key,value,updated_at").eq("key", config.archivesStorageKey).maybeSingle();
+        if (readError) throw readError;
+        const previous = remote ? (typeof remote.value === "string" ? parseStorageValue(remote.value) : remote.value) : [];
+        if (!Array.isArray(previous)) throw new Error("Liste des archives invalide.");
+        const next = [record, ...previous.filter((item) => item.id !== record.id)];
+        const { error: writeError } = await upsertCloudRow(config.archivesStorageKey, next, remote?.updated_at || null);
+        if (writeError) {
+          if (isStaleCloudWriteError(writeError) && attempt < 2) continue;
+          throw writeError;
+        }
+        const { data: confirmed, error: confirmationError } = await supabaseClient.from("app_state")
+          .select("key,value,updated_at").eq("key", config.archivesStorageKey).maybeSingle();
+        if (confirmationError) throw confirmationError;
+        const confirmedRecords = typeof confirmed?.value === "string" ? parseStorageValue(confirmed.value) : confirmed?.value;
+        const savedRecord = Array.isArray(confirmedRecords) && confirmedRecords.find((item) => item.id === record.id);
+        // JSONB may reorder object properties; all content must still match.
+        if (!savedRecord || serializeArchiveForComparison(savedRecord) !== serializeArchiveForComparison(record)) {
+          throw new Error("La copie archivée n'a pas pu être vérifiée.");
+        }
+        setRuntimeStorageValue(config.archivesStorageKey, JSON.stringify(confirmedRecords));
+        cloudRowVersions.set(config.archivesStorageKey, confirmed.updated_at);
+        saveCloudRowVersions();
+        if (activeRegistry === registry) archives = loadArchives();
+        scheduleCloudSyncHeartbeat();
+        return;
+      }
+    });
+    pendingCloudSync = operation;
+    await operation;
+    if (registry !== activeRegistry || JSON.stringify(keys.find((key) => key.id === record.key.id)) !== sourceSnapshot) {
+      alert("L'archive est enregistrée, mais la fiche a changé. La case a été conservée : vérifiez-la avant toute nouvelle action.");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("Archive confirmation failed", error);
+    alert("Archivage non confirmé. La fiche reste dans sa case. Vérifiez la connexion et les archives avant de réessayer.");
+    return false;
+  } finally {
+    pendingArchiveSlots.delete(operationId);
+  }
+}
+
 async function archiveReservationKey(reservationId) {
   if (selectedArchiveRecord) return;
   const key = getSelectedKey();
   const selectedSet = getSetForReservation(key, reservationId) || getSelectedSet(key);
   if (!key || !selectedSet || key.archived) return;
+  const archiveRegistry = activeRegistry;
+  const sourceSnapshot = JSON.stringify(key);
   selectedSetId = selectedSet.id;
 
   const reservation = (selectedSet.reservations || []).find((item) => item.id === reservationId);
@@ -8545,24 +8618,21 @@ async function archiveReservationKey(reservationId) {
     ),
   };
 
-  archives = [
-    {
-      id: `${key.id}-${archivedAt}`,
-      reason: "removed",
-      archivedAt,
-      compromiseSignedAt: "",
-      key: { ...archivedKey, archived: false },
-    },
-    ...archives,
-  ];
+  const archiveRecord = {
+    id: `${key.id}-${archivedAt}`,
+    reason: "removed",
+    archivedAt,
+    compromiseSignedAt: "",
+    key: { ...archivedKey, archived: false },
+  };
+  if (!await confirmArchiveBeforeClearing(archiveRecord, archiveRegistry, sourceSnapshot)) return;
   clearActiveKeySlotForSync(key.id);
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
   logActivity(actionLabel, keyLabel(key), [key.owner, key.property, entry.person || entry.company, entry.phone].filter(Boolean).join(" - "));
-  saveArchives();
   saveKeys();
-  await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: true });
+  await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
 }
 
 async function reserveSelectedSet() {
@@ -8706,6 +8776,8 @@ function promptCompromiseDate(defaultValue = new Date().toISOString().slice(0, 1
 async function archiveSelectedKey(reason) {
   const key = getSelectedKey();
   if (!key || key.archived) return;
+  const archiveRegistry = activeRegistry;
+  const sourceSnapshot = JSON.stringify(key);
 
   const actionLabel = reason === "rented" ? getRegistryConfig().archiveActionLabel : "Archivé";
   if (!ensureMovementActor(actionLabel)) return;
@@ -8754,25 +8826,22 @@ async function archiveSelectedKey(reason) {
         ),
       }
     : key;
-  archives = [
-    {
-      id: `${key.id}-${archivedAt}`,
-      reason,
-      archivedAt,
-      compromiseSignedAt,
-      key: { ...archivedKey, archived: false },
-    },
-    ...archives,
-  ];
+  const archiveRecord = {
+    id: `${key.id}-${archivedAt}`,
+    reason,
+    archivedAt,
+    compromiseSignedAt,
+    key: { ...archivedKey, archived: false },
+  };
+  if (!await confirmArchiveBeforeClearing(archiveRecord, archiveRegistry, sourceSnapshot)) return;
   clearActiveKeySlotForSync(key.id);
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
   const movementActor = getTypedMovementActor();
   logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
-  saveArchives();
   saveKeys();
-  await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: true });
+  await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
 }
 
 function openContactsPanel() {
