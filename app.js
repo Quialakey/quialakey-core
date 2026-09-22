@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260921-4";
+const appBuildVersion = "20260922-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -600,6 +600,8 @@ const keySetOptions = [
 
 const accessLock = document.querySelector("#accessLock");
 const cloudSleepOverlay = document.querySelector("#cloudSleepOverlay");
+const startupLoadingMessage = document.querySelector("#startupLoadingMessage");
+const retryInitialLoadBtn = document.querySelector("#retryInitialLoadBtn");
 const accessForm = document.querySelector("#accessForm");
 const accessAgencyTitle = document.querySelector("#accessAgencyTitle");
 const accessCodeInput = document.querySelector("#accessCodeInput");
@@ -722,7 +724,7 @@ const importDataBtn = document.querySelector("#importDataBtn");
 const backupFileInput = document.querySelector("#backupFileInput");
 
 let tableSettings = loadTableSettings();
-let hasResolvedInitialAccessSettings = getRuntimeStorageValue(tableSettingsStorageKey) !== null;
+let hasResolvedInitialAccessSettings = !supabaseClient;
 let settingsDraft = null;
 let activeRegistry = loadActiveRegistry();
 let shouldSanitizeCachedArchivedResidues = true;
@@ -777,6 +779,8 @@ let pendingNewKeyDraft = null;
 let hasLoadedCloudState = false;
 let hasCompletedInitialCloudLoad = false;
 let isCloudCheckRunning = false;
+let cloudCheckCompletion = null;
+let resolveCloudCheckCompletion = null;
 let shouldReloadCloudAfterCurrentCheck = false;
 let shouldFullyReloadCloudAfterCurrentCheck = false;
 let isCloudHeartbeatCheckRunning = false;
@@ -791,6 +795,7 @@ let hasDeferredCloudRefreshForKeyWork = false;
 let cloudInactivityTimer = null;
 let cloudInactivityWatchdogTimer = null;
 let isCloudSleeping = false;
+let isResumingCloudSync = false;
 let hasStartedCloudInactivityTracking = false;
 let lastCloudActivityAt = Date.now();
 let areSettingsOrganizationVisible = false;
@@ -972,24 +977,46 @@ function enforceCloudSleepAfterInactivity() {
   return true;
 }
 
-function resumeCloudSyncFromInactivity() {
-  const wasSleeping = isCloudSleeping;
+async function resumeCloudSyncFromInactivity() {
+  if (isResumingCloudSync) return;
+  isResumingCloudSync = true;
   isCloudSleeping = false;
   lastCloudActivityAt = Date.now();
-  setCloudSleepOverlayVisible(false);
-  scheduleCloudSleep();
-  if (!hasCompletedInitialCloudLoad) {
-    void ensureInitialCloudStateLoaded();
-    return true;
-  }
-  if (!wasSleeping) return false;
+  clearTimeout(cloudInactivityTimer);
+  cloudSleepOverlay?.classList.add("is-awaiting-cloud");
+  if (cloudSleepOverlay) cloudSleepOverlay.querySelector("span").textContent = "Actualisation du tableau...";
+  setCloudSleepOverlayVisible(true);
+  endKeyWorkProtection({ refresh: false });
 
-  lastAutomaticCloudRefreshAt = 0;
-  setTimeout(() => {
-    queueWakeCloudRefreshes();
-    void ensureMissedAutomaticBackupOnOpen();
-  }, 0);
-  return true;
+  let refreshed = !supabaseClient;
+  try {
+    if (supabaseClient) {
+      for (let attempt = 0; attempt < 3 && !refreshed && !isAppInBackground(); attempt += 1) {
+        refreshed = hasCompletedInitialCloudLoad
+          ? await loadStorageFromCloud({ force: true, full: true })
+          : await ensureInitialCloudStateLoaded();
+        if (!refreshed && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+  } catch (error) {
+    console.warn("Supabase wake refresh failed", error.message);
+    refreshed = false;
+  } finally {
+    if (!refreshed || isAppInBackground() || isCloudSleeping) {
+      isCloudSleeping = true;
+      if (cloudSleepOverlay) cloudSleepOverlay.querySelector("span").textContent = isAppInBackground()
+        ? "Tableau en veille"
+        : "Connexion impossible. Appuyez pour réessayer.";
+    } else {
+      setCloudSleepOverlayVisible(false);
+      cloudSleepOverlay?.classList.remove("is-awaiting-cloud");
+      if (cloudSleepOverlay) cloudSleepOverlay.querySelector("span").textContent = "Tableau en veille";
+      scheduleCloudSleep();
+      queueWakeCloudRefreshes();
+      void ensureMissedAutomaticBackupOnOpen();
+    }
+    isResumingCloudSync = false;
+  }
 }
 
 function startCloudInactivityTracking() {
@@ -2924,8 +2951,17 @@ function markKeyControlActionForSync(keyId, options = {}) {
 
 async function finishKeyControlAction(keyId, options = {}) {
   markKeyControlActionForSync(keyId, options);
+  const config = getRegistryConfig();
   closeKeyPanelAfterAction();
   await syncCloudAfterAction();
+  const keyStillPending = options.keysChanged !== false && keyId && (
+    dirtyKeySlots.get(config.keysStorageKey)?.has(keyId) ||
+    getPendingKeySlotWrite(getKeySlotCloudKey(config.keysStorageKey, keyId))
+  );
+  const archiveStillPending = options.archivesChanged && hasPendingStorageKeyChange(config.archivesStorageKey);
+  if (supabaseClient && (keyStillPending || archiveStillPending)) {
+    alert("Modification enregistrée sur cet appareil, mais pas encore confirmée par le serveur. Vérifiez la connexion avant de quitter le tableau.");
+  }
 }
 
 function subscribeToCloudChanges() {
@@ -3011,20 +3047,22 @@ async function loadStorageFromCloud(options = {}) {
   if (isPhotoImporting) return;
   if (deferCloudRefreshDuringKeyWork()) return;
   if (isCloudCheckRunning) {
+    if (options.full && cloudCheckCompletion) {
+      await cloudCheckCompletion;
+      return loadStorageFromCloud(options);
+    }
     shouldReloadCloudAfterCurrentCheck = shouldReloadCloudAfterCurrentCheck || force;
     shouldFullyReloadCloudAfterCurrentCheck = shouldFullyReloadCloudAfterCurrentCheck || Boolean(options.full);
-    return;
+    return false;
   }
   if (!force && hasLoadedCloudState && document.visibilityState === "hidden") return;
   isCloudCheckRunning = true;
-  await pendingCloudSync.catch(() => {});
-  if (hasLoadedCloudState) {
-    await retryFailedCloudSyncs();
-  }
+  cloudCheckCompletion = new Promise((resolve) => { resolveCloudCheckCompletion = resolve; });
   try {
+    await pendingCloudSync.catch(() => {});
+    if (hasLoadedCloudState) await retryFailedCloudSyncs();
     if (hasLoadedCloudState && options.full) {
-      await reloadCompleteCloudState();
-      return;
+      return await reloadCompleteCloudState();
     }
 
     if (!hasLoadedCloudState) {
@@ -3171,9 +3209,13 @@ async function loadStorageFromCloud(options = {}) {
     refreshDataFromStorage({ keepSelection: true });
   } catch (error) {
     console.warn("Supabase load failed", error.message);
+    return false;
   } finally {
     isApplyingCloudState = false;
     isCloudCheckRunning = false;
+    resolveCloudCheckCompletion?.();
+    cloudCheckCompletion = null;
+    resolveCloudCheckCompletion = null;
     if (shouldReloadCloudAfterCurrentCheck) {
       const shouldReloadFully = shouldFullyReloadCloudAfterCurrentCheck;
       shouldReloadCloudAfterCurrentCheck = false;
@@ -9577,10 +9619,12 @@ keySetPhotoList.addEventListener("change", (event) => {
 cloudSleepOverlay?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
-  resumeCloudSyncFromInactivity();
+  void resumeCloudSyncFromInactivity();
 });
 
 async function initializeApp() {
+  if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = true;
+  if (startupLoadingMessage) startupLoadingMessage.textContent = "Ouverture du tableau...";
   document.documentElement.classList.toggle("is-tablet-device", isTabletDevice());
   updateAccessLockState();
   updateRegistryHeader();
@@ -9592,7 +9636,12 @@ async function initializeApp() {
   removeAutomaticBackupsFromLocalStorage();
   updateAccessLockState();
   ensureDeviceName();
-  await ensureInitialCloudStateLoaded();
+  const initiallyLoaded = supabaseClient ? await ensureInitialCloudStateLoaded() : true;
+  if (!initiallyLoaded) {
+    if (startupLoadingMessage) startupLoadingMessage.textContent = "Connexion impossible. Le tableau n'a pas été actualisé.";
+    if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = false;
+    return;
+  }
   updateAccessLockState();
   migrateArchivedSlots();
   subscribeToCloudChanges();
@@ -9622,6 +9671,10 @@ window.addEventListener("pagehide", () => {
   else pauseCloudWorkWhileBackgrounded();
 });
 window.addEventListener("online", () => {
+  if (retryInitialLoadBtn && !retryInitialLoadBtn.hidden) {
+    void initializeApp();
+    return;
+  }
   if (isCloudSleeping || isAppInBackground()) return;
   requestAutomaticCloudRefresh({ force: true, immediate: true });
   queueWakeCloudRefreshes();
@@ -9633,6 +9686,10 @@ window.addEventListener("pageshow", () => {
   refreshCloudAfterForeground();
 });
 window.addEventListener("resize", () => requestAnimationFrame(syncSignatureHeightToActions));
+
+retryInitialLoadBtn?.addEventListener("click", () => {
+  void initializeApp();
+});
 
 accessForm?.addEventListener("submit", (event) => {
   event.preventDefault();

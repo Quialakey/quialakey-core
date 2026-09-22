@@ -80,6 +80,18 @@ body.is-access-loading .startup-loading {
   border-radius: 6px;
 }
 
+.startup-loading button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid #ffffff;
+  color: #ffffff;
+  background: transparent;
+}
+
+.startup-loading button[hidden] {
+  display: none;
+}
+
 .startup-loading span {
   font-size: 18px;
   font-weight: 650;
@@ -113,6 +125,12 @@ body.is-access-loading .startup-loading {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+.cloud-sleep-overlay.is-awaiting-cloud {
+  background: #5b6260;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .cloud-sleep-overlay span {

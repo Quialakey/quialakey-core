@@ -18,13 +18,14 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260921-4" />
-    <link rel="stylesheet" href="styles.css?v=20260921-4" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260922-1" />
+    <link rel="stylesheet" href="styles.css?v=20260922-1" />
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
       <img src="quialakey-logo-banniere-20260907-2.jpg" alt="Quialakey" />
-      <span>Ouverture du tableau...</span>
+      <span id="startupLoadingMessage">Ouverture du tableau...</span>
+      <button id="retryInitialLoadBtn" type="button" hidden>Réessayer</button>
     </div>
     <button id="cloudSleepOverlay" class="cloud-sleep-overlay" type="button" aria-label="Réactiver le tableau" hidden>
       <span>Tableau en veille</span>
@@ -50,34 +51,6 @@
         <p id="forgotPasswordMessage" class="forgot-password-message" hidden>Contacter : quialakey@gmail.com</p>
       </section>
     </div>
-    <script>
-      (() => {
-        try {
-          const pathAgencyId = location.pathname.split("/").filter(Boolean)[0] || "default-agency";
-          const storagePrefix = `quialakey:${pathAgencyId}:`;
-          const settings = JSON.parse(
-            localStorage.getItem(`${storagePrefix}cles-table-settings-v1`) ||
-              localStorage.getItem("cles-table-settings-v1") ||
-              "null",
-          );
-          if (!settings) return;
-
-          const lockVersion = String(settings.accessLockVersion || 1);
-          const isUnlocked =
-            (localStorage.getItem(`${storagePrefix}quialakey-access-unlocked-v1`) ||
-              localStorage.getItem("quialakey-access-unlocked-v1")) === lockVersion;
-          const shouldLock = settings.accessLockEnabled === true && !isUnlocked;
-          document.body.classList.remove("is-access-loading");
-          document.body.classList.toggle("is-access-locked", shouldLock);
-          document.querySelector("#accessLock").hidden = !shouldLock;
-          if (shouldLock && settings.agencyName) {
-            document.querySelector("#accessAgencyTitle").textContent = settings.agencyName;
-          }
-        } catch {
-          // L'application terminera la vérification avec les réglages Supabase.
-        }
-      })();
-    </script>
     <div id="saleCelebration" class="sale-celebration" aria-live="polite" hidden>
       <div class="celebration-sky" aria-hidden="true">
       </div>
@@ -226,7 +199,7 @@
       </section>
 
       <aside id="detailPanel" class="detail-panel" aria-label="Detail du jeu de cles" hidden>
-        <form id="keyForm" class="key-form" hidden autocomplete="off">
+        <div id="keyForm" class="key-form" hidden>
           <div class="panel-header">
             <div>
               <p class="eyebrow">Fiche clé</p>
@@ -354,7 +327,7 @@
           <div class="transfer-key-separator" aria-hidden="true"></div>
           <button id="duplicateKeyBtn" class="transfer-key-button duplicate-key-button" type="button">Dupliquer dans LOCATION</button>
           <button id="transferKeyBtn" class="transfer-key-button" type="button">Transférer vers TRANSACTION</button>
-        </form>
+        </div>
       </aside>
 
       <aside id="contactsPanel" class="contacts-panel" aria-label="Intervenants" hidden>
@@ -566,10 +539,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20260921-4"></script>
+    <script src="agency-config.js?v=20260922-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20260921-4";
+        const fallbackVersion = "20260922-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;
