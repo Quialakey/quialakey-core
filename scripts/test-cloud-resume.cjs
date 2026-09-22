@@ -11,9 +11,10 @@ async function main() {
     const file = path.resolve(root, `.${pathname === "/" ? "/index.html" : pathname}`);
     if (!file.startsWith(root + path.sep)) return response.writeHead(403).end();
     try {
+      const contents = await fs.readFile(file);
       const contentType = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".json": "application/json" }[path.extname(file)];
       response.writeHead(200, { "Content-Type": contentType || "application/octet-stream" });
-      response.end(await fs.readFile(file));
+      response.end(contents);
     } catch {
       response.writeHead(404).end();
     }
@@ -89,6 +90,84 @@ async function main() {
     failReads = false;
     await page.locator("#retryInitialLoadBtn").click();
     await page.waitForFunction(() => !document.body.classList.contains("is-access-loading"), null, { timeout: 15000 });
+
+    const conflictChecks = await page.evaluate(() => {
+      const departure = { id: "departure", type: "out", date: "21/09/2026 15:00" };
+      const returnEntry = { id: "return", type: "in", date: "21/09/2026 17:56" };
+      const otherEntry = { id: "other", type: "out", date: "21/09/2026 18:00" };
+      const makeRecord = (status, history) => ({
+        id: "T3-1", category: "T3", number: 1, owner: "MEYER", property: "27 avenue Test",
+        sets: [{ id: "main", status, history, reservations: [] }],
+      });
+      const oldLocal = makeRecord("out", [departure]);
+      const returnedRemote = makeRecord("available", [returnEntry, departure]);
+      const merged = mergeKeyRecord(oldLocal, returnedRemote);
+      let competingMovementsBlocked = false;
+      try {
+        mergeKeyRecord(makeRecord("available", [returnEntry, departure]), makeRecord("out", [otherEntry, departure]));
+      } catch {
+        competingMovementsBlocked = true;
+      }
+      const repeatedEntryA = { id: "repeat-a", type: "in", date: "21/09/2026 17:56" };
+      const repeatedEntryB = { id: "repeat-b", type: "in", date: "21/09/2026 17:56" };
+      const repeatedActionsRemainDistinct = !historyContainsEntry([repeatedEntryA], repeatedEntryB);
+      const legacyEntry = { type: "in", date: "20/09/2026 12:00" };
+      const stableLegacyId = normalizeSet({ id: "main", history: [legacyEntry] }).history[0].id ===
+        normalizeSet({ id: "main", history: [legacyEntry] }).history[0].id;
+      const cloudKey = getKeySlotCloudKey("cles-transaction-v1", "T3-1");
+      rememberPendingKeySlotWrite("cles-transaction-v1", "T3-1", makeRecord("available", [returnEntry, departure]));
+      saveKeySlotCloudRow({ key: cloudKey, value: makeRecord("out", [otherEntry, departure]), updated_at: "2100-01-01T00:00:00Z" });
+      return {
+        mergedStatus: merged.sets[0].status,
+        mergedHistory: merged.sets[0].history.map((entry) => entry.id),
+        competingMovementsBlocked,
+        repeatedActionsRemainDistinct,
+        stableLegacyId,
+        pendingMovementPreserved: Boolean(getPendingKeySlotWrite(cloudKey)),
+      };
+    });
+    assert.equal(conflictChecks.mergedStatus, "available");
+    assert.deepEqual(conflictChecks.mergedHistory, ["return", "departure"]);
+    assert.equal(conflictChecks.competingMovementsBlocked, true);
+    assert.equal(conflictChecks.repeatedActionsRemainDistinct, true);
+    assert.equal(conflictChecks.stableLegacyId, true);
+    assert.equal(conflictChecks.pendingMovementPreserved, true);
+
+    const safeRendering = await page.evaluate(async () => {
+      const key = normalizeKey({
+        id: "T3-1", category: "T3", number: 1, owner: "MEYER", property: "27 avenue Test",
+        sets: [{ id: "main", photo: 'bad" data-xss="true', status: "available", history: [], reservations: [] }],
+      });
+      selectedArchiveRecord = null;
+      renderKeySetPhotos(key);
+      const photoInjectedElement = Boolean(keySetPhotoList.querySelector("[data-xss]"));
+      const datePrompt = promptCompromiseDate('2026-09-22" data-xss="true', '<img data-xss="true">');
+      const dialogInjectedElement = Boolean(document.querySelector(".date-dialog [data-xss]"));
+      document.querySelector(".date-dialog").close("cancel");
+      await datePrompt;
+      return { photoInjectedElement, dialogInjectedElement };
+    });
+    assert.deepEqual(safeRendering, { photoInjectedElement: false, dialogInjectedElement: false });
+
+    const storageFailure = await page.evaluate(() => {
+      const originalSave = setRuntimeStorageValue;
+      const originalAlert = alert;
+      const warnings = [];
+      const blockedKey = getRegistryConfig().keysStorageKey;
+      setRuntimeStorageValue = (key, value) => key === blockedKey ? false : originalSave(key, value);
+      alert = (message) => warnings.push(message);
+      let rejected = false;
+      try {
+        saveKeys();
+      } catch {
+        rejected = true;
+      } finally {
+        setRuntimeStorageValue = originalSave;
+        alert = originalAlert;
+      }
+      return { rejected, warned: warnings.length > 0 };
+    });
+    assert.deepEqual(storageFailure, { rejected: true, warned: true });
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {
     await browser?.close();

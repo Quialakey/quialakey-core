@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260922-1";
+const appBuildVersion = "20260922-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -1506,6 +1506,16 @@ function normalizeCloudSlotKey(row) {
   return normalizeKey({ ...parseCloudObjectValue(row?.value), id: keyId });
 }
 
+function pendingKeySlotHasUnsyncedMovement(pendingWrite, cloudRow) {
+  if (!pendingWrite?.value || !cloudRow?.value) return false;
+  const local = normalizeKey(pendingWrite.value);
+  const remote = normalizeCloudSlotKey(cloudRow);
+  return local.sets.some((set) => {
+    const remoteHistory = remote.sets.find((savedSet) => savedSet.id === set.id)?.history || [];
+    return set.history.some((entry) => !historyContainsEntry(remoteHistory, entry));
+  });
+}
+
 function rememberSlotCloudSeenAt(row) {
   const nextTime = Date.parse(row?.updated_at || "");
   if (Number.isNaN(nextTime)) return;
@@ -1549,6 +1559,41 @@ function shouldMergeKeyFallback(preferred, fallback) {
   });
 }
 
+function historyEntryFingerprint(entry) {
+  return JSON.stringify(Object.entries(entry || {})
+    .filter(([field]) => field !== "id")
+    .sort(([first], [second]) => first.localeCompare(second)));
+}
+
+function legacyHistoryId(entry, index) {
+  let hash = 2166136261;
+  for (const character of historyEntryFingerprint(entry)) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  }
+  return `legacy-${index}-${(hash >>> 0).toString(16)}`;
+}
+
+function historyContainsEntry(history, entry) {
+  const fingerprint = historyEntryFingerprint(entry);
+  return history.some((saved) =>
+    (saved.id && entry.id && saved.id === entry.id) ||
+    ((!saved.id || !entry.id || saved.id.startsWith("legacy-") || entry.id?.startsWith("legacy-")) &&
+      historyEntryFingerprint(saved) === fingerprint));
+}
+
+function mergeKeySetWithoutLosingMovements(preferredSet, fallbackSet) {
+  if (!fallbackSet) return preferredSet;
+  const preferredHistory = preferredSet.history || [];
+  const fallbackHistory = fallbackSet.history || [];
+  const remoteHasNewMovement = fallbackHistory.some((entry) => !historyContainsEntry(preferredHistory, entry));
+  const localHasNewMovement = preferredHistory.some((entry) => !historyContainsEntry(fallbackHistory, entry));
+  if (remoteHasNewMovement && localHasNewMovement) {
+    throw new Error("Conflit de mouvements : la fiche a été modifiée sur deux appareils. Vérifiez son historique avant de réessayer.");
+  }
+  if (remoteHasNewMovement) return { ...fallbackSet, photo: preferredSet.photo || fallbackSet.photo };
+  return !preferredSet.photo ? { ...preferredSet, photo: fallbackSet.photo } : preferredSet;
+}
+
 function mergeKeyRecord(preferredRaw, fallbackRaw, options = {}) {
   const preferred = normalizeKey(preferredRaw);
   if (!fallbackRaw) return preferred;
@@ -1559,7 +1604,9 @@ function mergeKeyRecord(preferredRaw, fallbackRaw, options = {}) {
     return options.keepFallbackWhenPreferredEmpty ? fallback : preferred;
   }
   if (fallbackScore === 0) return preferred;
-  if (!shouldMergeKeyFallback(preferred, fallback)) return preferred;
+  if (!shouldMergeKeyFallback(preferred, fallback)) {
+    throw new Error("Conflit de fiche : cette case contient un autre bien sur le serveur. Vérifiez le tableau avant de réessayer.");
+  }
 
   return normalizeKey({
     ...preferred,
@@ -1569,10 +1616,8 @@ function mergeKeyRecord(preferredRaw, fallbackRaw, options = {}) {
     owner: preferred.owner || fallback.owner,
     ownerFirstName: preferred.ownerFirstName || fallback.ownerFirstName,
     notes: preferred.notes || fallback.notes,
-    sets: preferred.sets.map((set) => {
-      const fallbackSet = fallback.sets.find((savedSet) => savedSet.id === set.id);
-      return fallbackSet && !set.photo ? { ...set, photo: fallbackSet.photo } : set;
-    }),
+    sets: preferred.sets.map((set) =>
+      mergeKeySetWithoutLosingMovements(set, fallback.sets.find((savedSet) => savedSet.id === set.id))),
   });
 }
 
@@ -1724,7 +1769,8 @@ function saveKeySlotCloudRow(row, options = {}) {
   const pendingWrite = getPendingKeySlotWrite(row.key);
   if (pendingWrite) {
     if (cloudRowMatchesPendingKeySlotWrite(row, pendingWrite)) confirmPendingKeySlotWrite(row.key, row);
-    else if (cloudRowIsNewerThanPendingKeySlotWrite(row, pendingWrite)) discardPendingKeySlotWrite(row.key);
+    else if (cloudRowIsNewerThanPendingKeySlotWrite(row, pendingWrite) &&
+      !pendingKeySlotHasUnsyncedMovement(pendingWrite, row)) discardPendingKeySlotWrite(row.key);
     else {
       dirtyCloudKeys.add(storageKey);
       failedCloudSyncKeys.add(storageKey);
@@ -1783,7 +1829,8 @@ function applyInitialCloudKeyStorageState(legacyKeyRows, slotRows, pendingStartu
         const pendingWrite = getPendingKeySlotWrite(slotCloudKey);
         if (pendingWrite) {
           if (cloudRowMatchesPendingKeySlotWrite(slotRow, pendingWrite)) confirmPendingKeySlotWrite(slotCloudKey, slotRow);
-          else if (cloudRowIsNewerThanPendingKeySlotWrite(slotRow, pendingWrite)) {
+          else if (cloudRowIsNewerThanPendingKeySlotWrite(slotRow, pendingWrite) &&
+            !pendingKeySlotHasUnsyncedMovement(pendingWrite, slotRow)) {
             discardPendingKeySlotWrite(slotCloudKey);
             return normalizeCloudSlotKey(slotRow);
           } else return currentKey || normalizeKey(pendingWrite.value);
@@ -2181,19 +2228,8 @@ function resetLegacySyncMetadataIfNeeded() {
   removeRuntimeStorageValue(cloudVersionsStorageKey);
 
   if (isSameSupabaseProject) {
-    // Les anciennes files pouvaient contenir des fiches simplement restees ouvertes et bloquer les autres appareils.
-    getKeyStorageKeys().forEach((storageKey) => {
-      dirtyCloudKeys.delete(storageKey);
-      failedCloudSyncKeys.delete(storageKey);
-    });
-    dirtyKeySlots = new Map();
-    pendingKeySlotWrites = new Map();
-    removeRuntimeStorageValue(dirtyKeySlotsStorageKey);
-    removeRuntimeStorageValue(pendingKeySlotWritesStorageKey);
     dirtyCloudKeys.forEach((storageKey) => failedCloudSyncKeys.add(storageKey));
     savePendingCloudKeys();
-    saveDirtyKeySlots();
-    savePendingKeySlotWrites();
   } else {
     dirtyCloudKeys = new Set();
     failedCloudSyncKeys = new Set();
@@ -3139,7 +3175,6 @@ async function loadStorageFromCloud(options = {}) {
     );
     if (!Array.isArray(metadata)) return;
 
-    const metadataByKey = new Map(metadata.map((row) => [row.key, row]));
     const remoteVersions = new Map(metadata.map((row) => [row.key, row.updated_at || ""]));
     const changedKeys = metadata
       .filter((row) => {
@@ -3169,14 +3204,7 @@ async function loadStorageFromCloud(options = {}) {
       return;
     }
 
-    const locallyDirtyChangedKeys = changedKeys.filter((key) => {
-      const pendingWrite = isKeySlotCloudKey(key) ? getPendingKeySlotWrite(key) : null;
-      if (pendingWrite && cloudRowIsNewerThanPendingKeySlotWrite(metadataByKey.get(key), pendingWrite)) {
-        discardPendingKeySlotWrite(key);
-        return false;
-      }
-      return hasPendingCloudRowChange(key);
-    });
+    const locallyDirtyChangedKeys = changedKeys.filter(hasPendingCloudRowChange);
     if (locallyDirtyChangedKeys.length) {
       await Promise.all([...new Set(locallyDirtyChangedKeys.map(getSyncStorageKeyForCloudKey))].map((key) => syncStorageKeyToCloud(key)));
     }
@@ -3432,9 +3460,9 @@ function normalizeSet(set, index = 0) {
     status,
     reservations: reservations.length ? reservations : migratedReservation,
     history: Array.isArray(set.history)
-      ? set.history.map((entry) => ({
+      ? set.history.map((entry, entryIndex) => ({
           ...entry,
-          id: entry.id || createHistoryId(),
+          id: entry.id || legacyHistoryId(entry, entryIndex),
           reservationId:
             migratedReservation.length && entry.type === "reserved" && !entry.reservationId
               ? migratedReservationId
@@ -3527,11 +3555,15 @@ function saveKeys() {
     const previousValue = getRuntimeStorageValue(storageKey);
     const nextValue = JSON.stringify(keys);
     markLocalEdit();
-    setRuntimeStorageValue(storageKey, nextValue);
+    if (!setRuntimeStorageValue(storageKey, nextValue)) throw new Error("Stockage local indisponible.");
     markChangedKeySlots(storageKey, nextValue, previousValue);
     scheduleStorageKeySync(storageKey);
     scheduleDirectKeyStorageFlush(storageKey);
   } catch (error) {
+    if (error.message === "Stockage local indisponible.") {
+      alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      throw error;
+    }
     alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
     throw error;
   }
@@ -3546,11 +3578,15 @@ function saveKeysForRegistry(registry, nextKeys) {
     const previousValue = getRuntimeStorageValue(storageKey);
     const nextValue = JSON.stringify(nextKeys.map(normalizeKey));
     markLocalEdit();
-    setRuntimeStorageValue(storageKey, nextValue);
+    if (!setRuntimeStorageValue(storageKey, nextValue)) throw new Error("Stockage local indisponible.");
     markChangedKeySlots(storageKey, nextValue, previousValue);
     scheduleStorageKeySync(storageKey);
     scheduleDirectKeyStorageFlush(storageKey);
   } catch (error) {
+    if (error.message === "Stockage local indisponible.") {
+      alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      throw error;
+    }
     alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
     throw error;
   }
@@ -3582,9 +3618,15 @@ function loadArchives() {
 function saveArchives() {
   try {
     markLocalEdit();
-    setRuntimeStorageValue(getRegistryConfig().archivesStorageKey, JSON.stringify(archives));
+    if (!setRuntimeStorageValue(getRegistryConfig().archivesStorageKey, JSON.stringify(archives))) {
+      throw new Error("Stockage local indisponible.");
+    }
     scheduleStorageKeySync(getRegistryConfig().archivesStorageKey);
   } catch (error) {
+    if (error.message === "Stockage local indisponible.") {
+      alert("L'archive n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      throw error;
+    }
     alert("La sauvegarde a échoué. Une photo ou une signature est probablement trop lourde.");
     throw error;
   }
@@ -7582,9 +7624,16 @@ function renderKeySetPhotos(key) {
     item.className = `key-set-photo-card${set.id === selectedSetId ? " is-selected" : ""}`;
     title.textContent = set.label;
     preview.className = "photo-preview";
-    preview.innerHTML = set.photo
-      ? `<img src="${set.photo}" alt="Photo du jeu ${set.label} de ${keyLabel(key)}" />`
-      : `<span>Aucune photo</span>`;
+    if (set.photo) {
+      const image = document.createElement("img");
+      image.src = set.photo;
+      image.alt = `Photo du jeu ${set.label} de ${keyLabel(key)}`;
+      preview.append(image);
+    } else {
+      const emptyPhoto = document.createElement("span");
+      emptyPhoto.textContent = "Aucune photo";
+      preview.append(emptyPhoto);
+    }
     if (set.photo) {
       preview.tabIndex = 0;
       preview.setAttribute("role", "button");
@@ -8853,8 +8902,8 @@ function promptCompromiseDate(defaultValue = new Date().toISOString().slice(0, 1
   dialog.className = "date-dialog";
   dialog.innerHTML = `
     <form method="dialog">
-      <h3>${title}</h3>
-      <input type="date" value="${defaultValue}" required />
+      <h3></h3>
+      <input type="date" required />
       <div>
         <button value="cancel" type="submit">Annuler</button>
         <button value="confirm" type="submit">Valider</button>
@@ -8863,7 +8912,9 @@ function promptCompromiseDate(defaultValue = new Date().toISOString().slice(0, 1
   `;
   document.body.append(dialog);
 
+  dialog.querySelector("h3").textContent = title;
   const input = dialog.querySelector("input");
+  input.value = defaultValue;
   dialog.showModal();
   input.focus();
 
