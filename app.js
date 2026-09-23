@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260922-2";
+const appBuildVersion = "20260923-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -118,8 +118,9 @@ function getRuntimeStorageValue(key) {
 function setRuntimeStorageValue(key, value) {
   const stringValue = String(value);
   runtimeStorageFallback.set(key, stringValue);
+  if (!browserStorage) return false;
   try {
-    browserStorage?.setItem(getScopedBrowserStorageKey(key), stringValue);
+    browserStorage.setItem(getScopedBrowserStorageKey(key), stringValue);
     return true;
   } catch (error) {
     if (isApplyingCloudState && browserStorage) {
@@ -769,6 +770,8 @@ let lastLocalEditAt = Number(getRuntimeStorageValue(lastLocalEditStorageKey) || 
 let isSavingKeyInfoDraft = false;
 let pendingCloudSync = Promise.resolve();
 let failedCloudSyncKeys = new Set();
+const cloudOnlyStorageKeys = new Set();
+const cloudOnlyPendingStorageKeys = new Set();
 let cloudSyncTimers = new Map();
 let dirtyCloudKeys = loadPendingCloudKeys();
 let dirtyKeySlots = loadDirtyKeySlots();
@@ -2425,6 +2428,7 @@ function finishSuccessfulCloudWrite(storageKey, sentValue, updatedAt) {
   if (localStillMatchesSentValue) {
     dirtyCloudKeys.delete(storageKey);
     clearDirtyKeySlots(storageKey);
+    markCloudOnlyStorageConfirmed(storageKey);
   } else {
     dirtyCloudKeys.add(storageKey);
     scheduleStorageKeySync(storageKey);
@@ -2579,6 +2583,7 @@ async function flushKeyStorageDirectlyToCloud(storageKey) {
   if (!getDirtyKeySlotIds(storageKey).size) {
     dirtyCloudKeys.delete(storageKey);
     failedCloudSyncKeys.delete(storageKey);
+    markCloudOnlyStorageConfirmed(storageKey);
   }
   savePendingCloudKeys();
   saveCloudRowVersions();
@@ -2616,6 +2621,7 @@ async function writeKeySlotsToCloud(storageKey, options = {}) {
     scheduleStorageKeySync(storageKey);
   } else {
     dirtyCloudKeys.delete(storageKey);
+    markCloudOnlyStorageConfirmed(storageKey);
   }
   failedCloudSyncKeys.delete(storageKey);
   savePendingCloudKeys();
@@ -2988,13 +2994,26 @@ function markKeyControlActionForSync(keyId, options = {}) {
 async function finishKeyControlAction(keyId, options = {}) {
   markKeyControlActionForSync(keyId, options);
   const config = getRegistryConfig();
-  closeKeyPanelAfterAction();
+  const requiresRemoteConfirmation =
+    (options.keysChanged !== false && cloudOnlyStorageKeys.has(config.keysStorageKey)) ||
+    (options.archivesChanged && cloudOnlyStorageKeys.has(config.archivesStorageKey));
+  if (!requiresRemoteConfirmation) closeKeyPanelAfterAction();
   await syncCloudAfterAction();
   const keyStillPending = options.keysChanged !== false && keyId && (
     dirtyKeySlots.get(config.keysStorageKey)?.has(keyId) ||
     getPendingKeySlotWrite(getKeySlotCloudKey(config.keysStorageKey, keyId))
   );
   const archiveStillPending = options.archivesChanged && hasPendingStorageKeyChange(config.archivesStorageKey);
+  if (requiresRemoteConfirmation) {
+    const cloudOnlyStillPending =
+      (options.keysChanged !== false && cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) ||
+      (options.archivesChanged && cloudOnlyPendingStorageKeys.has(config.archivesStorageKey));
+    if (keyStillPending || archiveStillPending || cloudOnlyStillPending) {
+      alert("Modification non confirmée par Supabase. Gardez ce tableau ouvert et vérifiez la connexion avant de quitter la fiche.");
+      return;
+    }
+    closeKeyPanelAfterAction();
+  }
   if (supabaseClient && (keyStillPending || archiveStillPending)) {
     alert("Modification enregistrée sur cet appareil, mais pas encore confirmée par le serveur. Vérifiez la connexion avant de quitter le tableau.");
   }
@@ -3549,16 +3568,51 @@ function loadKeysForRegistry(registry) {
   }
 }
 
+function updateCloudOnlyStatus() {
+  const status = document.querySelector("#cloudOnlyStatus");
+  if (!status) return;
+  status.hidden = !cloudOnlyStorageKeys.size;
+  if (status.hidden) return;
+  const isPending = cloudOnlyPendingStorageKeys.size > 0;
+  status.classList.toggle("is-pending", isPending);
+  status.textContent = isPending
+    ? "Stockage de cet appareil indisponible. Enregistrement Supabase en attente : gardez ce tableau ouvert."
+    : "Modification confirmée sur Supabase. Le stockage de cet appareil reste indisponible.";
+}
+
+function markCloudOnlyStoragePending(storageKey) {
+  cloudOnlyStorageKeys.add(storageKey);
+  cloudOnlyPendingStorageKeys.add(storageKey);
+  updateCloudOnlyStatus();
+}
+
+function markCloudOnlyStorageConfirmed(storageKey) {
+  if (!cloudOnlyStorageKeys.has(storageKey)) return;
+  cloudOnlyPendingStorageKeys.delete(storageKey);
+  updateCloudOnlyStatus();
+}
+
+function clearCloudOnlyStorageWarning(storageKey) {
+  cloudOnlyStorageKeys.delete(storageKey);
+  cloudOnlyPendingStorageKeys.delete(storageKey);
+  updateCloudOnlyStatus();
+}
+
 function saveKeys() {
   try {
     const storageKey = getRegistryConfig().keysStorageKey;
     const previousValue = getRuntimeStorageValue(storageKey);
     const nextValue = JSON.stringify(keys);
     markLocalEdit();
-    if (!setRuntimeStorageValue(storageKey, nextValue)) throw new Error("Stockage local indisponible.");
+    const savedLocally = setRuntimeStorageValue(storageKey, nextValue);
+    if (!savedLocally && (!supabaseClient || !hasCompletedInitialCloudLoad)) {
+      throw new Error("Stockage local indisponible.");
+    }
+    if (savedLocally) clearCloudOnlyStorageWarning(storageKey);
+    else markCloudOnlyStoragePending(storageKey);
     markChangedKeySlots(storageKey, nextValue, previousValue);
     scheduleStorageKeySync(storageKey);
-    scheduleDirectKeyStorageFlush(storageKey);
+    scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
       alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
@@ -3578,10 +3632,15 @@ function saveKeysForRegistry(registry, nextKeys) {
     const previousValue = getRuntimeStorageValue(storageKey);
     const nextValue = JSON.stringify(nextKeys.map(normalizeKey));
     markLocalEdit();
-    if (!setRuntimeStorageValue(storageKey, nextValue)) throw new Error("Stockage local indisponible.");
+    const savedLocally = setRuntimeStorageValue(storageKey, nextValue);
+    if (!savedLocally && (!supabaseClient || !hasCompletedInitialCloudLoad)) {
+      throw new Error("Stockage local indisponible.");
+    }
+    if (savedLocally) clearCloudOnlyStorageWarning(storageKey);
+    else markCloudOnlyStoragePending(storageKey);
     markChangedKeySlots(storageKey, nextValue, previousValue);
     scheduleStorageKeySync(storageKey);
-    scheduleDirectKeyStorageFlush(storageKey);
+    scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
       alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
@@ -3618,10 +3677,14 @@ function loadArchives() {
 function saveArchives() {
   try {
     markLocalEdit();
-    if (!setRuntimeStorageValue(getRegistryConfig().archivesStorageKey, JSON.stringify(archives))) {
+    const storageKey = getRegistryConfig().archivesStorageKey;
+    const savedLocally = setRuntimeStorageValue(storageKey, JSON.stringify(archives));
+    if (!savedLocally && (!supabaseClient || !hasCompletedInitialCloudLoad)) {
       throw new Error("Stockage local indisponible.");
     }
-    scheduleStorageKeySync(getRegistryConfig().archivesStorageKey);
+    if (savedLocally) clearCloudOnlyStorageWarning(storageKey);
+    else markCloudOnlyStoragePending(storageKey);
+    scheduleStorageKeySync(storageKey, savedLocally ? cloudWriteDebounceMs : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
       alert("L'archive n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");

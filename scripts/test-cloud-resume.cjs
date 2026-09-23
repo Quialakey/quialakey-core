@@ -151,11 +151,13 @@ async function main() {
 
     const storageFailure = await page.evaluate(() => {
       const originalSave = setRuntimeStorageValue;
-      const originalAlert = alert;
-      const warnings = [];
       const blockedKey = getRegistryConfig().keysStorageKey;
-      setRuntimeStorageValue = (key, value) => key === blockedKey ? false : originalSave(key, value);
-      alert = (message) => warnings.push(message);
+      keys = keys.map((key) => key.id === "T3-1" ? { ...key, notes: "Modification avec stockage local plein" } : key);
+      setRuntimeStorageValue = (key, value) => {
+        if (key !== blockedKey) return originalSave(key, value);
+        runtimeStorageFallback.set(key, String(value));
+        return false;
+      };
       let rejected = false;
       try {
         saveKeys();
@@ -163,11 +165,129 @@ async function main() {
         rejected = true;
       } finally {
         setRuntimeStorageValue = originalSave;
-        alert = originalAlert;
       }
-      return { rejected, warned: warnings.length > 0 };
+      clearTimeout(directCloudFlushTimers.get(blockedKey));
+      clearTimeout(cloudSyncTimers.get(blockedKey));
+      const pending = cloudOnlyPendingStorageKeys.has(blockedKey);
+      const warningVisible = !document.querySelector("#cloudOnlyStatus").hidden &&
+        document.querySelector("#cloudOnlyStatus").textContent.includes("en attente");
+      markCloudOnlyStorageConfirmed(blockedKey);
+      const confirmedVisible = document.querySelector("#cloudOnlyStatus").textContent.includes("confirmée");
+      clearCloudOnlyStorageWarning(blockedKey);
+      return { rejected, pending, warningVisible, confirmedVisible, hiddenAfterRecovery: document.querySelector("#cloudOnlyStatus").hidden };
     });
-    assert.deepEqual(storageFailure, { rejected: true, warned: true });
+    assert.deepEqual(storageFailure, {
+      rejected: false, pending: true, warningVisible: true, confirmedVisible: true, hiddenAfterRecovery: true,
+    });
+
+    const cloudOnlyAction = await page.evaluate(async () => {
+      const storageKey = getRegistryConfig().keysStorageKey;
+      const cloudKey = getKeySlotCloudKey(storageKey, "T3-1");
+      const originalSync = syncCloudAfterAction;
+      const originalClose = closeKeyPanelAfterAction;
+      const originalAlert = alert;
+      const warnings = [];
+      let closes = 0;
+      markCloudOnlyStoragePending(storageKey);
+      syncCloudAfterAction = async () => false;
+      closeKeyPanelAfterAction = () => { closes += 1; };
+      alert = (message) => warnings.push(message);
+      try {
+        await finishKeyControlAction("T3-1");
+        const stayedOpenWhenUnconfirmed = closes === 0 && warnings.some((message) => message.includes("non confirmée"));
+        syncCloudAfterAction = async () => {
+          dirtyKeySlots.delete(storageKey);
+          pendingKeySlotWrites.delete(cloudKey);
+          markCloudOnlyStorageConfirmed(storageKey);
+          return true;
+        };
+        await finishKeyControlAction("T3-1");
+        return { stayedOpenWhenUnconfirmed, closedAfterConfirmation: closes === 1 };
+      } finally {
+        syncCloudAfterAction = originalSync;
+        closeKeyPanelAfterAction = originalClose;
+        alert = originalAlert;
+        clearCloudOnlyStorageWarning(storageKey);
+      }
+    });
+    assert.deepEqual(cloudOnlyAction, { stayedOpenWhenUnconfirmed: true, closedAfterConfirmation: true });
+
+    const slotCloudKey = "cles-transaction-v1::slot::T3-1";
+    const remoteRows = new Map([[slotCloudKey, {
+      key: slotCloudKey, value: makeKey("available"), updated_at: "2026-09-21T17:56:00Z",
+    }]]);
+    let confirmedWrites = 0;
+    await page.unroute("**/*.supabase.co/**");
+    await page.route("**/*.supabase.co/**", async (route) => {
+      const request = route.request();
+      const filter = new URL(request.url()).searchParams.get("key") || "";
+      if (request.method() === "GET") {
+        const rows = [...remoteRows.values()].filter((row) => filter.includes(row.key));
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+        return;
+      }
+      const payload = request.postDataJSON();
+      const rows = Array.isArray(payload) ? payload : [payload];
+      rows.forEach((row) => {
+        remoteRows.set(row.key, { key: row.key, value: row.value, updated_at: row.updated_at });
+        if (row.key === slotCloudKey) confirmedWrites += 1;
+      });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+    });
+    const cloudOnlyWrite = await page.evaluate(async () => {
+      const storageKey = getRegistryConfig().keysStorageKey;
+      dirtyCloudKeys.clear();
+      dirtyKeySlots.clear();
+      pendingKeySlotWrites.clear();
+      recentlyForcedKeySlots.clear();
+      recentlyClearedKeySlots.clear();
+      keys = keys.map((key) => key.id === "T3-1" ? { ...key, notes: "Confirmé directement sur Supabase" } : key);
+      const originalSave = setRuntimeStorageValue;
+      setRuntimeStorageValue = (key, value) => {
+        if (key !== storageKey) return originalSave(key, value);
+        runtimeStorageFallback.set(key, String(value));
+        return false;
+      };
+      try {
+        saveKeys();
+        const pendingBefore = cloudOnlyPendingStorageKeys.has(storageKey);
+        await syncCurrentRegistryNow();
+        return { pendingBefore, pendingAfter: cloudOnlyPendingStorageKeys.has(storageKey) };
+      } finally {
+        setRuntimeStorageValue = originalSave;
+      }
+    });
+    assert.deepEqual(cloudOnlyWrite, { pendingBefore: true, pendingAfter: false });
+    assert.ok(confirmedWrites > 0);
+    assert.equal(remoteRows.get(slotCloudKey).value.notes, "Confirmé directement sur Supabase");
+
+    const otherStorageWrites = await page.evaluate(() => {
+      const locationKey = registryConfig.location.keysStorageKey;
+      const archivesKey = getRegistryConfig().archivesStorageKey;
+      const originalSave = setRuntimeStorageValue;
+      setRuntimeStorageValue = (key, value) => {
+        if (key !== locationKey && key !== archivesKey) return originalSave(key, value);
+        runtimeStorageFallback.set(key, String(value));
+        return false;
+      };
+      try {
+        const locationKeys = loadKeysForRegistry("location");
+        saveKeysForRegistry("location", locationKeys.map((key, index) => index === 0 ? { ...key, owner: "TEST" } : key));
+        saveArchives();
+        return {
+          locationPending: cloudOnlyPendingStorageKeys.has(locationKey),
+          archivesPending: cloudOnlyPendingStorageKeys.has(archivesKey),
+        };
+      } finally {
+        clearTimeout(directCloudFlushTimers.get(locationKey));
+        clearTimeout(cloudSyncTimers.get(locationKey));
+        clearTimeout(cloudSyncTimers.get(archivesKey));
+        clearCloudOnlyStorageWarning(locationKey);
+        clearCloudOnlyStorageWarning(archivesKey);
+        setRuntimeStorageValue = originalSave;
+      }
+    });
+    assert.deepEqual(otherStorageWrites, { locationPending: true, archivesPending: true });
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {
     await browser?.close();

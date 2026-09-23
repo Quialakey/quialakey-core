@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260922-2" />
-    <link rel="stylesheet" href="styles.css?v=20260922-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260923-1" />
+    <link rel="stylesheet" href="styles.css?v=20260923-1" />
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
@@ -30,6 +30,7 @@
     <button id="cloudSleepOverlay" class="cloud-sleep-overlay" type="button" aria-label="Réactiver le tableau" hidden>
       <span>Tableau en veille</span>
     </button>
+    <div id="cloudOnlyStatus" class="cloud-only-status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div id="accessLock" class="access-lock" role="dialog" aria-modal="true" aria-labelledby="accessAgencyTitle" hidden>
       <section class="access-card">
         <img class="access-logo" src="quialakey-logo-banniere-20260907-2.jpg" alt="Quialakey" />
@@ -539,10 +540,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20260922-2"></script>
+    <script src="agency-config.js?v=20260923-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20260922-2";
+        const fallbackVersion = "20260923-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

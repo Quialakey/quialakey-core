@@ -121,6 +121,29 @@ body.is-access-loading .startup-loading {
   will-change: opacity;
 }
 
+.cloud-only-status {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  z-index: 180;
+  width: min(420px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--green-soft);
+  box-shadow: var(--soft-shadow);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.cloud-only-status.is-pending {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+
 .cloud-sleep-overlay.is-visible {
   opacity: 1;
   visibility: visible;
