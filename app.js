@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260923-3";
+const appBuildVersion = "20260923-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -1137,7 +1137,7 @@ async function resumeCloudSyncFromInactivity() {
       isCloudSleeping = true;
       if (cloudSleepOverlay) cloudSleepOverlay.querySelector("span").textContent = isAppInBackground()
         ? "Tableau en veille"
-        : "Connexion impossible. Appuyez pour réessayer.";
+        : "Tableau non actualisé. Appuyez pour réessayer.";
     } else {
       setCloudSleepOverlayVisible(false);
       cloudSleepOverlay?.classList.remove("is-awaiting-cloud");
@@ -6951,7 +6951,7 @@ async function resetAllTableData() {
     didReset = true;
   } catch (error) {
     console.warn("Supabase reset failed", error.message);
-    alert("La réinitialisation n'a pas pu être terminée. Vérifie la connexion puis réessaie.");
+    alert("Réinitialisation interrompue. Vérifiez le tableau avant de réessayer.");
   } finally {
     isResettingTableData = false;
   }
@@ -8880,7 +8880,7 @@ async function confirmArchiveBeforeClearing(record, registry, sourceSnapshot) {
     return true;
   } catch (error) {
     console.warn("Archive confirmation failed", error);
-    alert("Archivage non confirmé. La fiche reste dans sa case. Vérifiez la connexion et les archives avant de réessayer.");
+    alert("La fiche n'a pas été retirée du tableau. Vérifiez-la avant de réessayer.");
     return false;
   } finally {
     pendingArchiveSlots.delete(operationId);
@@ -9869,7 +9869,7 @@ async function initializeApp() {
   ensureDeviceName();
   const initiallyLoaded = supabaseClient ? await ensureInitialCloudStateLoaded() : true;
   if (!initiallyLoaded) {
-    if (startupLoadingMessage) startupLoadingMessage.textContent = "Connexion impossible. Le tableau n'a pas été actualisé.";
+    if (startupLoadingMessage) startupLoadingMessage.textContent = "Tableau non actualisé.";
     if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = false;
     return;
   }

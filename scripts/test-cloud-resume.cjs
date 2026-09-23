@@ -87,7 +87,7 @@ async function main() {
     await page.evaluate(() => enterCloudSleep());
     failReads = true;
     await page.locator("#cloudSleepOverlay").click();
-    await page.waitForFunction(() => document.querySelector("#cloudSleepOverlay span")?.textContent.includes("Connexion impossible"), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector("#cloudSleepOverlay span")?.textContent.includes("Tableau non actualisé"), null, { timeout: 15000 });
     assert.equal(await page.locator("#cloudSleepOverlay").evaluate((element) => element.hidden), false);
     failReads = false;
     await page.locator("#cloudSleepOverlay").click();
@@ -97,6 +97,7 @@ async function main() {
     await page.reload();
     await page.waitForFunction(() => !document.querySelector("#retryInitialLoadBtn")?.hidden, null, { timeout: 15000 });
     assert.equal(await page.locator("body").evaluate((body) => body.classList.contains("is-access-loading")), true);
+    assert.equal(await page.locator("#startupLoadingMessage").textContent(), "Tableau non actualisé.");
     failReads = false;
     await page.locator("#retryInitialLoadBtn").click();
     await page.waitForFunction(() => !document.body.classList.contains("is-access-loading"), null, { timeout: 15000 });

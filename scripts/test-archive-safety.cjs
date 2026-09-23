@@ -85,7 +85,9 @@ async function check(registry, action, failure) {
     assert.equal(archived.key.sets[0].history[1].id, 'previous');
   } else {
     assert.notEqual(context.keys[0].owner, '');
-    assert.ok(events.some(([event]) => event === 'alert'));
+    const warning = events.find(([event]) => event === 'alert');
+    assert.ok(warning);
+    assert.doesNotMatch(warning[1], /supabase|stockage|synchronisation|connexion/i);
   }
 }
 
