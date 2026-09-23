@@ -204,6 +204,8 @@ async function main() {
 
     const storageFailure = await page.evaluate(() => {
       const originalSave = setRuntimeStorageValue;
+      const originalAlert = alert;
+      const alerts = [];
       const blockedKey = getRegistryConfig().keysStorageKey;
       keys = keys.map((key) => key.id === "T3-1" ? { ...key, notes: "Modification avec stockage local plein" } : key);
       setRuntimeStorageValue = (key, value) => {
@@ -211,6 +213,7 @@ async function main() {
         runtimeStorageFallback.set(key, String(value));
         return false;
       };
+      alert = (message) => alerts.push(message);
       let rejected = false;
       try {
         saveKeys();
@@ -218,6 +221,7 @@ async function main() {
         rejected = true;
       } finally {
         setRuntimeStorageValue = originalSave;
+        alert = originalAlert;
       }
       clearTimeout(directCloudFlushTimers.get(blockedKey));
       clearTimeout(cloudSyncTimers.get(blockedKey));
@@ -225,9 +229,9 @@ async function main() {
       const noRoutineBanner = document.querySelector("#cloudOnlyStatus") === null;
       markCloudOnlyStorageConfirmed(blockedKey);
       clearCloudOnlyStorageWarning(blockedKey);
-      return { rejected, pending, noRoutineBanner };
+      return { rejected, pending, noRoutineBanner, alerts: alerts.length };
     });
-    assert.deepEqual(storageFailure, { rejected: false, pending: true, noRoutineBanner: true });
+    assert.deepEqual(storageFailure, { rejected: false, pending: true, noRoutineBanner: true, alerts: 0 });
 
     const cloudOnlyAction = await page.evaluate(async () => {
       const storageKey = getRegistryConfig().keysStorageKey;
@@ -243,7 +247,7 @@ async function main() {
       alert = (message) => warnings.push(message);
       try {
         await finishKeyControlAction("T3-1");
-        const stayedOpenWhenUnconfirmed = closes === 0 && warnings.some((message) => message.includes("Enregistrement impossible"));
+        const stayedOpenWhenUnconfirmed = closes === 0 && warnings.length === 0;
         syncCloudAfterAction = async () => {
           dirtyKeySlots.delete(storageKey);
           pendingKeySlotWrites.delete(cloudKey);

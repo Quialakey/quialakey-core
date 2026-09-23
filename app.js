@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260923-2";
+const appBuildVersion = "20260923-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -3141,7 +3141,6 @@ async function finishKeyControlAction(keyId, options = {}) {
       (options.keysChanged !== false && cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) ||
       (options.archivesChanged && cloudOnlyPendingStorageKeys.has(config.archivesStorageKey));
     if (keyStillPending || archiveStillPending || cloudOnlyStillPending) {
-      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       return;
     }
     closeKeyPanelAfterAction();
@@ -3729,10 +3728,8 @@ function saveKeys() {
     scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
-    alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
     throw error;
   }
 }
@@ -3757,10 +3754,8 @@ function saveKeysForRegistry(registry, nextKeys) {
     scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
-    alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
     throw error;
   }
 }
@@ -3801,10 +3796,8 @@ function saveArchives() {
     scheduleStorageKeySync(storageKey, savedLocally ? cloudWriteDebounceMs : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
-    alert("La sauvegarde a échoué. Une photo ou une signature est probablement trop lourde.");
     throw error;
   }
 }
