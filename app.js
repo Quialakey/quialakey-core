@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260923-1";
+const appBuildVersion = "20260923-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -58,6 +58,23 @@ const pendingCloudKeysStorageKey = "cles-pending-cloud-keys-v1";
 const dirtyKeySlotsStorageKey = "cles-dirty-key-slots-v1";
 const pendingKeySlotWritesStorageKey = "cles-pending-key-slot-writes-v1";
 const syncMetadataVersionStorageKey = "cles-sync-metadata-version-v1";
+const lastLocalEditStorageKey = "cles-last-local-edit-v1";
+const indexedStorageKeys = new Set([
+  "cles-immobilieres-v1",
+  "cles-transaction-v1",
+  "cles-location-archives-v1",
+  "cles-transaction-archives-v1",
+  sharedContactsStorageKey,
+  hiddenGlobalHistoryStorageKey,
+  tableSettingsStorageKey,
+  cloudVersionsStorageKey,
+  pendingCloudKeysStorageKey,
+  dirtyKeySlotsStorageKey,
+  pendingKeySlotWritesStorageKey,
+  syncMetadataVersionStorageKey,
+  lastLocalEditStorageKey,
+  appActivityLogStorageKey,
+]);
 const supabaseProjectRef = (() => {
   try {
     return new URL(supabaseUrl).hostname.split(".")[0] || agencyId;
@@ -67,7 +84,6 @@ const supabaseProjectRef = (() => {
 })();
 const syncMetadataVersion = `20260917-1-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
-const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const keySlotCloudSeparator = "::slot::";
 const automaticBackupKeyPrefix = "cles-auto-backup-";
 const keySlotRecoveryBackupPrefix = "cles-key-recovery-v1::";
@@ -92,6 +108,10 @@ const keySlotWriteRetryBaseDelayMs = 90;
 const pendingLocalEditGraceMs = 12 * 1000;
 const recentKeySlotMemoryMs = 12 * 1000;
 const runtimeStorageFallback = new Map();
+const indexedStorageWrites = new Map();
+const indexedStorageFailedKeys = new Set();
+let indexedStorageDb = null;
+let indexedStorageHydrated = false;
 let isApplyingCloudState = false;
 let isResettingTableData = false;
 const browserStorage = (() => {
@@ -106,6 +126,108 @@ function getScopedBrowserStorageKey(key) {
   return `${browserStorageNamespace}${key}`;
 }
 
+function openIndexedStorage() {
+  return new Promise((resolve, reject) => {
+    if (!globalThis.indexedDB) return reject(new Error("IndexedDB indisponible."));
+    const request = indexedDB.open("quialakey-local-data-v1", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("values");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB indisponible."));
+    request.onblocked = () => reject(new Error("IndexedDB bloqué."));
+  });
+}
+
+function readIndexedStorageEntry(key) {
+  return new Promise((resolve, reject) => {
+    const transaction = indexedStorageDb.transaction("values", "readonly");
+    const request = transaction.objectStore("values").get(getScopedBrowserStorageKey(key));
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Lecture locale impossible."));
+  });
+}
+
+function writeIndexedStorageEntry(key, entry) {
+  return new Promise((resolve, reject) => {
+    const transaction = indexedStorageDb.transaction("values", "readwrite");
+    const store = transaction.objectStore("values");
+    if (entry === null) store.delete(getScopedBrowserStorageKey(key));
+    else store.put(entry, getScopedBrowserStorageKey(key));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Écriture locale impossible."));
+    transaction.onabort = () => reject(transaction.error || new Error("Écriture locale annulée."));
+  });
+}
+
+function queueIndexedStorageWrite(key, value) {
+  const previousWrite = indexedStorageWrites.get(key) || Promise.resolve();
+  const nextWrite = previousWrite.then(async () => {
+    let previousLocalValue = null;
+    try {
+      previousLocalValue = browserStorage?.getItem(getScopedBrowserStorageKey(key)) ?? null;
+    } catch {}
+    await writeIndexedStorageEntry(key, value === null ? null : { value, previousLocalValue });
+    if (previousLocalValue !== null) {
+      try {
+        if (browserStorage?.getItem(getScopedBrowserStorageKey(key)) === previousLocalValue) {
+          browserStorage.removeItem(getScopedBrowserStorageKey(key));
+        }
+      } catch {}
+    }
+    indexedStorageFailedKeys.delete(key);
+    return true;
+  }).catch((error) => {
+    indexedStorageFailedKeys.add(key);
+    console.warn("IndexedDB write failed", key, error.message);
+    return false;
+  });
+  indexedStorageWrites.set(key, nextWrite);
+  return nextWrite;
+}
+
+async function hydrateIndexedStorage() {
+  if (indexedStorageHydrated) return;
+  try {
+    indexedStorageDb = await openIndexedStorage();
+  } catch (error) {
+    console.warn("IndexedDB unavailable", error.message);
+    return;
+  }
+  indexedStorageHydrated = true;
+
+  for (const key of indexedStorageKeys) {
+    try {
+      const scopedKey = getScopedBrowserStorageKey(key);
+      const entry = await readIndexedStorageEntry(key);
+      let localValue = null;
+      let localKey = scopedKey;
+      try {
+        localValue = browserStorage?.getItem(scopedKey) ?? null;
+        if (localValue === null && shouldMigrateLegacyStorage) {
+          localValue = browserStorage?.getItem(key) ?? null;
+          if (localValue !== null) localKey = key;
+        }
+      } catch {}
+      const hasNewerLocalValue = localValue !== null && localValue !== entry?.value &&
+        localValue !== entry?.previousLocalValue;
+      if (hasNewerLocalValue || (!entry && localValue !== null)) {
+        await writeIndexedStorageEntry(key, { value: localValue, previousLocalValue: localValue });
+        runtimeStorageFallback.set(key, localValue);
+      } else if (entry) {
+        runtimeStorageFallback.set(key, entry.value);
+      }
+      if (localValue !== null) {
+        try { browserStorage?.removeItem(localKey); } catch {}
+      }
+    } catch (error) {
+      console.warn("IndexedDB migration failed", key, error.message);
+    }
+  }
+}
+
+function waitForIndexedStorageWrite(key) {
+  return indexedStorageWrites.get(key) || Promise.resolve(!indexedStorageFailedKeys.has(key));
+}
+
 function getRuntimeStorageValue(key) {
   if (runtimeStorageFallback.has(key)) return runtimeStorageFallback.get(key);
   try {
@@ -117,7 +239,12 @@ function getRuntimeStorageValue(key) {
 
 function setRuntimeStorageValue(key, value) {
   const stringValue = String(value);
+  const previousValue = runtimeStorageFallback.get(key);
   runtimeStorageFallback.set(key, stringValue);
+  if (indexedStorageDb && indexedStorageKeys.has(key)) {
+    if (previousValue !== stringValue || indexedStorageFailedKeys.has(key)) queueIndexedStorageWrite(key, stringValue);
+    return true;
+  }
   if (!browserStorage) return false;
   try {
     browserStorage.setItem(getScopedBrowserStorageKey(key), stringValue);
@@ -140,6 +267,7 @@ function setRuntimeStorageValue(key, value) {
 
 function removeRuntimeStorageValue(key) {
   runtimeStorageFallback.delete(key);
+  if (indexedStorageDb && indexedStorageKeys.has(key)) queueIndexedStorageWrite(key, null);
   try {
     browserStorage?.removeItem(getScopedBrowserStorageKey(key));
   } catch {}
@@ -2994,9 +3122,13 @@ function markKeyControlActionForSync(keyId, options = {}) {
 async function finishKeyControlAction(keyId, options = {}) {
   markKeyControlActionForSync(keyId, options);
   const config = getRegistryConfig();
+  const relevantStorageKeys = [
+    ...(options.keysChanged !== false ? [config.keysStorageKey] : []),
+    ...(options.archivesChanged ? [config.archivesStorageKey] : []),
+  ];
+  const localWrites = await Promise.all(relevantStorageKeys.map(waitForIndexedStorageWrite));
   const requiresRemoteConfirmation =
-    (options.keysChanged !== false && cloudOnlyStorageKeys.has(config.keysStorageKey)) ||
-    (options.archivesChanged && cloudOnlyStorageKeys.has(config.archivesStorageKey));
+    localWrites.some((saved) => !saved) || relevantStorageKeys.some((storageKey) => cloudOnlyStorageKeys.has(storageKey));
   if (!requiresRemoteConfirmation) closeKeyPanelAfterAction();
   await syncCloudAfterAction();
   const keyStillPending = options.keysChanged !== false && keyId && (
@@ -3009,13 +3141,10 @@ async function finishKeyControlAction(keyId, options = {}) {
       (options.keysChanged !== false && cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) ||
       (options.archivesChanged && cloudOnlyPendingStorageKeys.has(config.archivesStorageKey));
     if (keyStillPending || archiveStillPending || cloudOnlyStillPending) {
-      alert("Modification non confirmée par Supabase. Gardez ce tableau ouvert et vérifiez la connexion avant de quitter la fiche.");
+      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       return;
     }
     closeKeyPanelAfterAction();
-  }
-  if (supabaseClient && (keyStillPending || archiveStillPending)) {
-    alert("Modification enregistrée sur cet appareil, mais pas encore confirmée par le serveur. Vérifiez la connexion avant de quitter le tableau.");
   }
 }
 
@@ -3568,34 +3697,19 @@ function loadKeysForRegistry(registry) {
   }
 }
 
-function updateCloudOnlyStatus() {
-  const status = document.querySelector("#cloudOnlyStatus");
-  if (!status) return;
-  status.hidden = !cloudOnlyStorageKeys.size;
-  if (status.hidden) return;
-  const isPending = cloudOnlyPendingStorageKeys.size > 0;
-  status.classList.toggle("is-pending", isPending);
-  status.textContent = isPending
-    ? "Stockage de cet appareil indisponible. Enregistrement Supabase en attente : gardez ce tableau ouvert."
-    : "Modification confirmée sur Supabase. Le stockage de cet appareil reste indisponible.";
-}
-
 function markCloudOnlyStoragePending(storageKey) {
   cloudOnlyStorageKeys.add(storageKey);
   cloudOnlyPendingStorageKeys.add(storageKey);
-  updateCloudOnlyStatus();
 }
 
 function markCloudOnlyStorageConfirmed(storageKey) {
   if (!cloudOnlyStorageKeys.has(storageKey)) return;
   cloudOnlyPendingStorageKeys.delete(storageKey);
-  updateCloudOnlyStatus();
 }
 
 function clearCloudOnlyStorageWarning(storageKey) {
   cloudOnlyStorageKeys.delete(storageKey);
   cloudOnlyPendingStorageKeys.delete(storageKey);
-  updateCloudOnlyStatus();
 }
 
 function saveKeys() {
@@ -3615,7 +3729,7 @@ function saveKeys() {
     scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
     alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
@@ -3643,7 +3757,7 @@ function saveKeysForRegistry(registry, nextKeys) {
     scheduleDirectKeyStorageFlush(storageKey, savedLocally ? 250 : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("La fiche n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
     alert("La sauvegarde a échoué. Une photo est probablement trop lourde : essayez une image plus légère.");
@@ -3687,7 +3801,7 @@ function saveArchives() {
     scheduleStorageKeySync(storageKey, savedLocally ? cloudWriteDebounceMs : 0);
   } catch (error) {
     if (error.message === "Stockage local indisponible.") {
-      alert("L'archive n'a pas pu être enregistrée sur cet appareil. Libérez de l'espace avant de quitter le tableau.");
+      alert("Enregistrement impossible pour le moment. Vérifiez la connexion, puis réessayez.");
       throw error;
     }
     alert("La sauvegarde a échoué. Une photo ou une signature est probablement trop lourde.");
@@ -9737,6 +9851,16 @@ cloudSleepOverlay?.addEventListener("click", (event) => {
 });
 
 async function initializeApp() {
+  await hydrateIndexedStorage();
+  tableSettings = loadTableSettings();
+  dirtyCloudKeys = loadPendingCloudKeys();
+  dirtyKeySlots = loadDirtyKeySlots();
+  pendingKeySlotWrites = loadPendingKeySlotWrites();
+  cloudRowVersions = loadCloudRowVersions();
+  lastLocalEditAt = Number(getRuntimeStorageValue(lastLocalEditStorageKey) || 0);
+  keys = loadKeys();
+  archives = loadArchives();
+  contacts = loadContacts();
   if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = true;
   if (startupLoadingMessage) startupLoadingMessage.textContent = "Ouverture du tableau...";
   document.documentElement.classList.toggle("is-tablet-device", isTabletDevice());

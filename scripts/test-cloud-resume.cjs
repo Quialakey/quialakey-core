@@ -33,9 +33,11 @@ async function main() {
     let remoteStatus = "out";
     let failReads = false;
     await page.addInitScript(({ settings: cachedSettings, staleKey }) => {
+      if (sessionStorage.getItem("quialakey-test-seeded") === "done") return;
       localStorage.setItem("quialakey:century21lesminimes:cles-table-settings-v1", JSON.stringify(cachedSettings));
       localStorage.setItem("quialakey:century21lesminimes:cles-transaction-v1", JSON.stringify([staleKey]));
       localStorage.setItem("quialakey:century21lesminimes:cles-location-active-registry-v1", "transaction");
+      sessionStorage.setItem("quialakey-test-seeded", "done");
     }, { settings, staleKey: makeKey("out") });
     await page.route("**/*.supabase.co/**", async (route) => {
       const request = route.request();
@@ -54,7 +56,7 @@ async function main() {
         : filter.includes("cles-table-settings-v1")
           ? [{ key: "cles-table-settings-v1", value: settings, updated_at: "2026-09-21T12:00:00Z" }]
           : [];
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) }).catch(() => {});
     });
 
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -62,6 +64,14 @@ async function main() {
     await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
     await page.waitForFunction(() => !document.body.classList.contains("is-access-loading"));
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1")?.sets[0].status), "out");
+    const indexedStorageReady = await page.evaluate(async () => {
+      const storageKey = getRegistryConfig().keysStorageKey;
+      await waitForIndexedStorageWrite(storageKey);
+      const entry = await readIndexedStorageEntry(storageKey);
+      return Boolean(indexedStorageDb && entry && JSON.parse(entry.value).some((key) => key.id === "T3-1")) &&
+        browserStorage.getItem(getScopedBrowserStorageKey(storageKey)) === null;
+    });
+    assert.equal(indexedStorageReady, true);
     assert.equal(await page.locator("#keyForm").evaluate((element) => element.tagName), "DIV");
     assert.equal(await page.locator("#propertyInput").evaluate((element) => element.closest("form")), null);
 
@@ -149,6 +159,49 @@ async function main() {
     });
     assert.deepEqual(safeRendering, { photoInjectedElement: false, dialogInjectedElement: false });
 
+    const durableStorage = await page.evaluate(async () => {
+      const storageKey = getRegistryConfig().keysStorageKey;
+      const originalSetItem = Storage.prototype.setItem;
+      const originalAlert = alert;
+      const alerts = [];
+      Storage.prototype.setItem = function (key, value) {
+        if (key === getScopedBrowserStorageKey(storageKey)) throw new DOMException("Quota exceeded", "QuotaExceededError");
+        return originalSetItem.call(this, key, value);
+      };
+      alert = (message) => alerts.push(message);
+      try {
+        keys = keys.map((key) => key.id === "T3-1" ? { ...key, notes: "Sauvé dans IndexedDB" } : key);
+        saveKeys();
+        const saved = await waitForIndexedStorageWrite(storageKey);
+        const entry = await readIndexedStorageEntry(storageKey);
+        return {
+          saved,
+          persisted: JSON.parse(entry.value).find((key) => key.id === "T3-1")?.notes === "Sauvé dans IndexedDB",
+          alerts: alerts.length,
+          noCloudOnlyFallback: !cloudOnlyStorageKeys.has(storageKey),
+        };
+      } finally {
+        Storage.prototype.setItem = originalSetItem;
+        alert = originalAlert;
+        clearTimeout(directCloudFlushTimers.get(storageKey));
+        clearTimeout(cloudSyncTimers.get(storageKey));
+      }
+    });
+    assert.deepEqual(durableStorage, { saved: true, persisted: true, alerts: 0, noCloudOnlyFallback: true });
+    await page.evaluate(async () => {
+      await Promise.all([
+        waitForIndexedStorageWrite(getRegistryConfig().keysStorageKey),
+        waitForIndexedStorageWrite(dirtyKeySlotsStorageKey),
+        waitForIndexedStorageWrite(lastLocalEditStorageKey),
+      ]);
+    });
+    await page.reload();
+    await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
+    assert.equal(
+      await page.evaluate(() => keys.find((key) => key.id === "T3-1")?.notes),
+      "Sauvé dans IndexedDB",
+    );
+
     const storageFailure = await page.evaluate(() => {
       const originalSave = setRuntimeStorageValue;
       const blockedKey = getRegistryConfig().keysStorageKey;
@@ -169,16 +222,12 @@ async function main() {
       clearTimeout(directCloudFlushTimers.get(blockedKey));
       clearTimeout(cloudSyncTimers.get(blockedKey));
       const pending = cloudOnlyPendingStorageKeys.has(blockedKey);
-      const warningVisible = !document.querySelector("#cloudOnlyStatus").hidden &&
-        document.querySelector("#cloudOnlyStatus").textContent.includes("en attente");
+      const noRoutineBanner = document.querySelector("#cloudOnlyStatus") === null;
       markCloudOnlyStorageConfirmed(blockedKey);
-      const confirmedVisible = document.querySelector("#cloudOnlyStatus").textContent.includes("confirmée");
       clearCloudOnlyStorageWarning(blockedKey);
-      return { rejected, pending, warningVisible, confirmedVisible, hiddenAfterRecovery: document.querySelector("#cloudOnlyStatus").hidden };
+      return { rejected, pending, noRoutineBanner };
     });
-    assert.deepEqual(storageFailure, {
-      rejected: false, pending: true, warningVisible: true, confirmedVisible: true, hiddenAfterRecovery: true,
-    });
+    assert.deepEqual(storageFailure, { rejected: false, pending: true, noRoutineBanner: true });
 
     const cloudOnlyAction = await page.evaluate(async () => {
       const storageKey = getRegistryConfig().keysStorageKey;
@@ -194,7 +243,7 @@ async function main() {
       alert = (message) => warnings.push(message);
       try {
         await finishKeyControlAction("T3-1");
-        const stayedOpenWhenUnconfirmed = closes === 0 && warnings.some((message) => message.includes("non confirmée"));
+        const stayedOpenWhenUnconfirmed = closes === 0 && warnings.some((message) => message.includes("Enregistrement impossible"));
         syncCloudAfterAction = async () => {
           dirtyKeySlots.delete(storageKey);
           pendingKeySlotWrites.delete(cloudKey);
