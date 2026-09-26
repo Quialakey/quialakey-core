@@ -2491,7 +2491,7 @@ body.is-moving-key .photo-hover {
   font-size: 9px;
 }
 
-.key-set-photo-card.is-selected {
+.key-set-photo-list.is-multi-set .key-set-photo-card.is-selected {
   outline: 3px solid #55aa73;
 }
 
@@ -2531,21 +2531,29 @@ body.is-moving-key .photo-hover {
   background: #d8dcd8;
 }
 
-.photo-preview[role="button"] {
+.photo-preview img[role="button"] {
   cursor: zoom-in;
 }
 
-.photo-preview strong {
+.photo-set-select {
   position: absolute;
   z-index: 1;
-  top: 6px;
-  left: 6px;
-  padding: 2px 5px;
+  top: 4px;
+  left: 4px;
+  max-width: calc(100% - 8px);
+  padding: 2px 4px;
   border-radius: 4px;
   color: var(--ink);
-  background: rgba(238, 241, 239, 0.9);
-  font-size: 12px;
+  background: rgba(238, 241, 239, 0.78);
+  font-size: 24px;
+  font-weight: 700;
   line-height: 1.15;
+  white-space: nowrap;
+}
+
+.photo-set-select:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .photo-preview img {

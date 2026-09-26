@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-12";
+const appBuildVersion = "20260926-13";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -7800,7 +7800,7 @@ function renderKeySetPhotos(key) {
 
   key.sets.forEach((set) => {
     const item = document.createElement("article");
-    const title = document.createElement("strong");
+    const title = document.createElement("button");
     const preview = document.createElement("div");
     const actions = document.createElement("div");
     const cameraButton = document.createElement("label");
@@ -7811,29 +7811,35 @@ function renderKeySetPhotos(key) {
     const importInput = document.createElement("input");
 
     item.className = `key-set-photo-card${set.id === selectedSetId ? " is-selected" : ""}`;
+    title.type = "button";
+    title.className = "photo-set-select";
     title.textContent = set.label;
+    title.setAttribute("aria-label", `S\u00e9lectionner ${set.label} pour les mouvements`);
+    title.addEventListener("click", () => {
+      if (set.id === selectedSetId) return;
+      keySetSelect.value = set.id;
+      keySetSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     preview.className = "photo-preview";
     preview.append(title);
     if (set.photo) {
       const image = document.createElement("img");
       image.src = set.photo;
       image.alt = `Photo du jeu ${set.label} de ${keyLabel(key)}`;
+      image.tabIndex = 0;
+      image.setAttribute("role", "button");
+      image.setAttribute("aria-label", `Afficher la photo du ${set.label}`);
+      image.addEventListener("click", () => openPhotoViewer(set.photo, `${set.label} - ${keyLabel(key)}`));
+      image.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openPhotoViewer(set.photo, `${set.label} - ${keyLabel(key)}`);
+      });
       preview.append(image);
     } else {
       const emptyPhoto = document.createElement("span");
       emptyPhoto.textContent = "Aucune photo";
       preview.append(emptyPhoto);
-    }
-    if (set.photo) {
-      preview.tabIndex = 0;
-      preview.setAttribute("role", "button");
-      preview.setAttribute("aria-label", `Afficher la photo du ${set.label}`);
-      preview.addEventListener("click", () => openPhotoViewer(set.photo, `${set.label} - ${keyLabel(key)}`));
-      preview.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        openPhotoViewer(set.photo, `${set.label} - ${keyLabel(key)}`);
-      });
     }
     actions.className = "photo-actions";
     cameraButton.className = "photo-button";

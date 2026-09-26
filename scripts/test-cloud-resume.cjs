@@ -506,7 +506,7 @@ async function main() {
           renderKeySetPhotos({ ...key, sets: [{ ...key.sets[0], photo }] });
           const card = keySetPhotoList.querySelector(".key-set-photo-card");
           const preview = card.querySelector(".photo-preview");
-          const title = preview.querySelector("strong");
+          const title = preview.querySelector(".photo-set-select");
           const actions = [...card.querySelectorAll(".photo-actions > *")];
           const cardRect = card.getBoundingClientRect();
           const previewRect = preview.getBoundingClientRect();
@@ -516,6 +516,9 @@ async function main() {
             titleInsidePreview: titleRect.left >= previewRect.left && titleRect.top >= previewRect.top &&
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
+            noSelectedOutline: getComputedStyle(card).outlineStyle === "none",
+            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "24px" &&
+              getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
             actionsFit: actions.every((action) => {
               const rect = action.getBoundingClientRect();
               return rect.top >= cardRect.top && rect.bottom <= cardRect.bottom;
@@ -529,6 +532,8 @@ async function main() {
           height: 165,
           titleInsidePreview: true,
           titleTopLeft: true,
+          noSelectedOutline: true,
+          titleStyle: true,
           actionsFit: true,
           noOverflow: true,
           actionCount: withPhoto ? 3 : 2,
@@ -561,9 +566,14 @@ async function main() {
             cardsFit: cards.every((card, index) => {
               const preview = card.querySelector(".photo-preview");
               const previewRect = preview.getBoundingClientRect();
+              const title = preview.querySelector(".photo-set-select");
+              const titleRect = title.getBoundingClientRect();
               const buttons = [...card.querySelectorAll(".photo-actions > *")];
               return cardRects[index].left >= listRect.left && cardRects[index].right <= listRect.right &&
                 card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
+                titleRect.left >= previewRect.left && titleRect.right <= previewRect.right &&
+                titleRect.top >= previewRect.top && titleRect.bottom <= previewRect.bottom &&
+                getComputedStyle(title).fontSize === "24px" &&
                 buttons.length === 3 && buttons.every((button) => {
                   const rect = button.getBoundingClientRect();
                   const text = button.querySelector("span");
@@ -616,6 +626,34 @@ async function main() {
         assert.ok(bottom[2] > 200 && bottom[0] < 50, `Photo bottom cropped at ${width}px (${imageWidth}x${imageHeight}): ${bottom}`);
       }
     }
+    const secondSetId = await page.evaluate(() => {
+      const key = getSelectedKey();
+      selectedSetId = key.sets[0].id;
+      render();
+      renderKeySetPhotos({
+        ...key,
+        sets: key.sets.map((set) => ({
+          ...set, photo: "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",
+        })),
+      });
+      return key.sets[1].id;
+    });
+    await page.locator(".photo-set-select").nth(1).click();
+    assert.equal(await page.locator("#keySetSelect").inputValue(), secondSetId);
+    assert.equal(await page.locator(".key-set-photo-card.is-selected .photo-set-select").textContent(), "Jeu 2");
+    assert.equal(await page.evaluate(() => !photoViewer || photoViewer.hidden), true);
+    await page.locator(".photo-set-select").first().focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator(".key-set-photo-card.is-selected .photo-set-select").textContent(), "Jeu 1");
+    await page.evaluate(() => {
+      const key = getSelectedKey();
+      renderKeySetPhotos({ ...key, sets: key.sets.map((set) => ({
+        ...set, photo: "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",
+      })) });
+    });
+    await page.locator(".photo-preview img").first().click();
+    assert.equal(await page.locator(".photo-viewer").isVisible(), true);
+    await page.locator(".photo-viewer-close").click();
     await page.setViewportSize(photoCardViewport);
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {
