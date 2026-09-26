@@ -503,7 +503,7 @@ async function main() {
           const photo = photoPresent
             ? "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
             : "";
-          renderKeySetPhotos({ ...key, sets: [{ ...key.sets[0], photo }] });
+          renderKeySetPhotos({ ...key, sets: [{ ...key.sets[0], id: selectedSetId, photo }] });
           const card = keySetPhotoList.querySelector(".key-set-photo-card");
           const preview = card.querySelector(".photo-preview");
           const title = preview.querySelector(".photo-set-select");
@@ -516,7 +516,8 @@ async function main() {
             titleInsidePreview: titleRect.left >= previewRect.left && titleRect.top >= previewRect.top &&
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
-            noSelectedOutline: getComputedStyle(card).outlineStyle === "none",
+            singleSelectedOutline: getComputedStyle(card).outlineColor === "rgb(0, 0, 0)" &&
+              getComputedStyle(card).outlineWidth === "3px",
             titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "14.3px" &&
               titleRect.height >= 21 && titleRect.height <= 24 &&
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
@@ -533,7 +534,7 @@ async function main() {
           height: 165,
           titleInsidePreview: true,
           titleTopLeft: true,
-          noSelectedOutline: true,
+          singleSelectedOutline: true,
           titleStyle: true,
           actionsFit: true,
           noOverflow: true,

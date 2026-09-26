@@ -2510,6 +2510,10 @@ body.is-moving-key .photo-hover {
   font-size: 9px;
 }
 
+.key-set-photo-card.is-selected {
+  outline: 3px solid #000;
+}
+
 .key-set-photo-list.is-multi-set .key-set-photo-card.is-selected {
   outline: 3px solid var(--c21-charcoal);
 }
