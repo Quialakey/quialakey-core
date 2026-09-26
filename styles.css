@@ -2617,7 +2617,7 @@ body.is-moving-key .photo-hover {
   padding: 0 10px;
   border: 2px solid #b94c43;
   border-radius: 8px;
-  color: var(--red);
+  color: #000;
   background: var(--red-soft);
   font: inherit;
   font-size: 11px;

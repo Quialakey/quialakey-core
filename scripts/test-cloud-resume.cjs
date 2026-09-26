@@ -722,6 +722,7 @@ async function main() {
             noOverflow: card.scrollHeight <= card.clientHeight,
             actionCount: actions.length,
             actionHeights: actions.every((action) => Math.abs(action.getBoundingClientRect().height - 34) < 1),
+            deleteTextBlack: !photoPresent || getComputedStyle(card.querySelector(".photo-delete-button")).color === "rgb(0, 0, 0)",
           };
         }, withPhoto);
         assert.deepEqual(layout, {
@@ -734,6 +735,7 @@ async function main() {
           noOverflow: true,
           actionCount: withPhoto ? 3 : 2,
           actionHeights: true,
+          deleteTextBlack: true,
         });
       }
       for (const setCount of [2, 3, 4]) {
