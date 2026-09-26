@@ -120,6 +120,147 @@ async function main() {
       { count: 1, heading: "Réservation en cours", accessibleHeading: "Réservation en cours", visibleHeading: '"Réservation en cours"' },
       { count: 2, heading: "Réservations en cours", accessibleHeading: "Réservations en cours", visibleHeading: '"Réservations en cours"' },
     ]);
+    const reservationActions = await page.evaluate(() => {
+      const originalKeys = keys;
+      const originalSelectedId = selectedId;
+      const originalSelectedSetId = selectedSetId;
+      try {
+        selectedId = "T3-1";
+        selectedSetId = "main";
+        return [true, false, undefined, "returned"].map((decision) => {
+          const reservation = {
+            id: "reservation-test",
+            reservationDate: "2026-09-26T18:00:00Z",
+            createdAt: "2026-09-26T12:00:00Z",
+            ...(typeof decision === "boolean" || decision === "returned"
+              ? { returnsToAgency: decision !== false } : {}),
+          };
+          keys = originalKeys.map((key) => key.id === selectedId ? {
+            ...key,
+            sets: [{
+              ...key.sets[0],
+              status: decision === "returned" ? "out" : "available",
+              holderReservationId: decision === "returned" ? reservation.id : "",
+              reservations: [reservation],
+              history: [{
+                id: "history-reservation-test",
+                type: "reserved",
+                reservationId: reservation.id,
+                date: "26/09/2026 12:00",
+                ...(typeof reservation.returnsToAgency === "boolean"
+                  ? { returnsToAgency: reservation.returnsToAgency } : {}),
+              }],
+            }],
+          } : key);
+          renderPanel();
+          return [...activeReservationPanel.querySelectorAll(".reservation-history-actions button")]
+            .map((button) => button.textContent);
+        });
+      } finally {
+        keys = originalKeys;
+        selectedId = originalSelectedId;
+        selectedSetId = originalSelectedSetId;
+        renderPanel();
+      }
+    });
+    assert.deepEqual(reservationActions, [
+      ["Sorti", "Annulation"],
+      ["Archivé", "Annulation"],
+      ["Préciser le retour", "Annulation"],
+      ["Rentré", "Annulation"],
+    ]);
+    for (const [answer, expected] of [["yes", true], ["no", false]]) {
+      const result = page.evaluate(() => promptReservationReturn());
+      await page.locator(`.reservation-return-dialog button[value="${answer}"]`).click();
+      assert.equal(await result, expected);
+    }
+    const savedReturnDecisions = await page.evaluate(async () => {
+      const originalSelectedId = selectedId;
+      const originalActorCheck = ensureMovementActor;
+      const originalPhoneCheck = ensureTypedMovementPhone;
+      const originalUpdateSet = updateSelectedSet;
+      const originalFinish = finishKeyControlAction;
+      const originalLog = logActivity;
+      const originalPerson = movementPersonInput.value;
+      const originalPhone = movementPhoneInput.value;
+      const recorded = [];
+      try {
+        selectedId = "T3-1";
+        movementPersonInput.value = "Test";
+        movementPhoneInput.value = "06 12 34 56 78";
+        ensureMovementActor = () => true;
+        ensureTypedMovementPhone = () => true;
+        updateSelectedSet = (changes) => recorded.push(changes);
+        finishKeyControlAction = async () => {};
+        logActivity = () => {};
+        for (const answer of ["yes", "no"]) {
+          const reservation = reserveSelectedSet();
+          document.querySelector('.reservation-date-dialog button[value="confirm"]').click();
+          let choiceButton;
+          for (let attempt = 0; attempt < 50; attempt++) {
+            choiceButton = document.querySelector(`.reservation-return-dialog button[value="${answer}"]`);
+            if (choiceButton) break;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          if (!choiceButton) throw new Error("The return-choice dialog did not open after confirming the date.");
+          choiceButton.click();
+          await reservation;
+        }
+        return recorded.map((changes) => ({
+          reservation: changes.reservations[0].returnsToAgency,
+          history: changes.history[0].returnsToAgency,
+        }));
+      } finally {
+        selectedId = originalSelectedId;
+        ensureMovementActor = originalActorCheck;
+        ensureTypedMovementPhone = originalPhoneCheck;
+        updateSelectedSet = originalUpdateSet;
+        finishKeyControlAction = originalFinish;
+        logActivity = originalLog;
+        movementPersonInput.value = originalPerson;
+        movementPhoneInput.value = originalPhone;
+      }
+    });
+    assert.deepEqual(savedReturnDecisions, [
+      { reservation: true, history: true },
+      { reservation: false, history: false },
+    ]);
+    const legacyDecision = await page.evaluate(async () => {
+      const originalKeys = keys;
+      const originalSelectedId = selectedId;
+      const originalUpdateSet = updateSelectedSet;
+      const originalMark = markKeyControlActionForSync;
+      const originalSync = syncCloudAfterAction;
+      let changes;
+      try {
+        selectedId = "T3-1";
+        keys = originalKeys.map((key) => key.id === selectedId ? {
+          ...key,
+          sets: [{
+            ...key.sets[0],
+            reservations: [{ id: "legacy-reservation", createdAt: "26/09/2026 12:00" }],
+            history: [{ id: "legacy-history", type: "reserved", reservationId: "legacy-reservation" }],
+          }],
+        } : key);
+        updateSelectedSet = (next) => { changes = next; };
+        markKeyControlActionForSync = () => {};
+        syncCloudAfterAction = async () => {};
+        const choice = setReservationReturnDecision("legacy-reservation");
+        document.querySelector('.reservation-return-dialog button[value="no"]').click();
+        await choice;
+        return {
+          reservation: changes.reservations[0].returnsToAgency,
+          history: changes.history[0].returnsToAgency,
+        };
+      } finally {
+        keys = originalKeys;
+        selectedId = originalSelectedId;
+        updateSelectedSet = originalUpdateSet;
+        markKeyControlActionForSync = originalMark;
+        syncCloudAfterAction = originalSync;
+      }
+    });
+    assert.deepEqual(legacyDecision, { reservation: false, history: false });
 
     await page.evaluate(() => enterCloudSleep());
     remoteStatus = "available";

@@ -2720,6 +2720,12 @@ body.is-moving-key .photo-hover {
   text-align: center;
 }
 
+.reservation-return-dialog h3 {
+  font-size: 16px;
+  line-height: 1.3;
+  text-align: center;
+}
+
 .date-dialog input {
   min-height: 42px;
   padding: 0 10px;
@@ -3052,6 +3058,10 @@ body.is-moving-key .photo-hover {
   margin: 8px 0 8px;
 }
 
+.reservation-history-actions.is-two-action {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .reservation-history-button {
   display: grid;
   place-items: center;
@@ -3083,7 +3093,8 @@ body.is-moving-key .photo-hover {
   background: #c5cbc7;
 }
 
-.reservation-history-button.removed {
+.reservation-history-button.removed,
+.reservation-history-button.choice {
   border-color: #8f9792;
   background: #c5cbc7;
 }

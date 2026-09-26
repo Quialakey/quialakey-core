@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-19";
+const appBuildVersion = "20260926-20";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8138,6 +8138,7 @@ function renderPanel() {
     if (!isReadOnlyArchive) setupInlineSignatureCanvas(signatureCanvas);
 
     actions.className = "reservation-history-actions";
+    actions.classList.add("is-two-action");
     movementButton.type = "button";
     movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
     movementButton.textContent = isReservationOut ? "Rentr\u00e9" : "Sorti";
@@ -8156,6 +8157,16 @@ function renderPanel() {
       archiveReservationKey(entry.reservationId);
     });
 
+    const chooseButton = document.createElement("button");
+    chooseButton.type = "button";
+    chooseButton.className = "reservation-history-button choice";
+    chooseButton.textContent = "Préciser le retour";
+    chooseButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+    chooseButton.addEventListener("click", () => {
+      selectedSetId = reservationSet.id;
+      void setReservationReturnDecision(entry.reservationId);
+    });
+
     cancelButton.type = "button";
     cancelButton.className = "reservation-history-button cancel";
     cancelButton.textContent = "Annulation";
@@ -8165,7 +8176,8 @@ function renderPanel() {
       void cancelReservation(entry.reservationId);
     });
 
-    actions.append(movementButton, removeButton, cancelButton);
+    const returnsToAgency = reservation.returnsToAgency ?? entry.returnsToAgency;
+    actions.append(returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton, cancelButton);
     item.append(actions);
     date.textContent = `R\u00e9serv\u00e9 le ${entry.createdAt || reservation.createdAt || entry.date}`;
     item.append(date);
@@ -8304,6 +8316,7 @@ function renderPanel() {
       item.append(reservationCommentField);
 
       actions.className = "reservation-history-actions";
+      actions.classList.add("is-two-action");
       movementButton.type = "button";
       movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
       movementButton.textContent = isReservationOut ? "Rentr\u00e9" : "Sorti";
@@ -8315,6 +8328,15 @@ function renderPanel() {
       removeButton.textContent = "Archivé";
       removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
       removeButton.addEventListener("click", () => archiveReservationKey(entry.reservationId));
+
+      const chooseButton = document.createElement("button");
+      chooseButton.type = "button";
+      chooseButton.className = "reservation-history-button choice";
+      chooseButton.textContent = "Préciser le retour";
+      chooseButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+      chooseButton.addEventListener("click", () => {
+        void setReservationReturnDecision(entry.reservationId);
+      });
 
       cancelButton.type = "button";
       cancelButton.className = "reservation-history-button cancel";
@@ -8347,7 +8369,8 @@ function renderPanel() {
       item.append(signatureField);
       if (!isReadOnlyArchive) setupInlineSignatureCanvas(signatureCanvas);
 
-      actions.append(movementButton, removeButton, cancelButton);
+      const returnsToAgency = activeReservation.returnsToAgency ?? entry.returnsToAgency;
+      actions.append(returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton, cancelButton);
       item.append(actions);
     }
     item.append(date);
@@ -8986,6 +9009,28 @@ async function archiveReservationKey(reservationId) {
   await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
 }
 
+async function setReservationReturnDecision(reservationId) {
+  const sourceKey = getSelectedKey();
+  const sourceSet = getSetForReservation(sourceKey, reservationId);
+  if (!sourceKey || !sourceSet) return;
+  const returnsToAgency = await promptReservationReturn();
+  if (returnsToAgency === null) return;
+  const key = getSelectedKey();
+  const set = getSetForReservation(key, reservationId);
+  const reservation = set?.reservations?.find((item) => item.id === reservationId);
+  if (!key || key.id !== sourceKey.id || !set || set.id !== sourceSet.id || key.archived ||
+    !reservation || typeof reservation.returnsToAgency === "boolean") return;
+  selectedSetId = set.id;
+  updateSelectedSet({
+    reservations: set.reservations.map((reservation) => reservation.id === reservationId
+      ? { ...reservation, returnsToAgency } : reservation),
+    history: set.history.map((entry) => entry.reservationId === reservationId && entry.type === "reserved"
+      ? { ...entry, returnsToAgency } : entry),
+  });
+  markKeyControlActionForSync(key.id, { keysChanged: true });
+  await syncCloudAfterAction();
+}
+
 async function reserveSelectedSet() {
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
@@ -9002,7 +9047,13 @@ async function reserveSelectedSet() {
 
   const reservationDateTime = await promptReservationDateTime();
   if (!reservationDateTime) return;
+  const returnsToAgency = await promptReservationReturn();
+  if (returnsToAgency === null) return;
   clearTimeout(detailCloseTimer);
+
+  const currentKey = getSelectedKey();
+  const currentSet = getSelectedSet(currentKey);
+  if (!currentKey || currentKey.id !== key.id || !currentSet || currentSet.id !== selectedSet.id) return;
 
   const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
@@ -9022,6 +9073,7 @@ async function reserveSelectedSet() {
     date: createdAt,
     createdAt,
     reservationDate: formattedDate,
+    returnsToAgency,
   };
 
   updateSelectedSet({
@@ -9034,10 +9086,11 @@ async function reserveSelectedSet() {
         note: entry.note || "",
         createdAt,
         reservationDate: formattedDate,
+        returnsToAgency,
       },
-      ...(selectedSet.reservations || []),
+      ...(currentSet.reservations || []),
     ],
-    history: [entry, ...selectedSet.history],
+    history: [entry, ...currentSet.history],
   });
   logActivity(
     "R\u00e9serv\u00e9",
@@ -9055,6 +9108,29 @@ async function reserveSelectedSet() {
   const actionArchivesChanged = Boolean(selectedArchiveRecord);
   if (selectedArchiveRecord) renderCompromisesPanel();
   await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
+}
+
+function promptReservationReturn() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "date-dialog reservation-return-dialog";
+  dialog.innerHTML = `
+    <form method="dialog">
+      <h3>Le jeu de clés sera-t-il ramené à l'agence par l'intervenant ?</h3>
+      <div>
+        <button value="yes" type="submit">Oui</button>
+        <button value="no" type="submit">Non</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      const answer = dialog.returnValue === "yes" ? true : dialog.returnValue === "no" ? false : null;
+      dialog.remove();
+      resolve(answer);
+    }, { once: true });
+    dialog.showModal();
+  });
 }
 
 function promptReservationDateTime() {
