@@ -533,6 +533,51 @@ async function main() {
           actionCount: withPhoto ? 3 : 2,
         });
       }
+      for (const setCount of [2, 3, 4]) {
+        const layout = await page.evaluate((count) => {
+          const key = getSelectedKey();
+          const photo = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+          renderKeySetPhotos({
+            ...key,
+            sets: Array.from({ length: count }, (_, index) => ({
+              ...key.sets[0], id: `photo-layout-${index}`, label: `Jeu ${index + 1}`, photo,
+            })),
+          });
+          const cards = [...keySetPhotoList.querySelectorAll(".key-set-photo-card")];
+          const cardRects = cards.map((card) => card.getBoundingClientRect());
+          const listRect = keySetPhotoList.getBoundingClientRect();
+          return {
+            columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
+            firstRowAligned: Math.abs(cardRects[0].top - cardRects[1].top) < 1,
+            secondColumnRight: cardRects[1].left > cardRects[0].right,
+            secondRowAligned: count < 3 || (Math.abs(cardRects[2].left - cardRects[0].left) < 1 && cardRects[2].top > cardRects[0].bottom),
+            fourthAligned: count < 4 || (Math.abs(cardRects[3].left - cardRects[1].left) < 1 && Math.abs(cardRects[3].top - cardRects[2].top) < 1),
+            lastCardHalfWidth: count !== 3 || Math.abs(cardRects[2].width - cardRects[0].width) < 1,
+            cardsFit: cards.every((card, index) => {
+              const preview = card.querySelector(".photo-preview");
+              const previewRect = preview.getBoundingClientRect();
+              const buttons = [...card.querySelectorAll(".photo-actions > *")];
+              return cardRects[index].left >= listRect.left && cardRects[index].right <= listRect.right &&
+                card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
+                buttons.length === 3 && buttons.every((button) => {
+                  const rect = button.getBoundingClientRect();
+                  return rect.left >= cardRects[index].left && rect.right <= cardRects[index].right &&
+                    rect.top >= cardRects[index].top && rect.bottom <= cardRects[index].bottom &&
+                    button.scrollWidth <= button.clientWidth;
+                });
+            }),
+          };
+        }, setCount);
+        assert.deepEqual(layout, {
+          columns: 2,
+          firstRowAligned: true,
+          secondColumnRight: true,
+          secondRowAligned: true,
+          fourthAligned: true,
+          lastCardHalfWidth: true,
+          cardsFit: true,
+        }, `${setCount} photo cards at ${width}px`);
+      }
       for (const [imageWidth, imageHeight] of [[200, 300], [300, 200]]) {
         await page.evaluate(({ imageWidth: sourceWidth, imageHeight: sourceHeight }) => {
           const canvas = document.createElement("canvas");

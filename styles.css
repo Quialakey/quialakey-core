@@ -2453,6 +2453,10 @@ body.is-moving-key .photo-hover {
   gap: 10px;
 }
 
+.key-set-photo-list.is-multi-set {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .key-set-photo-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 0.72fr);
@@ -2463,6 +2467,18 @@ body.is-moving-key .photo-hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #d8dcd8;
+}
+
+.key-set-photo-list.is-multi-set .key-set-photo-card {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 300px;
+  padding: 7px;
+}
+
+.key-set-photo-list.is-multi-set .photo-actions {
+  grid-auto-rows: 42px;
+  gap: 5px;
 }
 
 .key-set-photo-card.is-selected {
