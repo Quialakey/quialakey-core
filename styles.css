@@ -2488,6 +2488,7 @@ body.is-moving-key .photo-hover {
 .key-set-photo-list.is-three-set .photo-button,
 .key-set-photo-list.is-three-set .photo-delete-button {
   padding-inline: 2px;
+  font-size: 9px;
 }
 
 .key-set-photo-card.is-selected {

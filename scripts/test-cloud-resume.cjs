@@ -571,8 +571,10 @@ async function main() {
                     button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight &&
                     (!textRect || (textRect.left >= rect.left && textRect.right <= rect.right &&
                       textRect.top >= rect.top && textRect.bottom <= rect.bottom));
-                });
+              });
             }),
+            buttonFonts: cards.every((card) => [...card.querySelectorAll(".photo-actions > *")]
+              .every((button) => getComputedStyle(button).fontSize === (count === 3 ? "9px" : "11px"))),
           };
         }, setCount);
         assert.deepEqual(layout, {
@@ -583,6 +585,7 @@ async function main() {
           secondRowAligned: true,
           fourthAligned: true,
           cardsFit: true,
+          buttonFonts: true,
         }, `${setCount} photo cards at ${width}px`);
       }
       for (const [imageWidth, imageHeight] of [[200, 300], [300, 200]]) {
