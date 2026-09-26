@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-3";
+const appBuildVersion = "20260926-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9361,6 +9361,24 @@ keySetCountSelect.addEventListener("change", () => {
     render();
   }
 });
+document.addEventListener("pointerdown", (event) => {
+  const key = getSelectedKey();
+  if (!key || isPendingNewKeyDraft(key.id)) return;
+  const target = event.target;
+  const clickedKeyInfo = protectedKeyInfoInputs.some((input) => input.closest("label")?.contains(target));
+  const clickedKeySetCount = target.closest?.(".key-set-count-field");
+  const shouldRelockKeyInfo = isKeyInfoEditUnlocked && hasProtectedKeyInfo(key) && !clickedKeyInfo;
+  const shouldRelockKeySetCount = isKeySetCountEditUnlocked && !clickedKeySetCount;
+  if (!shouldRelockKeyInfo && !shouldRelockKeySetCount) return;
+
+  if (shouldRelockKeyInfo && isProtectedKeyInfoInputActive() &&
+    !keyInfoDraftMatchesKey(getKeyInfoDraftChanges(), key)) captureActiveKeyInfoDraft();
+  if (shouldRelockKeyInfo) isKeyInfoEditUnlocked = false;
+  if (shouldRelockKeySetCount) isKeySetCountEditUnlocked = false;
+  setTimeout(() => {
+    if (selectedId === key.id && !detailPanel.hidden) render();
+  }, 0);
+}, true);
 keySetSelect.addEventListener("change", () => {
   selectedSetId = keySetSelect.value;
   clearSignature();

@@ -409,6 +409,17 @@ async function main() {
       button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch" }));
     });
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    await page.locator("#movementNameInput").click();
+    await page.waitForFunction(() => document.querySelector("#keySetCountSelect").hidden);
+    assert.equal(await page.evaluate(() => document.activeElement.id), "movementNameInput");
+    let repeatedCountConfirmation = "";
+    page.once("dialog", (dialog) => {
+      repeatedCountConfirmation = dialog.message();
+      return dialog.accept();
+    });
+    await page.locator("#keySetCountUnlockBtn").dblclick();
+    assert.equal(repeatedCountConfirmation, countConfirmation);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
     await page.evaluate(() => {
       resetKeyInfoEditUnlock(getSelectedKey());
       render();
@@ -433,6 +444,27 @@ async function main() {
     });
     await page.locator("#ownerInput").dblclick();
     assert.equal(detailsConfirmation, 'Souhaitez-vous apporter des modifications sur la fiche clé du bien de monsieur et/ou madame "MEYER" ?');
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator("#ownerInput").dblclick();
+    assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
+    await page.locator("#propertyInput").click();
+    assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
+    await page.locator("#notesInput").fill("Note conservée au reverrouillage");
+    await page.locator("#movementNameInput").click();
+    await page.waitForFunction(() => document.querySelector("#ownerInput").readOnly);
+    assert.equal(await page.evaluate(() => document.activeElement.id), "movementNameInput");
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").notes), "Note conservée au reverrouillage");
+    let repeatedDetailsConfirmation = "";
+    page.once("dialog", (dialog) => {
+      repeatedDetailsConfirmation = dialog.message();
+      return dialog.dismiss();
+    });
+    await page.locator("#ownerInput").dblclick();
+    assert.equal(repeatedDetailsConfirmation, detailsConfirmation);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator("#ownerInput").dblclick();
+    await page.locator("#selectedTitle").click();
+    await page.waitForFunction(() => document.querySelector("#ownerInput").readOnly);
 
     await page.evaluate(() => {
       const blankKey = keys.find((key) => key.id === "T3-2");
