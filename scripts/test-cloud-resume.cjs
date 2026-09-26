@@ -550,7 +550,7 @@ async function main() {
           const listRect = keySetPhotoList.getBoundingClientRect();
           return {
             columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
-            selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(202, 235, 213)" &&
+            selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(85, 170, 115)" &&
               getComputedStyle(cards[0]).outlineWidth === "3px" &&
               cards.slice(1).every((card) => getComputedStyle(card).outlineStyle === "none"),
             firstRowAligned: Math.abs(cardRects[0].top - cardRects[1].top) < 1,
