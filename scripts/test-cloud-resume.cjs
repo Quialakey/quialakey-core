@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const { PNG } = require("pngjs");
 
 async function main() {
   const root = path.resolve(__dirname, "..");
@@ -494,7 +495,7 @@ async function main() {
     assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     const photoCardViewport = page.viewportSize();
-    for (const width of [320, 1280]) {
+    for (const width of [320, 428, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       for (const withPhoto of [false, true]) {
         const layout = await page.evaluate((photoPresent) => {
@@ -531,6 +532,29 @@ async function main() {
           noOverflow: true,
           actionCount: withPhoto ? 3 : 2,
         });
+      }
+      for (const [imageWidth, imageHeight] of [[200, 300], [300, 200]]) {
+        await page.evaluate(({ imageWidth: sourceWidth, imageHeight: sourceHeight }) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = sourceWidth;
+          canvas.height = sourceHeight;
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#ff0000";
+          context.fillRect(0, 0, sourceWidth, sourceHeight / 2);
+          context.fillStyle = "#0000ff";
+          context.fillRect(0, sourceHeight / 2, sourceWidth, sourceHeight / 2);
+          const key = getSelectedKey();
+          renderKeySetPhotos({ ...key, sets: [{ ...key.sets[0], photo: canvas.toDataURL("image/png") }] });
+        }, { imageWidth, imageHeight });
+        const screenshot = PNG.sync.read(await page.locator(".photo-preview").screenshot());
+        const colorAt = (x, y) => {
+          const offset = (Math.floor(y * screenshot.height) * screenshot.width + Math.floor(x * screenshot.width)) * 4;
+          return [...screenshot.data.subarray(offset, offset + 3)];
+        };
+        const top = colorAt(0.5, 0.3);
+        const bottom = colorAt(0.5, 0.7);
+        assert.ok(top[0] > 200 && top[2] < 50, `Photo top cropped at ${width}px (${imageWidth}x${imageHeight}): ${top}`);
+        assert.ok(bottom[2] > 200 && bottom[0] < 50, `Photo bottom cropped at ${width}px (${imageWidth}x${imageHeight}): ${bottom}`);
       }
     }
     await page.setViewportSize(photoCardViewport);

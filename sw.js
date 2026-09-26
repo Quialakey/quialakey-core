@@ -1,6 +1,6 @@
 const workerUrl = new URL(self.location.href);
 const agencyCacheId = String(workerUrl.searchParams.get("agency") || "default-agency").replace(/[^a-z0-9-]/gi, "-");
-const appVersion = "20260926-5";
+const appVersion = "20260926-6";
 const runtimeCachePrefix = `quialakey-runtime-${agencyCacheId}-`;
 const runtimeCacheName = `${runtimeCachePrefix}${appVersion}`;
 const workerBaseUrl = new URL("./", self.location.href);
