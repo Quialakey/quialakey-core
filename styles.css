@@ -2473,6 +2473,25 @@ body.is-moving-key .photo-hover {
   background: #d8dcd8;
 }
 
+.key-set-photo-card.empty {
+  background: var(--empty-tile);
+}
+
+.key-set-photo-card.available {
+  border-color: #55aa73;
+  background: #caebd5;
+}
+
+.key-set-photo-card.reserved {
+  border-color: #d18427;
+  background: #f8d19a;
+}
+
+.key-set-photo-card.out {
+  border-color: #ce6a60;
+  background: #f2cec8;
+}
+
 .key-set-photo-list.is-multi-set .key-set-photo-card {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
@@ -2492,7 +2511,7 @@ body.is-moving-key .photo-hover {
 }
 
 .key-set-photo-list.is-multi-set .key-set-photo-card.is-selected {
-  outline: 3px solid #55aa73;
+  outline: 3px solid var(--c21-charcoal);
 }
 
 .key-form.is-archive-view .key-set-photo-card {
@@ -2528,7 +2547,7 @@ body.is-moving-key .photo-hover {
   border: 1px dashed #b8c1bd;
   border-radius: 8px;
   color: var(--muted);
-  background: #d8dcd8;
+  background: inherit;
 }
 
 .photo-preview img[role="button"] {
@@ -2553,8 +2572,8 @@ body.is-moving-key .photo-hover {
 
 @media (hover: hover) and (pointer: fine) {
   .photo-set-select {
-    padding: 2px 3px;
-    font-size: 13px;
+    padding: 3px 5px;
+    font-size: 14.3px;
   }
 }
 

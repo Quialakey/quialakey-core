@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-15";
+const appBuildVersion = "20260926-16";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -7797,6 +7797,7 @@ function renderKeySetPhotos(key) {
   keySetPhotoList.classList.toggle("is-three-set", key.sets.length === 3);
   const isArchiveView = Boolean(selectedArchiveRecord);
   const canEditPhotos = !isArchiveView || isSelectedCompromiseEditable();
+  const isFilled = isKeyFilled(key);
 
   key.sets.forEach((set) => {
     const item = document.createElement("article");
@@ -7810,7 +7811,8 @@ function renderKeySetPhotos(key) {
     const importButtonText = document.createElement("span");
     const importInput = document.createElement("input");
 
-    item.className = `key-set-photo-card${set.id === selectedSetId ? " is-selected" : ""}`;
+    const displayStatus = isArchiveView ? "archived" : isFilled ? getSetDisplayStatus(set) : "empty";
+    item.className = `key-set-photo-card ${displayStatus}${set.id === selectedSetId ? " is-selected" : ""}`;
     title.type = "button";
     title.className = "photo-set-select";
     title.textContent = set.label;

@@ -517,8 +517,8 @@ async function main() {
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
             noSelectedOutline: getComputedStyle(card).outlineStyle === "none",
-            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "13px" &&
-              titleRect.height >= 18 && titleRect.height <= 21 &&
+            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "14.3px" &&
+              titleRect.height >= 21 && titleRect.height <= 24 &&
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
             actionsFit: actions.every((action) => {
               const rect = action.getBoundingClientRect();
@@ -556,7 +556,7 @@ async function main() {
           const listRect = keySetPhotoList.getBoundingClientRect();
           return {
             columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
-            selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(85, 170, 115)" &&
+            selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(63, 63, 63)" &&
               getComputedStyle(cards[0]).outlineWidth === "3px" &&
               cards.slice(1).every((card) => getComputedStyle(card).outlineStyle === "none"),
             firstRowAligned: Math.abs(cardRects[0].top - cardRects[1].top) < 1,
@@ -574,8 +574,8 @@ async function main() {
                 card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
                 titleRect.left >= previewRect.left && titleRect.right <= previewRect.right &&
                 titleRect.top >= previewRect.top && titleRect.bottom <= previewRect.bottom &&
-                getComputedStyle(title).fontSize === "13px" &&
-                titleRect.height >= 18 && titleRect.height <= 21 &&
+                getComputedStyle(title).fontSize === "14.3px" &&
+                titleRect.height >= 21 && titleRect.height <= 24 &&
                 buttons.length === 3 && buttons.every((button) => {
                   const rect = button.getBoundingClientRect();
                   const text = button.querySelector("span");
@@ -604,6 +604,40 @@ async function main() {
           buttonFonts: true,
         }, `${setCount} photo cards at ${width}px`);
       }
+      const photoStatuses = await page.evaluate(() => {
+        const key = getSelectedKey();
+        const states = ["available", "reserved", "out"];
+        renderKeySetPhotos({ ...key, sets: states.map((status, index) => ({
+          ...key.sets[0],
+          id: `status-${index}`,
+          label: `Jeu ${index + 1}`,
+          status: status === "out" ? "out" : "available",
+          reservations: status === "reserved" ? [{ id: "test-reservation", createdAt: "2026-09-26T12:00:00Z" }] : [],
+          photo: "",
+        })) });
+        const matchesTile = (card, status) => {
+          const tile = document.createElement("button");
+          tile.className = `key-tile ${status}`;
+          document.body.append(tile);
+          const cardStyle = getComputedStyle(card);
+          const tileStyle = getComputedStyle(tile);
+          const previewStyle = getComputedStyle(card.querySelector(".photo-preview"));
+          const matches = card.classList.contains(status) &&
+            cardStyle.backgroundColor === tileStyle.backgroundColor &&
+            cardStyle.borderColor === tileStyle.borderColor &&
+            previewStyle.backgroundColor === cardStyle.backgroundColor;
+          tile.remove();
+          return matches;
+        };
+        const activeCards = [...keySetPhotoList.querySelectorAll(".key-set-photo-card")];
+        const activeMatch = states.every((status, index) => matchesTile(activeCards[index], status));
+        renderKeySetPhotos({
+          id: "T3-1", category: "T3", number: 1, owner: "", property: "", postalCode: "", city: "", notes: "",
+          sets: [makeKeySet("main")],
+        });
+        return { activeMatch, emptyMatch: matchesTile(keySetPhotoList.querySelector(".key-set-photo-card"), "empty") };
+      });
+      assert.deepEqual(photoStatuses, { activeMatch: true, emptyMatch: true });
       for (const [imageWidth, imageHeight] of [[200, 300], [300, 200]]) {
         await page.evaluate(({ imageWidth: sourceWidth, imageHeight: sourceHeight }) => {
           const canvas = document.createElement("canvas");
