@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-18";
+const appBuildVersion = "20260926-19";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8192,6 +8192,9 @@ function renderPanel() {
     activeReservationItems
       .sort((first, second) => first.timestamp - second.timestamp)
       .forEach(({ item }) => activeReservationPanel.append(item));
+    const heading = activeReservationItems.length === 1 ? "Réservation en cours" : "Réservations en cours";
+    activeReservationPanel.dataset.heading = heading;
+    activeReservationPanel.setAttribute("aria-label", heading);
     activeReservationPanel.hidden = !activeReservationItems.length;
   };
 

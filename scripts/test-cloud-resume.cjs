@@ -75,6 +75,51 @@ async function main() {
     assert.equal(indexedStorageReady, true);
     assert.equal(await page.locator("#keyForm").evaluate((element) => element.tagName), "DIV");
     assert.equal(await page.locator("#propertyInput").evaluate((element) => element.closest("form")), null);
+    const reservationHeadings = await page.evaluate(() => {
+      const originalKeys = keys;
+      const originalSelectedId = selectedId;
+      const originalSelectedSetId = selectedSetId;
+      try {
+        selectedId = "T3-1";
+        selectedSetId = "main";
+        return [1, 2].map((count) => {
+          const reservations = Array.from({ length: count }, (_, index) => ({
+            id: `reservation-${index}`,
+            reservationDate: "2026-09-26T18:00:00Z",
+            createdAt: "2026-09-26T12:00:00Z",
+          }));
+          keys = originalKeys.map((key) => key.id === selectedId ? {
+            ...key,
+            sets: [{
+              ...key.sets[0],
+              reservations,
+              history: reservations.map((reservation) => ({
+                id: `history-${reservation.id}`,
+                type: "reserved",
+                reservationId: reservation.id,
+                date: "26/09/2026 12:00",
+              })),
+            }],
+          } : key);
+          renderPanel();
+          return {
+            count: activeReservationPanel.children.length,
+            heading: activeReservationPanel.dataset.heading,
+            accessibleHeading: activeReservationPanel.getAttribute("aria-label"),
+            visibleHeading: getComputedStyle(activeReservationPanel, "::before").content,
+          };
+        });
+      } finally {
+        keys = originalKeys;
+        selectedId = originalSelectedId;
+        selectedSetId = originalSelectedSetId;
+        renderPanel();
+      }
+    });
+    assert.deepEqual(reservationHeadings, [
+      { count: 1, heading: "Réservation en cours", accessibleHeading: "Réservation en cours", visibleHeading: '"Réservation en cours"' },
+      { count: 2, heading: "Réservations en cours", accessibleHeading: "Réservations en cours", visibleHeading: '"Réservations en cours"' },
+    ]);
 
     await page.evaluate(() => enterCloudSleep());
     remoteStatus = "available";
