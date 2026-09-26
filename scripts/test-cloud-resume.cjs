@@ -342,6 +342,48 @@ async function main() {
       }
     });
     assert.deepEqual(otherStorageWrites, { locationPending: true, archivesPending: true });
+    await page.evaluate(() => {
+      selectedId = "T3-1";
+      selectedSetId = "main";
+      render();
+    });
+    assert.equal(await page.locator("#keySetCountLabel").textContent(), "Nombre total de jeux de clés");
+    assert.equal(await page.locator(".movement-box legend").textContent(), "Mouvements des jeux de clés");
+    assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    await page.locator("#keySetCountUnlockBtn").click();
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
+    await page.locator("#keySetCountUnlockBtn").dblclick();
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator("#keySetCountSelect").selectOption("2");
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    await page.locator("#keySetSelect").selectOption("double");
+    assert.equal(await page.evaluate(() => selectedSetId), "double");
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    await page.evaluate(() => {
+      const button = document.querySelector("#keySetCountUnlockBtn");
+      button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch" }));
+      button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch" }));
+    });
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    await page.evaluate(() => {
+      resetKeyInfoEditUnlock(getSelectedKey());
+      render();
+      const select = document.querySelector("#keySetCountSelect");
+      select.value = "1";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    await page.locator("#keySetCountUnlockBtn").dblclick();
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.locator("#keySetCountSelect").selectOption("1");
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {
     await browser?.close();

@@ -2346,8 +2346,39 @@ body.is-moving-key .photo-hover {
   text-align: center;
 }
 
-.key-form label {
+.key-form label,
+.key-set-count-field {
+  display: grid;
   gap: 5px;
+}
+
+.key-set-count-field {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.key-set-count-locked {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid #aeb7af;
+  border-radius: 8px;
+  color: #2d3330;
+  background: #cfd4cf;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--soft-shadow);
+  font-weight: 700;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.key-set-count-locked[hidden] {
+  display: none;
+}
+
+.key-set-count-locked:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .key-form input,

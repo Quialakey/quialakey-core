@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260923-4";
+const appBuildVersion = "20260926-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -747,6 +747,7 @@ const detailPanel = document.querySelector("#detailPanel");
 const form = document.querySelector("#keyForm");
 const selectedTitle = document.querySelector("#selectedTitle");
 const statusPill = document.querySelector("#statusPill");
+const keySetCountUnlockBtn = document.querySelector("#keySetCountUnlockBtn");
 const keySetCountSelect = document.querySelector("#keySetCountSelect");
 const propertyInput = document.querySelector("#propertyInput");
 const postalCodeInput = document.querySelector("#postalCodeInput");
@@ -881,6 +882,8 @@ let isPhotoImporting = false;
 let photoImportResetTimer = null;
 let undoSnapshot = null;
 let isKeyInfoEditUnlocked = false;
+let isKeySetCountEditUnlocked = false;
+let lastKeySetCountTapAt = 0;
 let expandedKeyHistoryIds = new Set();
 let expandedKeyDetailsIds = new Set();
 const recentlyClearedKeySlots = new Map();
@@ -4303,6 +4306,16 @@ function hasProtectedKeyInfo(key) {
 
 function resetKeyInfoEditUnlock(key) {
   isKeyInfoEditUnlocked = key ? !hasProtectedKeyInfo(key) : false;
+  isKeySetCountEditUnlocked = false;
+  lastKeySetCountTapAt = 0;
+}
+
+function unlockKeySetCountEdit() {
+  if (isKeySetCountEditUnlocked || !getSelectedKey() || (selectedArchiveRecord && !isSelectedCompromiseEditable())) return;
+  isKeySetCountEditUnlocked = true;
+  lastKeySetCountTapAt = 0;
+  render();
+  keySetCountSelect.focus({ preventScroll: true });
 }
 
 function unlockKeyInfoEdit(event) {
@@ -7923,6 +7936,7 @@ function renderPanel() {
     statusPill.append(item);
   });
   keySetCountSelect.value = String(key.sets.length);
+  keySetCountUnlockBtn.textContent = keySetCountSelect.selectedOptions[0]?.textContent || `${key.sets.length} jeux`;
   renderKeySetSelect(key);
   renderKeySetPhotos(key);
   if (!isSavingKeyInfoDraft && !isProtectedKeyInfoInputActive()) {
@@ -7973,6 +7987,9 @@ function renderPanel() {
   duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   keySetCountSelect.disabled = isReadOnlyArchive;
+  keySetCountSelect.hidden = !isKeySetCountEditUnlocked;
+  keySetCountUnlockBtn.hidden = isKeySetCountEditUnlocked;
+  keySetCountUnlockBtn.disabled = isReadOnlyArchive;
   propertyInput.disabled = isArchiveView;
   postalCodeInput.disabled = isArchiveView;
   cityInput.disabled = isArchiveView;
@@ -9326,7 +9343,30 @@ protectedKeyInfoInputs.forEach((input) => {
 protectedKeyInfoInputs.forEach((input) => {
   input.addEventListener("dblclick", unlockKeyInfoEdit);
 });
-keySetCountSelect.addEventListener("change", () => setKeySetCount(Number(keySetCountSelect.value)));
+keySetCountUnlockBtn.addEventListener("dblclick", unlockKeySetCountEdit);
+keySetCountUnlockBtn.addEventListener("pointerup", (event) => {
+  if (event.pointerType === "mouse") return;
+  const now = Date.now();
+  if (now - lastKeySetCountTapAt < 450) unlockKeySetCountEdit();
+  else lastKeySetCountTapAt = now;
+});
+keySetCountUnlockBtn.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  unlockKeySetCountEdit();
+});
+keySetCountSelect.addEventListener("change", () => {
+  if (!isKeySetCountEditUnlocked) {
+    keySetCountSelect.value = String(getSelectedKey()?.sets.length || 1);
+    return;
+  }
+  try {
+    setKeySetCount(Number(keySetCountSelect.value));
+  } finally {
+    isKeySetCountEditUnlocked = false;
+    render();
+  }
+});
 keySetSelect.addEventListener("change", () => {
   selectedSetId = keySetSelect.value;
   clearSignature();
