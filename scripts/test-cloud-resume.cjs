@@ -493,6 +493,47 @@ async function main() {
     });
     assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    const photoCardViewport = page.viewportSize();
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const withPhoto of [false, true]) {
+        const layout = await page.evaluate((photoPresent) => {
+          const key = getSelectedKey();
+          const photo = photoPresent
+            ? "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+            : "";
+          renderKeySetPhotos({ ...key, sets: [{ ...key.sets[0], photo }] });
+          const card = keySetPhotoList.querySelector(".key-set-photo-card");
+          const preview = card.querySelector(".photo-preview");
+          const title = preview.querySelector("strong");
+          const actions = [...card.querySelectorAll(".photo-actions > *")];
+          const cardRect = card.getBoundingClientRect();
+          const previewRect = preview.getBoundingClientRect();
+          const titleRect = title.getBoundingClientRect();
+          return {
+            height: cardRect.height,
+            titleInsidePreview: titleRect.left >= previewRect.left && titleRect.top >= previewRect.top &&
+              titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
+            titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
+            actionsFit: actions.every((action) => {
+              const rect = action.getBoundingClientRect();
+              return rect.top >= cardRect.top && rect.bottom <= cardRect.bottom;
+            }),
+            noOverflow: card.scrollHeight <= card.clientHeight,
+            actionCount: actions.length,
+          };
+        }, withPhoto);
+        assert.deepEqual(layout, {
+          height: 165,
+          titleInsidePreview: true,
+          titleTopLeft: true,
+          actionsFit: true,
+          noOverflow: true,
+          actionCount: withPhoto ? 3 : 2,
+        });
+      }
+    }
+    await page.setViewportSize(photoCardViewport);
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {
     await browser?.close();

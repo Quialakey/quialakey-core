@@ -2456,7 +2456,9 @@ body.is-moving-key .photo-hover {
 .key-set-photo-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 0.72fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 6px;
+  height: 165px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2478,15 +2480,13 @@ body.is-moving-key .photo-hover {
   opacity: 1;
 }
 
-.key-set-photo-card strong {
-  grid-column: 1 / -1;
-  font-size: 13px;
-}
-
 .photo-actions {
   display: grid;
   grid-template-columns: 1fr;
+  grid-auto-rows: 42px;
+  align-content: center;
   gap: 8px;
+  min-height: 0;
 }
 
 .photo-actions.single-action {
@@ -2494,9 +2494,10 @@ body.is-moving-key .photo-hover {
 }
 
 .photo-preview {
+  position: relative;
   display: grid;
   place-items: center;
-  min-height: 94px;
+  min-height: 0;
   overflow: hidden;
   border: 1px dashed #b8c1bd;
   border-radius: 8px;
@@ -2508,10 +2509,23 @@ body.is-moving-key .photo-hover {
   cursor: zoom-in;
 }
 
+.photo-preview strong {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  left: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--ink);
+  background: rgba(238, 241, 239, 0.9);
+  font-size: 12px;
+  line-height: 1.15;
+}
+
 .photo-preview img {
   width: 100%;
   height: 100%;
-  max-height: 160px;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -3512,10 +3526,6 @@ body.is-moving-key .photo-hover {
     grid-template-columns: minmax(0, 1fr) minmax(128px, 0.78fr);
     gap: 6px;
     padding: 7px;
-  }
-
-  .photo-preview {
-    min-height: 86px;
   }
 }
 

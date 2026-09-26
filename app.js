@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-4";
+const appBuildVersion = "20260926-5";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -7811,6 +7811,7 @@ function renderKeySetPhotos(key) {
     item.className = `key-set-photo-card${set.id === selectedSetId ? " is-selected" : ""}`;
     title.textContent = set.label;
     preview.className = "photo-preview";
+    preview.append(title);
     if (set.photo) {
       const image = document.createElement("img");
       image.src = set.photo;
@@ -7876,7 +7877,7 @@ function renderKeySetPhotos(key) {
       actions.append(deleteButton);
     }
 
-    item.append(title, preview, actions);
+    item.append(preview, actions);
     keySetPhotoList.append(item);
   });
 }
