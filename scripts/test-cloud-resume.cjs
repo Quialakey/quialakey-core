@@ -517,8 +517,8 @@ async function main() {
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
             noSelectedOutline: getComputedStyle(card).outlineStyle === "none",
-            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "16px" &&
-              titleRect.height >= 23 && titleRect.height <= 26 &&
+            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "13px" &&
+              titleRect.height >= 18 && titleRect.height <= 21 &&
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
             actionsFit: actions.every((action) => {
               const rect = action.getBoundingClientRect();
@@ -574,8 +574,8 @@ async function main() {
                 card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
                 titleRect.left >= previewRect.left && titleRect.right <= previewRect.right &&
                 titleRect.top >= previewRect.top && titleRect.bottom <= previewRect.bottom &&
-                getComputedStyle(title).fontSize === "16px" &&
-                titleRect.height >= 23 && titleRect.height <= 26 &&
+                getComputedStyle(title).fontSize === "13px" &&
+                titleRect.height >= 18 && titleRect.height <= 21 &&
                 buttons.length === 3 && buttons.every((button) => {
                   const rect = button.getBoundingClientRect();
                   const text = button.querySelector("span");
@@ -656,6 +656,30 @@ async function main() {
     await page.locator(".photo-preview img").first().click();
     assert.equal(await page.locator(".photo-viewer").isVisible(), true);
     await page.locator(".photo-viewer-close").click();
+    for (const width of [390, 820]) {
+      const touchPage = await browser.newPage({
+        viewport: { width, height: 800 }, isMobile: true, hasTouch: true, serviceWorkers: "block",
+      });
+      try {
+        await touchPage.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "domcontentloaded" });
+        const labelStyle = await touchPage.evaluate(() => {
+          const label = document.createElement("button");
+          label.className = "photo-set-select";
+          document.body.append(label);
+          const style = getComputedStyle(label);
+          const result = {
+            finePointer: matchMedia("(hover: hover) and (pointer: fine)").matches,
+            fontSize: style.fontSize,
+            padding: style.padding,
+          };
+          label.remove();
+          return result;
+        });
+        assert.deepEqual(labelStyle, { finePointer: false, fontSize: "16px", padding: "3px 5px" });
+      } finally {
+        await touchPage.close();
+      }
+    }
     await page.setViewportSize(photoCardViewport);
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {

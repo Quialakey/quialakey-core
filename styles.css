@@ -2551,6 +2551,13 @@ body.is-moving-key .photo-hover {
   white-space: nowrap;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .photo-set-select {
+    padding: 2px 3px;
+    font-size: 13px;
+  }
+}
+
 .photo-set-select:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
