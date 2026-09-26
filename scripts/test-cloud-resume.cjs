@@ -517,7 +517,7 @@ async function main() {
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
             singleSelectedOutline: getComputedStyle(card).outlineColor === "rgb(0, 0, 0)" &&
-              getComputedStyle(card).outlineWidth === "3px",
+              getComputedStyle(card).outlineWidth === "2px",
             titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "14.3px" &&
               titleRect.height >= 21 && titleRect.height <= 24 &&
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
