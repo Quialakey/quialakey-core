@@ -2633,6 +2633,13 @@ body.is-moving-key .photo-hover {
   margin-bottom: 0;
 }
 
+.reservation-date-dialog h3 {
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+}
+
 .date-dialog input {
   min-height: 42px;
   padding: 0 10px;

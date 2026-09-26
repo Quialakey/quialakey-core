@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-1";
+const appBuildVersion = "20260926-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9054,10 +9054,10 @@ function promptReservationDateTime() {
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
   const defaultValue = now.toISOString().slice(0, 16);
   const dialog = document.createElement("dialog");
-  dialog.className = "date-dialog";
+  dialog.className = "date-dialog reservation-date-dialog";
   dialog.innerHTML = `
     <form method="dialog">
-      <h3>Date et heure de r\u00e9servation</h3>
+      <h3>DATE ET HEURE DE R\u00c9SERVATION</h3>
       <input type="datetime-local" value="${defaultValue}" required />
       <div>
         <button value="cancel" type="submit">Annuler</button>

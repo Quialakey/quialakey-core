@@ -160,6 +160,39 @@ async function main() {
     });
     assert.deepEqual(safeRendering, { photoInjectedElement: false, dialogInjectedElement: false });
 
+    const originalViewport = page.viewportSize();
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      const reservationHeading = await page.evaluate(async () => {
+        const result = promptReservationDateTime();
+        const dialog = document.querySelector(".reservation-date-dialog");
+        const heading = dialog.querySelector("h3");
+        const style = getComputedStyle(heading);
+        const headingRect = heading.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+        const layout = {
+          text: heading.textContent,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          textAlign: style.textAlign,
+          withinDialog: headingRect.left >= dialogRect.left && headingRect.right <= dialogRect.right,
+          noHorizontalOverflow: heading.scrollWidth <= heading.clientWidth,
+        };
+        dialog.close("cancel");
+        await result;
+        return layout;
+      });
+      assert.deepEqual(reservationHeading, {
+        text: "DATE ET HEURE DE RÉSERVATION",
+        fontSize: "18px",
+        fontWeight: "900",
+        textAlign: "center",
+        withinDialog: true,
+        noHorizontalOverflow: true,
+      });
+    }
+    await page.setViewportSize(originalViewport);
+
     const durableStorage = await page.evaluate(async () => {
       const storageKey = getRegistryConfig().keysStorageKey;
       const originalSetItem = Storage.prototype.setItem;
