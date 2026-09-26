@@ -517,7 +517,8 @@ async function main() {
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
             titleTopLeft: titleRect.left - previewRect.left <= 20 && titleRect.top - previewRect.top <= 20,
             noSelectedOutline: getComputedStyle(card).outlineStyle === "none",
-            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "24px" &&
+            titleStyle: title.tagName === "BUTTON" && getComputedStyle(title).fontSize === "16px" &&
+              titleRect.height >= 23 && titleRect.height <= 26 &&
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
             actionsFit: actions.every((action) => {
               const rect = action.getBoundingClientRect();
@@ -573,7 +574,8 @@ async function main() {
                 card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
                 titleRect.left >= previewRect.left && titleRect.right <= previewRect.right &&
                 titleRect.top >= previewRect.top && titleRect.bottom <= previewRect.bottom &&
-                getComputedStyle(title).fontSize === "24px" &&
+                getComputedStyle(title).fontSize === "16px" &&
+                titleRect.height >= 23 && titleRect.height <= 26 &&
                 buttons.length === 3 && buttons.every((button) => {
                   const rect = button.getBoundingClientRect();
                   const text = button.querySelector("span");

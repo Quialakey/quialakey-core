@@ -2541,11 +2541,11 @@ body.is-moving-key .photo-hover {
   top: 4px;
   left: 4px;
   max-width: calc(100% - 8px);
-  padding: 2px 4px;
+  padding: 3px 5px;
   border-radius: 4px;
   color: var(--ink);
   background: rgba(238, 241, 239, 0.78);
-  font-size: 24px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1.15;
   white-space: nowrap;
