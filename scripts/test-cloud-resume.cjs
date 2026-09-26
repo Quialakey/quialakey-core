@@ -387,9 +387,14 @@ async function main() {
     await page.locator("#keySetCountUnlockBtn").click();
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
+    let countConfirmation = "";
+    page.once("dialog", (dialog) => {
+      countConfirmation = dialog.message();
+      return dialog.accept();
+    });
     await page.locator("#keySetCountUnlockBtn").dblclick();
+    assert.equal(countConfirmation, 'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clé du bien de monsieur et/ou madame "MEYER" ?');
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.locator("#keySetCountSelect").selectOption("2");
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
     assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
@@ -397,6 +402,7 @@ async function main() {
     await page.locator("#keySetSelect").selectOption("double");
     assert.equal(await page.evaluate(() => selectedSetId), "double");
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    page.once("dialog", (dialog) => dialog.accept());
     await page.evaluate(() => {
       const button = document.querySelector("#keySetCountUnlockBtn");
       button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch" }));
@@ -412,10 +418,48 @@ async function main() {
     });
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
-    await page.locator("#keySetCountUnlockBtn").dblclick();
     page.once("dialog", (dialog) => dialog.dismiss());
-    await page.locator("#keySetCountSelect").selectOption("1");
+    await page.locator("#keySetCountUnlockBtn").dblclick();
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
+    await page.evaluate(() => {
+      resetKeyInfoEditUnlock(getSelectedKey());
+      render();
+    });
+    let detailsConfirmation = "";
+    page.once("dialog", (dialog) => {
+      detailsConfirmation = dialog.message();
+      return dialog.dismiss();
+    });
+    await page.locator("#ownerInput").dblclick();
+    assert.equal(detailsConfirmation, 'Souhaitez-vous apporter des modifications sur la fiche clé du bien de monsieur et/ou madame "MEYER" ?');
+
+    await page.evaluate(() => {
+      const blankKey = keys.find((key) => key.id === "T3-2");
+      selectedId = blankKey.id;
+      beginPendingNewKeyDraft(blankKey);
+      resetKeyInfoEditUnlock(blankKey);
+      render();
+    });
+    assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), false);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    const blankDialogs = [];
+    const onBlankDialog = (dialog) => {
+      blankDialogs.push(dialog.message());
+      return dialog.dismiss();
+    };
+    page.on("dialog", onBlankDialog);
+    await page.locator("#keySetCountSelect").selectOption("2");
+    page.off("dialog", onBlankDialog);
+    assert.deepEqual(blankDialogs, []);
+    assert.equal(await page.evaluate(() => pendingNewKeyDraft.sets.length), 2);
+    assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    await page.evaluate(() => {
+      pendingNewKeyDraft = { ...pendingNewKeyDraft, owner: "TEST" };
+      commitPendingNewKeyDraft();
+      render();
+    });
+    assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     process.stdout.write("Cloud startup, wake refresh, and retry checks passed.\n");
   } finally {

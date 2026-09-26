@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-2";
+const appBuildVersion = "20260926-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4311,7 +4311,11 @@ function resetKeyInfoEditUnlock(key) {
 }
 
 function unlockKeySetCountEdit() {
-  if (isKeySetCountEditUnlocked || !getSelectedKey() || (selectedArchiveRecord && !isSelectedCompromiseEditable())) return;
+  const key = getSelectedKey();
+  if (isKeySetCountEditUnlocked || !key || isPendingNewKeyDraft(key.id) ||
+    (selectedArchiveRecord && !isSelectedCompromiseEditable())) return;
+  const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
+  if (!confirm(`Souhaitez-vous ajouter ou supprimer un jeu de cl\u00e9s sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`)) return;
   isKeySetCountEditUnlocked = true;
   lastKeySetCountTapAt = 0;
   render();
@@ -4325,7 +4329,7 @@ function unlockKeyInfoEdit(event) {
 
   const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
   const confirmed = confirm(
-    `Souhaitez-vous apporter des modifications sur la fiche de cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`,
+    `Souhaitez-vous apporter des modifications sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`,
   );
   if (!confirmed) return;
 
@@ -7987,8 +7991,8 @@ function renderPanel() {
   duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   keySetCountSelect.disabled = isReadOnlyArchive;
-  keySetCountSelect.hidden = !isKeySetCountEditUnlocked;
-  keySetCountUnlockBtn.hidden = isKeySetCountEditUnlocked;
+  keySetCountSelect.hidden = !isKeySetCountEditUnlocked && !isNewKeyDraft;
+  keySetCountUnlockBtn.hidden = isKeySetCountEditUnlocked || isNewKeyDraft;
   keySetCountUnlockBtn.disabled = isReadOnlyArchive;
   propertyInput.disabled = isArchiveView;
   postalCodeInput.disabled = isArchiveView;
@@ -8484,16 +8488,6 @@ function setKeySetCount(count) {
   const nextCount = Math.max(1, Math.min(4, count));
   const previousCount = key.sets.length;
   if (nextCount === previousCount) return;
-
-  const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
-  const keyCountWord = nextCount > 1 ? "jeux" : "jeu";
-  const confirmedCount = confirm(
-    `Confirmez-vous la pr\u00e9sence de ${nextCount} ${keyCountWord} de cl\u00e9 pour le bien de monsieur et/ou madame "${ownerName}" ?`
-  );
-  if (!confirmedCount) {
-    keySetCountSelect.value = String(previousCount);
-    return;
-  }
 
   const nextIds = keySetOptions.slice(0, nextCount).map((option) => option.id);
   const removedSets = key.sets.filter((set) => !nextIds.includes(set.id));
@@ -9356,7 +9350,7 @@ keySetCountUnlockBtn.addEventListener("keydown", (event) => {
   unlockKeySetCountEdit();
 });
 keySetCountSelect.addEventListener("change", () => {
-  if (!isKeySetCountEditUnlocked) {
+  if (!isKeySetCountEditUnlocked && !isPendingNewKeyDraft()) {
     keySetCountSelect.value = String(getSelectedKey()?.sets.length || 1);
     return;
   }
