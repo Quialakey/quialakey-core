@@ -542,7 +542,7 @@ async function main() {
           renderKeySetPhotos({
             ...key,
             sets: Array.from({ length: count }, (_, index) => ({
-              ...key.sets[0], id: `photo-layout-${index}`, label: `Jeu ${index + 1}`, photo,
+              ...key.sets[0], id: index === 0 ? selectedSetId : `photo-layout-${index}`, label: `Jeu ${index + 1}`, photo,
             })),
           });
           const cards = [...keySetPhotoList.querySelectorAll(".key-set-photo-card")];
@@ -550,6 +550,9 @@ async function main() {
           const listRect = keySetPhotoList.getBoundingClientRect();
           return {
             columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
+            selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(28, 92, 60)" &&
+              getComputedStyle(cards[0]).outlineWidth === "3px" &&
+              cards.slice(1).every((card) => getComputedStyle(card).outlineStyle === "none"),
             firstRowAligned: Math.abs(cardRects[0].top - cardRects[1].top) < 1,
             secondColumnRight: cardRects[1].left > cardRects[0].right,
             thirdInFirstRow: count !== 3 || (Math.abs(cardRects[2].top - cardRects[0].top) < 1 && cardRects[2].left > cardRects[1].right),
@@ -579,6 +582,7 @@ async function main() {
         }, setCount);
         assert.deepEqual(layout, {
           columns: setCount === 3 ? 3 : 2,
+          selectedOutline: true,
           firstRowAligned: true,
           secondColumnRight: true,
           thirdInFirstRow: true,

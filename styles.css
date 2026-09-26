@@ -2492,7 +2492,7 @@ body.is-moving-key .photo-hover {
 }
 
 .key-set-photo-card.is-selected {
-  outline: 3px solid rgba(44, 96, 121, 0.22);
+  outline: 3px solid #1c5c3c;
 }
 
 .key-form.is-archive-view .key-set-photo-card {
