@@ -171,7 +171,15 @@ async function main() {
     ]);
     for (const [answer, expected] of [["yes", true], ["no", false]]) {
       const result = page.evaluate(() => promptReservationReturn());
-      await page.locator(`.reservation-return-dialog button[value="${answer}"]`).click();
+      const button = page.locator(`.reservation-return-dialog button[value="${answer}"]`);
+      const colors = await button.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, border: style.borderTopColor };
+      });
+      assert.deepEqual(colors, expected
+        ? { background: "rgb(191, 232, 205)", border: "rgb(61, 143, 94)" }
+        : { background: "rgb(241, 199, 194)", border: "rgb(185, 76, 67)" });
+      await button.click();
       assert.equal(await result, expected);
     }
     const savedReturnDecisions = await page.evaluate(async () => {

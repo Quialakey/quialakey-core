@@ -2746,6 +2746,16 @@ body.is-moving-key .photo-hover {
   font-weight: 700;
 }
 
+.reservation-return-dialog button[value="yes"] {
+  border: 2px solid #3d8f5e;
+  background: var(--green-soft);
+}
+
+.reservation-return-dialog button[value="no"] {
+  border: 2px solid #b94c43;
+  background: var(--red-soft);
+}
+
 .movement-box {
   display: grid;
   gap: 8px;
