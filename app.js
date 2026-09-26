@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20260926-7";
+const appBuildVersion = "20260926-8";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -7794,6 +7794,7 @@ function isSelectedCompromiseEditable() {
 function renderKeySetPhotos(key) {
   keySetPhotoList.innerHTML = "";
   keySetPhotoList.classList.toggle("is-multi-set", key.sets.length > 1);
+  keySetPhotoList.classList.toggle("is-three-set", key.sets.length === 3);
   const isArchiveView = Boolean(selectedArchiveRecord);
   const canEditPhotos = !isArchiveView || isSelectedCompromiseEditable();
 

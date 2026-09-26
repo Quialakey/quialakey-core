@@ -522,6 +522,7 @@ async function main() {
             }),
             noOverflow: card.scrollHeight <= card.clientHeight,
             actionCount: actions.length,
+            actionHeights: actions.every((action) => Math.abs(action.getBoundingClientRect().height - 34) < 1),
           };
         }, withPhoto);
         assert.deepEqual(layout, {
@@ -531,6 +532,7 @@ async function main() {
           actionsFit: true,
           noOverflow: true,
           actionCount: withPhoto ? 3 : 2,
+          actionHeights: true,
         });
       }
       for (const setCount of [2, 3, 4]) {
@@ -550,9 +552,9 @@ async function main() {
             columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
             firstRowAligned: Math.abs(cardRects[0].top - cardRects[1].top) < 1,
             secondColumnRight: cardRects[1].left > cardRects[0].right,
-            secondRowAligned: count < 3 || (Math.abs(cardRects[2].left - cardRects[0].left) < 1 && cardRects[2].top > cardRects[0].bottom),
+            thirdInFirstRow: count !== 3 || (Math.abs(cardRects[2].top - cardRects[0].top) < 1 && cardRects[2].left > cardRects[1].right),
+            secondRowAligned: count < 4 || (Math.abs(cardRects[2].left - cardRects[0].left) < 1 && cardRects[2].top > cardRects[0].bottom),
             fourthAligned: count < 4 || (Math.abs(cardRects[3].left - cardRects[1].left) < 1 && Math.abs(cardRects[3].top - cardRects[2].top) < 1),
-            lastCardHalfWidth: count !== 3 || Math.abs(cardRects[2].width - cardRects[0].width) < 1,
             cardsFit: cards.every((card, index) => {
               const preview = card.querySelector(".photo-preview");
               const previewRect = preview.getBoundingClientRect();
@@ -561,20 +563,25 @@ async function main() {
                 card.scrollHeight <= card.clientHeight && previewRect.height >= 100 &&
                 buttons.length === 3 && buttons.every((button) => {
                   const rect = button.getBoundingClientRect();
+                  const text = button.querySelector("span");
+                  const textRect = text?.getBoundingClientRect();
                   return rect.left >= cardRects[index].left && rect.right <= cardRects[index].right &&
                     rect.top >= cardRects[index].top && rect.bottom <= cardRects[index].bottom &&
-                    button.scrollWidth <= button.clientWidth;
+                    Math.abs(rect.height - 34) < 1 &&
+                    button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight &&
+                    (!textRect || (textRect.left >= rect.left && textRect.right <= rect.right &&
+                      textRect.top >= rect.top && textRect.bottom <= rect.bottom));
                 });
             }),
           };
         }, setCount);
         assert.deepEqual(layout, {
-          columns: 2,
+          columns: setCount === 3 ? 3 : 2,
           firstRowAligned: true,
           secondColumnRight: true,
+          thirdInFirstRow: true,
           secondRowAligned: true,
           fourthAligned: true,
-          lastCardHalfWidth: true,
           cardsFit: true,
         }, `${setCount} photo cards at ${width}px`);
       }

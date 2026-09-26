@@ -2457,6 +2457,10 @@ body.is-moving-key .photo-hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.key-set-photo-list.is-three-set {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .key-set-photo-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 0.72fr);
@@ -2477,8 +2481,13 @@ body.is-moving-key .photo-hover {
 }
 
 .key-set-photo-list.is-multi-set .photo-actions {
-  grid-auto-rows: 42px;
+  grid-auto-rows: 34px;
   gap: 5px;
+}
+
+.key-set-photo-list.is-three-set .photo-button,
+.key-set-photo-list.is-three-set .photo-delete-button {
+  padding-inline: 2px;
 }
 
 .key-set-photo-card.is-selected {
@@ -2499,7 +2508,7 @@ body.is-moving-key .photo-hover {
 .photo-actions {
   display: grid;
   grid-template-columns: 1fr;
-  grid-auto-rows: 42px;
+  grid-auto-rows: 34px;
   align-content: center;
   gap: 8px;
   min-height: 0;
@@ -2550,7 +2559,7 @@ body.is-moving-key .photo-hover {
 .photo-button {
   display: grid;
   place-items: center;
-  min-height: 42px;
+  min-height: 34px;
   padding: 0 10px;
   color: #fff;
   background: var(--blue);
@@ -2565,7 +2574,7 @@ body.is-moving-key .photo-hover {
 
 .photo-delete-button {
   appearance: none;
-  min-height: 42px;
+  min-height: 34px;
   padding: 0 10px;
   border: 2px solid #b94c43;
   border-radius: 8px;
