@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261001-3";
+const appBuildVersion = "20261001-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -5664,10 +5664,9 @@ function getRegistryHistoryEntries(registry) {
   const registryArchives = parseStoredArray(config.archivesStorageKey, []).map(normalizeArchive);
   const entries = [];
 
-  const addKeyMovements = (key, archiveId = "") => {
+  registryKeys.forEach((key) => {
     key.sets.forEach((set) => {
       set.history.forEach((movement) => {
-        if (archiveId && ["removed", "rented", "authenticated"].includes(movement.type)) return;
         const isReservationMovement = movement.type === "reserved";
         const movementDetails = isReservationMovement
           ? [
@@ -5681,7 +5680,6 @@ function getRegistryHistoryEntries(registry) {
         entries.push({
           keyId: key.id,
           setId: set.id,
-          ...(archiveId ? { archiveId } : {}),
           movementId: movement.id || "",
           timestamp: parseHistoryTimestamp(movement.date),
           date: movement.date || "Date non renseignée",
@@ -5690,17 +5688,15 @@ function getRegistryHistoryEntries(registry) {
           actor: movement.person || movement.company || "Intervenant non renseigné",
           actorPhone: movement.phone || "",
           details: movementDetails.filter(Boolean).join(" | "),
-          device: movement.device || "",
+          device: "",
           registry,
         });
       });
     });
-  };
-  registryKeys.forEach((key) => addKeyMovements(key));
+  });
 
   registryArchives.forEach((record) => {
     const key = record.key;
-    addKeyMovements(key, record.id);
     const archiveMovementType = record.reason === "removed" ? "removed" : "rented";
     const archiveSet = key.sets?.find((set) => set.history?.some((entry) => entry.type === archiveMovementType)) || key.sets?.[0] || {};
     const archiveMovement = [...(archiveSet.history || [])].find((entry) => entry.type === archiveMovementType);
@@ -5729,7 +5725,7 @@ function getRegistryHistoryEntries(registry) {
       actor: usesMovementActor ? archiveActor || "Intervenant non renseigné" : key.owner ? formatOwner(key.owner) : "Fiche clé",
       actorPhone: usesMovementActor ? archiveActorPhone || "" : "",
       details: usesMovementActor ? "" : [key.property || "", [key.postalCode, key.city].filter(Boolean).join(" ")].filter(Boolean).join(" - "),
-      device: archiveMovement?.device || "",
+      device: "",
       registry,
     });
   });
@@ -8675,129 +8671,6 @@ function updateSelectedSet(changes) {
   updateSelectedKey({ sets });
 }
 
-async function commitSelectedSetMovement(sourceKey, sourceSet, changes, movement) {
-  if (!supabaseClient || !hasCompletedInitialCloudLoad || isCloudSleeping || isAppInBackground()) {
-    alert("Le mouvement n'a pas été enregistré. Vérifiez la connexion et réessayez.");
-    return false;
-  }
-  if (selectedArchiveRecord) return commitArchivedSetMovement(sourceKey, sourceSet, changes, movement);
-
-  const storageKey = getRegistryConfig().keysStorageKey;
-  const slotKey = getKeySlotCloudKey(storageKey, sourceKey.id);
-  const isDraft = isPendingNewKeyDraft(sourceKey.id);
-  try {
-    if (!isDraft && hasPendingStorageKeyChange(storageKey)) {
-      await syncStorageKeyToCloud(storageKey);
-      if (getDirtyKeySlotIds(storageKey).has(sourceKey.id)) throw new Error("Fiche en attente");
-    }
-    const { data: remoteRow, error: readError } = await supabaseClient.from("app_state")
-      .select("key,value,updated_at").eq("key", slotKey).maybeSingle();
-    if (readError) throw readError;
-    const remoteKey = remoteRow ? normalizeCloudSlotKey(remoteRow) : makeEmptyKey(sourceKey);
-    const remoteSet = remoteKey.sets.find((set) => set.id === sourceSet.id);
-    if (isDraft ? isKeyFilled(remoteKey) :
-      remoteRow && (remoteKey.owner !== sourceKey.owner || remoteKey.property !== sourceKey.property ||
-      JSON.stringify(remoteSet) !== JSON.stringify(sourceSet))) {
-      throw new Error("Fiche modifiée sur un autre appareil");
-    }
-
-    const baseKey = isDraft || !remoteRow ? sourceKey : remoteKey;
-    const nextKey = normalizeKey({
-      ...baseKey,
-      sets: baseKey.sets.map((set) => set.id === sourceSet.id ? { ...set, ...changes } : set),
-    });
-    const updatedAt = new Date().toISOString();
-    const payload = getCloudWritePayload(slotKey, nextKey, updatedAt, remoteRow?.updated_at || null);
-    const request = remoteRow
-      ? supabaseClient.from("app_state").update(payload).eq("key", slotKey).eq("updated_at", remoteRow.updated_at)
-      : supabaseClient.from("app_state").insert(payload);
-    const { data: confirmedRow, error: writeError } = await request.select("key,value,updated_at").single();
-    if (writeError) {
-      const { data: retryRow } = await supabaseClient.from("app_state")
-        .select("key,value,updated_at").eq("key", slotKey).maybeSingle();
-      const savedHistory = normalizeCloudSlotKey(retryRow).sets.find((set) => set.id === sourceSet.id)?.history || [];
-      if (!movement?.id || !savedHistory.some((entry) => entry.id === movement.id)) throw writeError;
-      applyConfirmedMovement(retryRow, storageKey, isDraft);
-      return true;
-    }
-    applyConfirmedMovement(confirmedRow, storageKey, isDraft);
-    return true;
-  } catch (error) {
-    console.warn("Key movement not confirmed", slotKey, error.message);
-    alert("Le mouvement n'a pas été enregistré. Actualisez le tableau et réessayez.");
-    return false;
-  }
-}
-
-async function commitArchivedSetMovement(sourceKey, sourceSet, changes, movement) {
-  const storageKey = getRegistryConfig().archivesStorageKey;
-  const archiveId = selectedArchiveRecord.id;
-  try {
-    if (hasPendingStorageKeyChange(storageKey)) await syncStorageKeyToCloud(storageKey);
-    if (hasPendingStorageKeyChange(storageKey)) throw new Error("Archives en attente");
-    const { data: remoteRow, error: readError } = await supabaseClient.from("app_state")
-      .select("key,value,updated_at").eq("key", storageKey).maybeSingle();
-    if (readError || !remoteRow) throw readError || new Error("Archives introuvables");
-    const remoteArchives = typeof remoteRow.value === "string" ? parseStorageValue(remoteRow.value) : remoteRow.value;
-    if (!Array.isArray(remoteArchives)) throw new Error("Archives invalides");
-    const remoteRecord = remoteArchives.find((record) => record.id === archiveId);
-    const remoteKey = remoteRecord?.key ? normalizeKey(remoteRecord.key) : null;
-    const remoteSet = remoteKey?.sets.find((set) => set.id === sourceSet.id);
-    if (!remoteKey || remoteKey.owner !== sourceKey.owner || remoteKey.property !== sourceKey.property ||
-      JSON.stringify(remoteSet) !== JSON.stringify(sourceSet)) {
-      throw new Error("Fiche modifiée sur un autre appareil");
-    }
-    const nextKey = normalizeKey({ ...remoteKey, sets: remoteKey.sets.map((set) =>
-      set.id === sourceSet.id ? { ...set, ...changes } : set) });
-    const nextArchives = remoteArchives.map((record) => record.id === archiveId ? { ...record, key: nextKey } : record);
-    const updatedAt = new Date().toISOString();
-    const payload = getCloudWritePayload(storageKey, nextArchives, updatedAt, remoteRow.updated_at);
-    const { data: confirmedRow, error: writeError } = await supabaseClient.from("app_state")
-      .update(payload).eq("key", storageKey).eq("updated_at", remoteRow.updated_at)
-      .select("key,value,updated_at").single();
-    if (writeError) {
-      const { data: retryRow } = await supabaseClient.from("app_state")
-        .select("key,value,updated_at").eq("key", storageKey).maybeSingle();
-      const retryArchives = typeof retryRow?.value === "string" ? parseStorageValue(retryRow.value) : retryRow?.value;
-      const retryHistory = (Array.isArray(retryArchives) ? retryArchives : [])
-        .find((record) => record.id === archiveId)?.key?.sets?.find((set) => set.id === sourceSet.id)?.history || [];
-      if (!movement?.id || !retryHistory.some((entry) => entry.id === movement.id)) throw writeError;
-      applyConfirmedArchiveMovement(retryRow, storageKey, archiveId);
-      return true;
-    }
-    applyConfirmedArchiveMovement(confirmedRow, storageKey, archiveId);
-    return true;
-  } catch (error) {
-    console.warn("Archived key movement not confirmed", archiveId, error.message);
-    alert("Le mouvement n'a pas été enregistré. Actualisez le tableau et réessayez.");
-    return false;
-  }
-}
-
-function applyConfirmedArchiveMovement(row, storageKey, archiveId) {
-  const confirmedArchives = typeof row.value === "string" ? parseStorageValue(row.value) : row.value;
-  archives = confirmedArchives.map(normalizeArchive);
-  selectedArchiveRecord = archives.find((record) => record.id === archiveId) || null;
-  setRuntimeStorageValue(storageKey, JSON.stringify(archives));
-  cloudRowVersions.set(storageKey, row.updated_at || "");
-  saveCloudRowVersions();
-  renderCompromisesPanel();
-  render();
-}
-
-function applyConfirmedMovement(row, storageKey, wasDraft) {
-  const confirmedKey = normalizeCloudSlotKey(row);
-  keys = keys.map((key) => key.id === confirmedKey.id ? confirmedKey : key);
-  setRuntimeStorageValue(storageKey, JSON.stringify(keys));
-  cloudRowVersions.set(row.key, row.updated_at || "");
-  saveCloudRowVersions();
-  if (wasDraft) {
-    pendingNewKeyDraft = null;
-    activeKeyInfoDraft = null;
-  }
-  render();
-}
-
 function updateSelectedKeySets(sets) {
   if (selectedArchiveRecord) {
     const nextArchiveRecord = {
@@ -8901,7 +8774,6 @@ async function addMovement(type) {
   const entry = {
     id: createHistoryId(),
     type,
-    device: getDeviceName(),
     person: forcedPerson || getMovementPersonInputName(),
     company: forcedCompany || formatCompanyName(movementCompanyInput.value).trim(),
     phone: formatPhoneNumber(forcedPhone || movementPhoneInput.value),
@@ -8914,7 +8786,7 @@ async function addMovement(type) {
     }).format(new Date()),
   };
 
-  const changes = {
+  updateSelectedSet({
     status: type === "out" ? "out" : "available",
     needsCheckIn: false,
     needsCheckInReason: "",
@@ -8927,12 +8799,11 @@ async function addMovement(type) {
         ? (selectedSet.reservations || []).filter((reservation) => reservation.id !== selectedSet.holderReservationId)
         : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
-  };
-  if (!await commitSelectedSetMovement(key, selectedSet, changes, entry)) return;
-  if (isNewKeyDraft) {
-    logActivity("Création fiche", `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""}`,
-      [key.owner, key.property].filter(Boolean).join(" - "));
-  }
+  });
+  if (isNewKeyDraft) commitPendingNewKeyDraft();
+  logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
+    keyId: key.id, setId: selectedSet.id, movementId: entry.id,
+  });
 
   movementPersonInput.value = "";
   movementNameInput.value = "";
@@ -8941,7 +8812,9 @@ async function addMovement(type) {
   movementNoteInput.value = "";
   contactSelect.value = "";
   clearSignature();
-  closeKeyPanelAfterAction();
+  const actionArchivesChanged = Boolean(selectedArchiveRecord);
+  if (selectedArchiveRecord) renderCompromisesPanel();
+  await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
 }
 
 function getMovementDateText() {
@@ -9100,7 +8973,6 @@ async function toggleReservationMovement(reservationId) {
   const entry = {
     id: createHistoryId(),
     type: isReservationOut ? "in" : "out",
-    device: getDeviceName(),
     person: reservation.person || "",
     company: reservation.company || "",
     phone: formatPhoneNumber(reservation.phone || ""),
@@ -9112,7 +8984,7 @@ async function toggleReservationMovement(reservationId) {
     reservationId,
   };
 
-  const changes = {
+  updateSelectedSet({
     status: isReservationOut ? "available" : "out",
     holder: isReservationOut ? "" : entry.person,
     holderCompany: isReservationOut ? "" : entry.company,
@@ -9122,8 +8994,17 @@ async function toggleReservationMovement(reservationId) {
       ? (selectedSet.reservations || []).filter((item) => item.id !== reservationId)
       : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
-  };
-  if (!await commitSelectedSetMovement(key, selectedSet, changes, entry)) return;
+  });
+  logActivity(
+    getMovementActionLabel(entry),
+    `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
+    [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "),
+    { keyId: key.id, setId: selectedSet.id, movementId: entry.id },
+  );
+  const actionArchivesChanged = Boolean(selectedArchiveRecord);
+  if (selectedArchiveRecord) renderCompromisesPanel();
+  markKeyControlActionForSync(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
+  await syncCloudAfterAction();
 }
 
 async function cancelReservation(reservationId) {
@@ -9143,7 +9024,6 @@ async function cancelReservation(reservationId) {
   const entry = {
     id: createHistoryId(),
     type: "cancel-reservation",
-    device: getDeviceName(),
     person: reservation.person || "R\u00e9servation annul\u00e9e",
     company: reservation.company || "",
     phone: formatPhoneNumber(reservation.phone || ""),
@@ -9153,11 +9033,17 @@ async function cancelReservation(reservationId) {
     reservationId,
   };
 
-  const changes = {
+  updateSelectedSet({
     reservations: (selectedSet.reservations || []).filter((item) => item.id !== reservationId),
     history: [entry, ...selectedSet.history],
-  };
-  if (!await commitSelectedSetMovement(key, selectedSet, changes, entry)) return;
+  });
+  logActivity("Annulation r\u00e9servation", `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, entry.person, {
+    keyId: key.id, setId: selectedSet.id, movementId: entry.id,
+  });
+  const actionArchivesChanged = Boolean(selectedArchiveRecord);
+  if (selectedArchiveRecord) renderCompromisesPanel();
+  markKeyControlActionForSync(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
+  await syncCloudAfterAction();
 }
 
 const pendingArchiveSlots = new Set();
@@ -9260,7 +9146,6 @@ async function archiveReservationKey(reservationId) {
     id: createHistoryId(),
     type: "removed",
     actionLabel,
-    device: getDeviceName(),
     person: archiveActor.person,
     company: archiveActor.company,
     phone: archiveActor.phone,
@@ -9299,6 +9184,7 @@ async function archiveReservationKey(reservationId) {
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
+  logActivity(actionLabel, keyLabel(key), [key.owner, key.property, entry.person || entry.company, entry.phone].filter(Boolean).join(" - "));
   saveKeys();
   await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
 }
@@ -9448,7 +9334,6 @@ async function reserveSelectedSet() {
   const entry = {
     id: createHistoryId(),
     type: "reserved",
-    device: getDeviceName(),
     reservationId: `reservation-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     person,
     company,
@@ -9461,7 +9346,7 @@ async function reserveSelectedSet() {
     returnsToAgency,
   };
 
-  const changes = {
+  updateSelectedSet({
     reservations: [
       {
         id: entry.reservationId,
@@ -9476,8 +9361,13 @@ async function reserveSelectedSet() {
       ...(currentSet.reservations || []),
     ],
     history: [entry, ...currentSet.history],
-  };
-  if (!await commitSelectedSetMovement(currentKey, currentSet, changes, entry)) return;
+  });
+  logActivity(
+    "R\u00e9serv\u00e9",
+    `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
+    [person ? `Intervenant : ${person}` : "", phone ? `T\u00e9l\u00e9phone : ${phone}` : "", company ? `Soci\u00e9t\u00e9 : ${company}` : "", `Pour le ${formattedDate}`, entry.note].filter(Boolean).join(" | "),
+    { keyId: key.id, setId: selectedSet.id, movementId: entry.id },
+  );
 
   movementPersonInput.value = "";
   movementNameInput.value = "";
@@ -9486,7 +9376,9 @@ async function reserveSelectedSet() {
   movementNoteInput.value = "";
   contactSelect.value = "";
   clearSignature();
-  closeKeyPanelAfterAction();
+  const actionArchivesChanged = Boolean(selectedArchiveRecord);
+  if (selectedArchiveRecord) renderCompromisesPanel();
+  await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
 }
 
 function promptReservationReturn() {
@@ -9610,7 +9502,6 @@ async function archiveSelectedKey(reason) {
           id: createHistoryId(),
           type: reason === "removed" ? "removed" : "rented",
           actionLabel,
-          device: getDeviceName(),
           person: getMovementPersonInputName(),
           company: formatCompanyName(movementCompanyInput.value).trim(),
           phone: formatPhoneNumber(movementPhoneInput.value),
@@ -9647,6 +9538,8 @@ async function archiveSelectedKey(reason) {
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
+  const movementActor = getTypedMovementActor();
+  logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
   saveKeys();
   await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
 }

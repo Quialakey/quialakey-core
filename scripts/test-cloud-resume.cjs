@@ -256,8 +256,8 @@ async function main() {
       const originalSelectedId = selectedId;
       const originalActorCheck = ensureMovementActor;
       const originalPhoneCheck = ensureTypedMovementPhone;
-      const originalCommit = commitSelectedSetMovement;
-      const originalClose = closeKeyPanelAfterAction;
+      const originalUpdateSet = updateSelectedSet;
+      const originalFinish = finishKeyControlAction;
       const originalLog = logActivity;
       const originalPerson = movementPersonInput.value;
       const originalPhone = movementPhoneInput.value;
@@ -268,8 +268,8 @@ async function main() {
         movementPhoneInput.value = "06 12 34 56 78";
         ensureMovementActor = () => true;
         ensureTypedMovementPhone = () => true;
-        commitSelectedSetMovement = async (_key, _set, changes) => { recorded.push(changes); return true; };
-        closeKeyPanelAfterAction = () => {};
+        updateSelectedSet = (changes) => recorded.push(changes);
+        finishKeyControlAction = async () => {};
         logActivity = () => {};
         for (const answer of ["yes", "no"]) {
           const reservation = reserveSelectedSet();
@@ -292,8 +292,8 @@ async function main() {
         selectedId = originalSelectedId;
         ensureMovementActor = originalActorCheck;
         ensureTypedMovementPhone = originalPhoneCheck;
-        commitSelectedSetMovement = originalCommit;
-        closeKeyPanelAfterAction = originalClose;
+        updateSelectedSet = originalUpdateSet;
+        finishKeyControlAction = originalFinish;
         logActivity = originalLog;
         movementPersonInput.value = originalPerson;
         movementPhoneInput.value = originalPhone;
