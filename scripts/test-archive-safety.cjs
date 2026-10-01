@@ -26,6 +26,7 @@ async function check(registry, action, failure) {
     getRegistryConfig: () => context.registryConfig[context.activeRegistry],
     ensureMovementActor: () => true, ensureCompletePhoneNumber: () => true,
     getTypedMovementActor: () => ({ person: 'Intervenant', company: '', phone: '0102030405' }),
+    getDeviceName: () => 'Test',
     confirm: () => true, promptMovementSignature: async () => 'signature-test', promptCompromiseDate: async () => '2026-09-21',
     rememberUndoStep() {}, createHistoryId: () => 'new-history', getMovementDateText: () => '21/09/2026 17:00',
     getInlineReservationComment: () => '', formatSentenceStart: (s) => s, formatCompanyName: (s) => s, formatPhoneNumber: (s) => s,
