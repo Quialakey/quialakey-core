@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261001-2";
+const appBuildVersion = "20261001-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4472,7 +4472,8 @@ function getCountableSets(key) {
 
 function keyHasSetStatus(key, filter) {
   if (filter === "all") return true;
-  return getCountableSets(key).some((set) => getSetDisplayStatus(set) === filter);
+  return getCountableSets(key).some((set) =>
+    filter === "available" ? set.status !== "out" : getSetDisplayStatus(set) === filter);
 }
 
 function getKeyStatusCounts() {
@@ -4481,7 +4482,7 @@ function getKeyStatusCounts() {
       getCountableSets(key).forEach((set) => {
         const status = getSetDisplayStatus(set);
         counts.all += 1;
-        if (status === "available") counts.available += 1;
+        if (status !== "out") counts.available += 1;
         if (status === "reserved") counts.reserved += 1;
         if (status === "out") counts.out += 1;
       });
