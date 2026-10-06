@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261001-4";
+const appBuildVersion = "20261006-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -59,6 +59,7 @@ const dirtyKeySlotsStorageKey = "cles-dirty-key-slots-v1";
 const pendingKeySlotWritesStorageKey = "cles-pending-key-slot-writes-v1";
 const syncMetadataVersionStorageKey = "cles-sync-metadata-version-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
+const newKeyDraftStorageKey = "cles-new-key-draft-v1";
 const indexedStorageKeys = new Set([
   "cles-immobilieres-v1",
   "cles-transaction-v1",
@@ -73,6 +74,7 @@ const indexedStorageKeys = new Set([
   pendingKeySlotWritesStorageKey,
   syncMetadataVersionStorageKey,
   lastLocalEditStorageKey,
+  newKeyDraftStorageKey,
   appActivityLogStorageKey,
 ]);
 const supabaseProjectRef = (() => {
@@ -1085,6 +1087,7 @@ function setCloudSleepOverlayVisible(visible) {
 }
 
 function enterCloudSleep() {
+  if (isPhotoImporting) return;
   stopCloudChangeSubscription();
   if (isCloudSleeping) {
     setCloudSleepOverlayVisible(true);
@@ -1100,6 +1103,10 @@ function enterCloudSleep() {
 
 function scheduleCloudSleep() {
   clearTimeout(cloudInactivityTimer);
+  if (isPhotoImporting) {
+    cloudInactivityTimer = null;
+    return;
+  }
   if (isCloudSleeping) {
     cloudInactivityTimer = null;
     return;
@@ -1115,6 +1122,7 @@ function recordCloudActivity() {
 }
 
 function enforceCloudSleepAfterInactivity() {
+  if (isPhotoImporting) return false;
   if (isCloudSleeping) return true;
   if (Date.now() - lastCloudActivityAt < cloudInactivityTimeoutMs) return false;
   enterCloudSleep();
@@ -1228,6 +1236,7 @@ async function ensureInitialCloudStateLoaded() {
 }
 
 function refreshCloudAfterForeground() {
+  if (isPhotoImporting) return;
   if (isCloudSleeping) {
     setCloudSleepOverlayVisible(true);
     if (isPhoneOrTabletDevice() && !isPhotoImporting) void resumeCloudSyncFromInactivity();
@@ -3603,7 +3612,7 @@ function closeSidePanels() {
 
 function switchRegistry() {
   endKeyWorkProtection();
-  pendingNewKeyDraft = null;
+  discardPendingNewKeyDraft();
   activeRegistry = activeRegistry === "location" ? "transaction" : "location";
   saveActiveRegistry();
   tableSettings = loadTableSettings();
@@ -4260,11 +4269,49 @@ function isPendingNewKeyDraft(keyId = selectedId) {
 
 function beginPendingNewKeyDraft(key) {
   pendingNewKeyDraft = key && !isKeyFilled(key) ? normalizeKey(JSON.parse(JSON.stringify(key))) : null;
+  persistPendingNewKeyDraft();
 }
 
 function discardPendingNewKeyDraft() {
   pendingNewKeyDraft = null;
   activeKeyInfoDraft = null;
+  removeRuntimeStorageValue(newKeyDraftStorageKey);
+}
+
+function persistPendingNewKeyDraft() {
+  if (!pendingNewKeyDraft) return;
+  setRuntimeStorageValue(newKeyDraftStorageKey, JSON.stringify({
+    registry: activeRegistry,
+    key: pendingNewKeyDraft,
+    selectedSetId,
+  }));
+}
+
+function restorePendingNewKeyDraft() {
+  const saved = getRuntimeStorageValue(newKeyDraftStorageKey);
+  if (!saved) return false;
+  try {
+    const draft = JSON.parse(saved);
+    if (!registryConfig[draft.registry] || !draft.key?.id) throw new Error("Brouillon invalide");
+    const registryKeys = loadKeysForRegistry(draft.registry);
+    const slot = registryKeys.find((key) => key.id === draft.key.id);
+    if (!slot || isKeyFilled(slot) || slot.category !== draft.key.category) return false;
+    activeRegistry = draft.registry;
+    saveActiveRegistry();
+    keys = registryKeys;
+    archives = loadArchives();
+    pendingNewKeyDraft = normalizeKey(draft.key);
+    selectedId = slot.id;
+    selectedSetId = pendingNewKeyDraft.sets.some((set) => set.id === draft.selectedSetId)
+      ? draft.selectedSetId : pendingNewKeyDraft.sets[0].id;
+    beginKeyWorkProtection();
+    resetKeyInfoEditUnlock(pendingNewKeyDraft);
+    return true;
+  } catch (error) {
+    console.warn("New key draft recovery failed", error.message);
+    removeRuntimeStorageValue(newKeyDraftStorageKey);
+    return false;
+  }
 }
 
 function commitPendingNewKeyDraft() {
@@ -4274,6 +4321,7 @@ function commitPendingNewKeyDraft() {
   rememberUndoStep();
   pendingNewKeyDraft = null;
   activeKeyInfoDraft = null;
+  removeRuntimeStorageValue(newKeyDraftStorageKey);
   keys = keys.map((key) => (key.id === draft.id ? draft : key));
   markDirtyKeySlot(draft.id, storageKey);
   saveKeys();
@@ -4852,6 +4900,7 @@ function captureActiveKeyInfoDraft() {
   const changes = getKeyInfoDraftChanges();
   if (isPendingNewKeyDraft()) {
     pendingNewKeyDraft = { ...pendingNewKeyDraft, ...changes };
+    persistPendingNewKeyDraft();
     return;
   }
   if (keyInfoDraftMatchesKey(changes, getSelectedKey())) return;
@@ -4887,6 +4936,7 @@ function updateSelectedKeyInfoFromDraft(options = {}) {
     const changes = getKeyInfoDraftChanges();
     if (isPendingNewKeyDraft()) {
       pendingNewKeyDraft = { ...pendingNewKeyDraft, ...changes };
+      persistPendingNewKeyDraft();
       return;
     }
     rememberKeyInfoEditBase();
@@ -4916,16 +4966,28 @@ function beginPhotoImport(event) {
     event.currentTarget.value = "";
   }
   isPhotoImporting = true;
+  captureActiveKeyInfoDraft();
+  persistPendingNewKeyDraft();
   markLocalEdit();
   clearTimeout(detailCloseTimer);
   clearTimeout(photoImportResetTimer);
+  clearTimeout(cloudInactivityTimer);
   photoImportResetTimer = setTimeout(finishPhotoImport, 10 * 60 * 1000);
 }
 
 function finishPhotoImport() {
   clearTimeout(photoImportResetTimer);
   isPhotoImporting = false;
-  if (isCloudSleeping && !isAppInBackground()) void resumeCloudSyncFromInactivity();
+  if (isAppInBackground()) return;
+  if (isCloudSleeping) {
+    isCloudSleeping = false;
+    setCloudSleepOverlayVisible(false);
+  }
+  recordCloudActivity();
+  if (hasCompletedInitialCloudLoad) {
+    void subscribeToCloudChanges();
+    queueWakeCloudRefreshes();
+  }
 }
 
 function scheduleDetailPanelClose() {
@@ -7071,7 +7133,7 @@ async function performTableDataReset() {
 
   undoSnapshot = null;
   activeKeyInfoDraft = null;
-  pendingNewKeyDraft = null;
+  discardPendingNewKeyDraft();
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
@@ -7699,7 +7761,6 @@ function renderGrid() {
           selectedSetId = key.sets[0]?.id || "main";
           beginKeyWorkProtection();
           if (!isKeyFilled(key) && !isPendingNewKeyDraft(key.id)) beginPendingNewKeyDraft(key);
-          else pendingNewKeyDraft = null;
           resetKeyInfoEditUnlock(key);
           render();
         });
@@ -8605,6 +8666,7 @@ function updateSelectedKey(changes, options = {}) {
   const shouldRenderPanel = options.render !== false && options.renderPanel !== false;
   if (isPendingNewKeyDraft()) {
     pendingNewKeyDraft = { ...pendingNewKeyDraft, ...changes };
+    persistPendingNewKeyDraft();
     if (shouldRenderPanel) render();
     else if (options.render !== false) {
       renderGrid();
@@ -10265,6 +10327,10 @@ function handleKeySetPhotoChange(event) {
 
       const sets = key.sets.map((set) => (set.id === setId ? { ...set, photo } : set));
       updateSelectedKeySets(sets);
+      if (isPendingNewKeyDraft(key.id)) {
+        await waitForIndexedStorageWrite(newKeyDraftStorageKey);
+        return;
+      }
       const storageKey = archiveId ? getRegistryConfig().archivesStorageKey : getRegistryConfig().keysStorageKey;
       markKeyControlActionForSync(key.id, { keysChanged: !archiveId, archivesChanged: Boolean(archiveId) });
       await waitForIndexedStorageWrite(storageKey);
@@ -10314,6 +10380,7 @@ async function initializeApp() {
     return;
   }
   updateAccessLockState();
+  restorePendingNewKeyDraft();
   migrateArchivedSlots();
   subscribeToCloudChanges();
   await migrateStoredPropertyAddresses();
@@ -10333,12 +10400,12 @@ async function initializeApp() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
-    if (isPhoneOrTabletDevice()) enterCloudSleep();
+    if (isPhoneOrTabletDevice() && !isPhotoImporting) enterCloudSleep();
     else pauseCloudWorkWhileBackgrounded();
   } else refreshCloudAfterForeground();
 });
 window.addEventListener("pagehide", () => {
-  if (isPhoneOrTabletDevice()) enterCloudSleep();
+  if (isPhoneOrTabletDevice() && !isPhotoImporting) enterCloudSleep();
   else pauseCloudWorkWhileBackgrounded();
 });
 window.addEventListener("online", () => {

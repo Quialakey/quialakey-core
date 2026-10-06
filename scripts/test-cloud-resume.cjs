@@ -1466,10 +1466,11 @@ async function main() {
     await takePhoto(photoPage, "#ff0000", false, true);
     await photoPage.waitForFunction(() => !isPhotoImporting && keys.find((key) => key.id === "T3-1")?.sets[0].photo?.length > 200);
     const oldOfflinePhoto = await photoPage.evaluate(() => keys.find((key) => key.id === "T3-1").sets[0].photo);
-    await Promise.all([
-      photoPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }),
-      takePhoto(photoPage, "#0000ff", true, true),
-    ]);
+    await photoPage.evaluate(() => { window.__photoImportSessionMarker = true; });
+    await takePhoto(photoPage, "#0000ff", true, true);
+    await photoPage.waitForFunction(() => !isPhotoImporting && keys.find((key) => key.id === "T3-1")?.sets[0].photo?.length > 200);
+    assert.equal(await photoPage.evaluate(() => window.__photoImportSessionMarker), true);
+    await photoPage.reload();
     await photoPage.waitForFunction(() => typeof indexedStorageHydrated !== "undefined" && indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
     const reopenedPhoto = await photoPage.evaluate(async () => {
       const storageKey = getRegistryConfig().keysStorageKey;
