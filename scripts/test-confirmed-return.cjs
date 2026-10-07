@@ -39,6 +39,19 @@ async function main() {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => typeof confirmReturnedSetMovement === "function" &&
       hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
+    const sameSlotWithReorderedFields = await page.evaluate(() => {
+      const local = normalizeKey({
+        id: "T2-6", category: "T2", number: 6,
+        sets: [{ ...makeKeySet("main"), history: [{ id: "movement-1", type: "out", person: "Test", date: "07/10/2026 18:00" }] }],
+      });
+      const remote = structuredClone(local);
+      remote.sets[0].history[0] = { date: "07/10/2026 18:00", person: "Test", type: "out", id: "movement-1" };
+      return cloudRowMatchesPendingKeySlotWrite(
+        { key: "cles-transaction-v1::slot::T2-6", value: remote },
+        { value: local, comparableValue: JSON.stringify(local) },
+      );
+    });
+    assert.equal(sameSlotWithReorderedFields, true, "JSON field order must not cause repeated slot writes");
     const restWrite = await page.evaluate(async () => {
       const originalFetch = window.fetch;
       let request;
@@ -185,6 +198,46 @@ async function main() {
       assert.equal(finished.busy, false);
       assert.equal(Boolean(finished.alert), mode === "failure");
     }
+    const staleReturn = await page.evaluate(async () => {
+      window.__resetReturn();
+      window.__remoteRow.value.sets[0].history.unshift({
+        id: "newer-checkout", type: "out", person: "Raquel PEROZO", date: "07/10/2026 19:00",
+      });
+      window.__resolveWrite = null;
+      await addMovement("in");
+      return {
+        status: keys[0].sets[0].status,
+        latestMovement: keys[0].sets[0].history[0].id,
+        writeStarted: Boolean(window.__resolveWrite),
+        logs: window.__returnLogs.length,
+        alert: window.__returnAlert,
+      };
+    });
+    assert.equal(staleReturn.status, "out");
+    assert.equal(staleReturn.latestMovement, "newer-checkout");
+    assert.equal(staleReturn.writeStarted, false);
+    assert.equal(staleReturn.logs, 0);
+    assert.match(staleReturn.alert, /actualis/);
+    const mergedNoOp = await page.evaluate(async () => {
+      const olderKey = normalizeKey({ ...keys[0], sets: keys[0].sets.map((set) => ({
+        ...set, history: set.history.filter((movement) => movement.id !== "newer-checkout"),
+      })) });
+      const from = supabaseClient.from;
+      let writes = 0;
+      try {
+        supabaseClient.from = () => ({
+          select() { return this; },
+          in() { return Promise.resolve({ data: [structuredClone(window.__remoteRow)], error: null }); },
+          upsert() { writes += 1; return Promise.resolve({ data: null, error: null }); },
+        });
+        const confirmed = await writeConfirmedKeySlotsToCloud("cles-transaction-v1", [olderKey.id],
+          new Map([[olderKey.id, olderKey]]));
+        return { writes, latestMovement: confirmed.get(olderKey.id)?.sets[0].history[0]?.id };
+      } finally {
+        supabaseClient.from = from;
+      }
+    });
+    assert.deepEqual(mergedNoOp, { writes: 0, latestMovement: "newer-checkout" });
     for (const mode of ["success", "failure"]) {
       await page.evaluate(() => {
         window.__resetReservationReturn();

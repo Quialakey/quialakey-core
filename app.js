@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261007-1";
+const appBuildVersion = "20261007-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -2170,6 +2170,20 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
       rememberPendingKeySlotWrite(storageKey, keyId, mergedValue);
     });
 
+    if (cloudKeys.every((cloudKey) => {
+      const remoteRow = remoteRowsByKey.get(cloudKey);
+      return remoteRow && cloudRowMatchesPendingKeySlotWrite(remoteRow);
+    })) {
+      const confirmedKeys = new Map();
+      uniqueKeyIds.forEach((keyId) => {
+        const cloudKey = getKeySlotCloudKey(storageKey, keyId);
+        const remoteRow = remoteRowsByKey.get(cloudKey);
+        confirmPendingKeySlotWrite(cloudKey, remoteRow);
+        confirmedKeys.set(keyId, normalizeCloudSlotKey(remoteRow));
+      });
+      return confirmedKeys;
+    }
+
     const updatedAt = new Date().toISOString();
     const payloads = uniqueKeyIds.map((keyId) => {
       const cloudKey = getKeySlotCloudKey(storageKey, keyId);
@@ -2275,7 +2289,12 @@ function loadPendingKeySlotWrites() {
   try {
     const saved = JSON.parse(getRuntimeStorageValue(pendingKeySlotWritesStorageKey) || "{}");
     return new Map(
-      Object.entries(saved && typeof saved === "object" ? saved : {}).filter(([, entry]) => entry?.storageKey && entry?.keyId && entry?.value),
+      Object.entries(saved && typeof saved === "object" ? saved : {})
+        .filter(([, entry]) => entry?.storageKey && entry?.keyId && entry?.value)
+        .map(([cloudKey, entry]) => {
+          const { comparableValue: _legacyComparableValue, ...pendingWrite } = entry;
+          return [cloudKey, pendingWrite];
+        }),
     );
   } catch {
     return new Map();
@@ -2287,7 +2306,10 @@ function savePendingKeySlotWrites() {
 }
 
 function getComparableKeySlotValue(value) {
-  return JSON.stringify(normalizeKey(value));
+  return JSON.stringify(normalizeKey(value), (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+      : item);
 }
 
 function getPendingKeySlotWrite(cloudKey) {
@@ -2304,7 +2326,6 @@ function rememberPendingKeySlotWrite(storageKey, keyId, value, options = {}) {
     storageKey,
     keyId,
     value: normalizedValue,
-    comparableValue: getComparableKeySlotValue(normalizedValue),
     savedAt: Date.now(),
     allowClear: Boolean(previousWrite?.allowClear || recentlyClearedKeySlots.has(memoryKey)),
     baseValue: previousWrite?.baseValue || options.baseValue || null,
@@ -2332,7 +2353,7 @@ function rememberDirtyKeySlotSnapshots(storageKey) {
 
 function cloudRowMatchesPendingKeySlotWrite(row, pendingWrite = getPendingKeySlotWrite(row?.key)) {
   if (!pendingWrite || !row?.value) return false;
-  return getComparableKeySlotValue(normalizeCloudSlotKey(row)) === pendingWrite.comparableValue;
+  return getComparableKeySlotValue(normalizeCloudSlotKey(row)) === getComparableKeySlotValue(pendingWrite.value);
 }
 
 function cloudRowIsNewerThanPendingKeySlotWrite(row, pendingWrite = getPendingKeySlotWrite(row?.key)) {
@@ -8828,7 +8849,14 @@ async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
   const storageKey = registryConfig[registry].keysStorageKey;
   const cloudKey = getKeySlotCloudKey(storageKey, key.id);
   if (hasPendingCloudRowChange(cloudKey)) {
-    await syncStorageKeyToCloud(storageKey);
+    const { data: pendingRow, error: pendingReadError } = await supabaseClient.from("app_state")
+      .select("key,value,updated_at").eq("key", cloudKey).maybeSingle();
+    if (pendingReadError) throw pendingReadError;
+    if (pendingRow && cloudRowMatchesPendingKeySlotWrite(pendingRow)) {
+      confirmPendingKeySlotWrite(cloudKey, pendingRow);
+    } else {
+      await syncStorageKeyToCloud(storageKey);
+    }
     if (hasPendingCloudRowChange(cloudKey)) throw new Error("Fiche en attente");
   }
 
@@ -8842,7 +8870,9 @@ async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
     if (remoteKey.owner !== key.owner || remoteKey.property !== key.property ||
       remoteSet?.status !== "out" || remoteSet.holder !== set.holder ||
       remoteSet.history[0]?.id !== set.history[0]?.id) {
-      throw new Error("Fiche modifi\u00e9e sur un autre appareil");
+      const conflict = new Error("Fiche modifi\u00e9e sur un autre appareil");
+      conflict.latestRow = remoteRow;
+      throw conflict;
     }
 
     const nextKey = normalizeKey({
@@ -8872,6 +8902,18 @@ async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
   throw new Error("Retour non confirm\u00e9");
 }
 
+function applyReturnSlotRow(row, registry) {
+  const confirmedKey = normalizeCloudSlotKey(row);
+  const storageKey = registryConfig[registry].keysStorageKey;
+  const registryKeys = activeRegistry === registry ? keys : loadKeysForRegistry(registry);
+  const updatedKeys = registryKeys.map((savedKey) => savedKey.id === confirmedKey.id ? confirmedKey : savedKey);
+  setRuntimeStorageValue(storageKey, JSON.stringify(updatedKeys));
+  cloudRowVersions.set(row.key, row.updated_at || "");
+  saveCloudRowVersions();
+  if (activeRegistry === registry) keys = updatedKeys;
+  return confirmedKey;
+}
+
 async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   if (isConfirmingReturn) return false;
   const registry = activeRegistry;
@@ -8890,14 +8932,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   let didConfirm = false;
   try {
     const confirmedRow = await confirmReturnedSetMovement(key, set, changes, entry, registry);
-    const confirmedKey = normalizeCloudSlotKey(confirmedRow);
-    const storageKey = registryConfig[registry].keysStorageKey;
-    const registryKeys = activeRegistry === registry ? keys : loadKeysForRegistry(registry);
-    const updatedKeys = registryKeys.map((savedKey) => savedKey.id === key.id ? confirmedKey : savedKey);
-    setRuntimeStorageValue(storageKey, JSON.stringify(updatedKeys));
-    cloudRowVersions.set(confirmedRow.key, confirmedRow.updated_at || "");
-    saveCloudRowVersions();
-    if (activeRegistry === registry) keys = updatedKeys;
+    applyReturnSlotRow(confirmedRow, registry);
     logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`,
       [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
         keyId: key.id, setId: set.id, movementId: entry.id, registry,
@@ -8917,7 +8952,13 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     return true;
   } catch (error) {
     console.warn("Key return not confirmed", key.id, error.message);
-    alert("Le retour n'a pas pu \u00eatre confirm\u00e9. Actualisez la fiche avant de r\u00e9essayer.");
+    if (error.latestRow && !hasPendingCloudRowChange(error.latestRow.key)) {
+      applyReturnSlotRow(error.latestRow, registry);
+      if (activeRegistry === registry) render();
+      alert("La fiche a chang\u00e9 sur un autre appareil. Elle vient d'\u00eatre actualis\u00e9e : v\u00e9rifiez-la avant de r\u00e9essayer.");
+    } else {
+      alert("Le retour n'a pas pu \u00eatre confirm\u00e9. R\u00e9essayez dans un instant.");
+    }
     return false;
   } finally {
     isConfirmingReturn = false;
