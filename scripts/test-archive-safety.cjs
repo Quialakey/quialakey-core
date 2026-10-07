@@ -19,6 +19,14 @@ async function check(registry, action, failure) {
   const context = {
     console: { warn() {} }, Date, Intl, JSON, Map, Set, Object,
     activeRegistry: registry, selectedArchiveRecord: null, selectedId: 'T2-4', selectedSetId: 'main',
+    activeKeyControlAction: null, isConfirmingReturn: false,
+    beginKeyControlAction: (button) => {
+      events.push(['begin', button.id]);
+      context.activeKeyControlAction = { pending: false };
+      return true;
+    },
+    clearKeyControlAction: () => { events.push(['end']); context.activeKeyControlAction = null; },
+    rentedBtn: { id: 'rentedBtn' }, removedBtn: { id: 'removedBtn' },
     keys: [structuredClone(original)], archives: [], pendingCloudSync: Promise.resolve(), cloudRowVersions: new Map(),
     registryConfig: { location: { keysStorageKey: 'location', archivesStorageKey: 'location-archives', archiveActionLabel: 'Loue' }, transaction: { keysStorageKey: 'transaction', archivesStorageKey: 'transaction-archives', archiveActionLabel: 'Compromis' } },
     movementPhoneInput: { value: '0102030405' }, movementCompanyInput: { value: '' }, movementNoteInput: { value: '' },
@@ -75,6 +83,11 @@ async function check(registry, action, failure) {
   else await context.archiveSelectedKey(action);
   const success = !failure || failure === 'conflict';
   assert.equal(events.some(([event]) => event === 'clear'), success, `${registry}/${action}/${failure}`);
+  if (action !== 'reservation') {
+    assert.equal(events.filter(([event]) => event === 'begin').length, 1);
+    assert.equal(events.filter(([event]) => event === 'end').length, 1);
+    assert.equal(context.activeKeyControlAction, null);
+  }
   if (success) {
     assert.ok(events.findIndex(([event]) => event === 'clear') > events.findIndex(([event]) => event === 'confirm'));
     assert.ok(remote.some((item) => item.key.owner === 'ASTIER'));

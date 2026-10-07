@@ -285,7 +285,63 @@ async function main() {
       await window.__returnPromise;
     });
     assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
-    console.log("Confirmed return: standard and reservation paths, delayed success, failure and uncertain response passed");
+    for (const buttonId of ["checkinBtn", "reservedBtn", "checkoutBtn", "rentedBtn", "removedBtn"]) {
+      await page.evaluate((id) => {
+        window.__resetReturn();
+        const button = document.getElementById(id);
+        if (!beginKeyControlAction(button)) throw new Error(`Cannot begin ${id}`);
+        waitForIndexedStorageWrite = async () => true;
+        syncCloudAfterAction = () => new Promise((resolve) => {
+          window.__releaseControlAction = () => {
+            const storageKey = getRegistryConfig().keysStorageKey;
+            dirtyKeySlots.delete(storageKey);
+            pendingKeySlotWrites.delete(getKeySlotCloudKey(storageKey, selectedId));
+            dirtyCloudKeys.delete(storageKey);
+            resolve(true);
+          };
+        });
+        window.__controlActionPromise = finishKeyControlAction(selectedId, { waitForConfirmation: true });
+      }, buttonId);
+      await page.waitForFunction(() => typeof window.__releaseControlAction === "function");
+      const waiting = await page.evaluate((id) => ({
+        label: document.getElementById(id).textContent,
+        busy: document.getElementById(id).getAttribute("aria-busy"),
+        spinner: getComputedStyle(document.getElementById(id), "::after").content,
+        disabled: [checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn].every((button) => button.disabled),
+        panelOpen: Boolean(selectedId),
+      }), buttonId);
+      assert.equal(waiting.label, "En cours...");
+      assert.equal(waiting.busy, "true");
+      assert.notEqual(waiting.spinner, "none");
+      assert.equal(waiting.disabled, true);
+      assert.equal(waiting.panelOpen, true);
+      await page.evaluate(async () => {
+        window.__releaseControlAction();
+        await window.__controlActionPromise;
+        window.__releaseControlAction = null;
+      });
+      assert.equal(await page.evaluate(() => selectedId), null, `${buttonId} closes after confirmation`);
+    }
+    const delayedConfirmation = await page.evaluate(async () => {
+      window.__resetReturn();
+      hasPendingCloudRowChange = (cloudKey) =>
+        Boolean(dirtyKeySlots.get(getKeyStorageKeyFromSlotCloudKey(cloudKey))?.has(getKeyIdFromSlotCloudKey(cloudKey)));
+      beginKeyControlAction(checkoutBtn);
+      syncCloudAfterAction = async () => false;
+      const confirmed = await finishKeyControlAction(selectedId, { waitForConfirmation: true });
+      const waiting = { confirmed, label: checkoutBtn.textContent, panelOpen: Boolean(selectedId),
+        busy: checkoutBtn.getAttribute("aria-busy") };
+      const storageKey = getRegistryConfig().keysStorageKey;
+      dirtyKeySlots.delete(storageKey);
+      pendingKeySlotWrites.delete(getKeySlotCloudKey(storageKey, selectedId));
+      watchPendingKeyControlAction(activeKeyControlAction);
+      return { waiting, closedAfterSync: selectedId === null };
+    });
+    assert.deepEqual(delayedConfirmation, {
+      waiting: { confirmed: false, label: "En attente", panelOpen: true, busy: "false" },
+      closedAfterSync: true,
+    });
+    console.log("Confirmed return and five control-button loading states passed");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

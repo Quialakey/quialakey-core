@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261007-2";
+const appBuildVersion = "20261007-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -917,6 +917,8 @@ let isConfirmingReturn = false;
 let confirmingReturnKeyId = null;
 let confirmingReturnRegistry = null;
 let confirmingReturnReservationId = null;
+let activeKeyControlAction = null;
+let pendingKeyControlTimer = null;
 let hasLoadedCloudState = false;
 let hasCompletedInitialCloudLoad = false;
 let isCloudCheckRunning = false;
@@ -3175,6 +3177,9 @@ function removeAutomaticBackupsFromLocalStorage() {
 }
 
 function closeKeyPanelAfterAction() {
+  clearTimeout(pendingKeyControlTimer);
+  pendingKeyControlTimer = null;
+  activeKeyControlAction = null;
   activeKeyInfoDraft = null;
   pendingNewKeyDraft = null;
   selectedId = null;
@@ -3183,6 +3188,40 @@ function closeKeyPanelAfterAction() {
   resetKeyInfoEditUnlock(null);
   endKeyWorkProtection();
   render();
+}
+
+function beginKeyControlAction(button) {
+  if (activeKeyControlAction || isConfirmingReturn || !selectedId) return false;
+  activeKeyControlAction = { keyId: selectedId, registry: activeRegistry, buttonId: button.id, pending: false };
+  renderPanel();
+  return true;
+}
+
+function clearKeyControlAction() {
+  clearTimeout(pendingKeyControlTimer);
+  pendingKeyControlTimer = null;
+  activeKeyControlAction = null;
+  if (selectedId) renderPanel();
+}
+
+function isKeyControlActionConfirmed(action) {
+  const config = registryConfig[action.registry];
+  if (!config) return false;
+  const slotKey = getKeySlotCloudKey(config.keysStorageKey, action.keyId);
+  return (!action.keysChanged || (!hasPendingCloudRowChange(slotKey) && !getPendingKeySlotWrite(slotKey))) &&
+    (!action.archivesChanged || !hasPendingStorageKeyChange(config.archivesStorageKey)) &&
+    (!action.keysChanged || !cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) &&
+    (!action.archivesChanged || !cloudOnlyPendingStorageKeys.has(config.archivesStorageKey));
+}
+
+function watchPendingKeyControlAction(action) {
+  if (activeKeyControlAction !== action || !action.pending) return;
+  if (isKeyControlActionConfirmed(action)) {
+    if (activeRegistry === action.registry && selectedId === action.keyId) closeKeyPanelAfterAction();
+    else clearKeyControlAction();
+    return;
+  }
+  pendingKeyControlTimer = setTimeout(() => watchPendingKeyControlAction(action), 1200);
 }
 
 async function syncCloudAfterAction() {
@@ -3223,13 +3262,30 @@ async function finishKeyControlAction(keyId, options = {}) {
   const localWrites = await Promise.all(relevantStorageKeys.map(waitForIndexedStorageWrite));
   const requiresRemoteConfirmation =
     localWrites.some((saved) => !saved) || relevantStorageKeys.some((storageKey) => cloudOnlyStorageKeys.has(storageKey));
-  if (!requiresRemoteConfirmation) closeKeyPanelAfterAction();
+  if (!requiresRemoteConfirmation && !options.waitForConfirmation) closeKeyPanelAfterAction();
   await syncCloudAfterAction();
   const keyStillPending = options.keysChanged !== false && keyId && (
     dirtyKeySlots.get(config.keysStorageKey)?.has(keyId) ||
     getPendingKeySlotWrite(getKeySlotCloudKey(config.keysStorageKey, keyId))
   );
   const archiveStillPending = options.archivesChanged && hasPendingStorageKeyChange(config.archivesStorageKey);
+  if (options.waitForConfirmation) {
+    const action = activeKeyControlAction;
+    if (action && action.keyId === keyId && action.registry === activeRegistry) {
+      action.keysChanged = options.keysChanged !== false;
+      action.archivesChanged = Boolean(options.archivesChanged);
+      if (keyStillPending || archiveStillPending ||
+        (action.keysChanged && cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) ||
+        (action.archivesChanged && cloudOnlyPendingStorageKeys.has(config.archivesStorageKey))) {
+        action.pending = true;
+        renderPanel();
+        watchPendingKeyControlAction(action);
+        return false;
+      }
+    }
+    if (selectedId === keyId) closeKeyPanelAfterAction();
+    return true;
+  }
   if (requiresRemoteConfirmation) {
     const cloudOnlyStillPending =
       (options.keysChanged !== false && cloudOnlyPendingStorageKeys.has(config.keysStorageKey)) ||
@@ -3636,6 +3692,8 @@ function closeSidePanels() {
 }
 
 function switchRegistry() {
+  if (activeKeyControlAction && !activeKeyControlAction.pending) return;
+  if (activeKeyControlAction?.pending) clearKeyControlAction();
   endKeyWorkProtection();
   discardPendingNewKeyDraft();
   activeRegistry = activeRegistry === "location" ? "transaction" : "location";
@@ -7774,6 +7832,11 @@ function renderGrid() {
         }
 
         button.addEventListener("click", (event) => {
+          if (activeKeyControlAction && !activeKeyControlAction.pending) {
+            event.preventDefault();
+            return;
+          }
+          if (activeKeyControlAction?.pending) clearKeyControlAction();
           if (Date.now() < suppressKeyTileClickUntil) {
             event.preventDefault();
             event.stopPropagation();
@@ -8179,6 +8242,7 @@ function openPhotoViewer(src, label) {
 }
 
 function renderPanel() {
+  closePanelBtn.disabled = Boolean(activeKeyControlAction && !activeKeyControlAction.pending) || isConfirmingReturn;
   const key = getSelectedKey();
   if (!key) {
     detailPanel.hidden = true;
@@ -8254,13 +8318,26 @@ function renderPanel() {
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
   reservedBtn.textContent = "R\u00e9serv\u00e9";
   checkoutBtn.textContent = "Sorti";
+  rentedBtn.textContent = getRegistryConfig().archiveActionLabel;
+  removedBtn.textContent = "Archiv\u00e9";
   checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
-  checkinBtn.disabled = isConfirmingReturn || !canCheckInSelectedKey;
+  checkinBtn.disabled = !canCheckInSelectedKey;
   reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey;
   rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
-  duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
-  transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
+  const savingControlAction = activeKeyControlAction &&
+    activeKeyControlAction.keyId === key.id && activeKeyControlAction.registry === activeRegistry;
+  for (const button of [checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn]) {
+    const isActive = savingControlAction && activeKeyControlAction.buttonId === button.id;
+    button.classList.toggle("is-confirming-action", Boolean(isActive && !activeKeyControlAction.pending));
+    button.classList.toggle("is-action-pending", Boolean(isActive && activeKeyControlAction.pending));
+    if (isActive) button.textContent = activeKeyControlAction.pending ? "En attente" : "En cours...";
+    button.setAttribute("aria-busy", String(Boolean(isActive && !activeKeyControlAction.pending) ||
+      (button === checkinBtn && isThisReturnSaving)));
+    button.disabled = button.disabled || Boolean(activeKeyControlAction) || isConfirmingReturn;
+  }
+  duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || Boolean(activeKeyControlAction) || isConfirmingReturn;
+  transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || Boolean(activeKeyControlAction) || isConfirmingReturn;
   keySetCountSelect.disabled = isReadOnlyArchive;
   keySetCountSelect.hidden = !isKeySetCountEditUnlocked && !isNewKeyDraft;
   keySetCountUnlockBtn.hidden = isKeySetCountEditUnlocked || isNewKeyDraft;
@@ -8977,7 +9054,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
 }
 
 async function addMovement(type) {
-  if (isConfirmingReturn) return;
+  if (isConfirmingReturn || activeKeyControlAction) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
@@ -9035,22 +9112,27 @@ async function addMovement(type) {
     await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
     return;
   }
-  updateSelectedSet(changes);
-  if (isNewKeyDraft) commitPendingNewKeyDraft();
-  logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
-    keyId: key.id, setId: selectedSet.id, movementId: entry.id,
-  });
+  if (!beginKeyControlAction(type === "out" ? checkoutBtn : checkinBtn)) return;
+  try {
+    updateSelectedSet(changes);
+    if (isNewKeyDraft) commitPendingNewKeyDraft();
+    logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
+      keyId: key.id, setId: selectedSet.id, movementId: entry.id,
+    });
 
-  movementPersonInput.value = "";
-  movementNameInput.value = "";
-  movementCompanyInput.value = "";
-  movementPhoneInput.value = "";
-  movementNoteInput.value = "";
-  contactSelect.value = "";
-  clearSignature();
-  const actionArchivesChanged = Boolean(selectedArchiveRecord);
-  if (selectedArchiveRecord) renderCompromisesPanel();
-  await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
+    movementPersonInput.value = "";
+    movementNameInput.value = "";
+    movementCompanyInput.value = "";
+    movementPhoneInput.value = "";
+    movementNoteInput.value = "";
+    contactSelect.value = "";
+    clearSignature();
+    const actionArchivesChanged = Boolean(selectedArchiveRecord);
+    if (selectedArchiveRecord) renderCompromisesPanel();
+    await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged, waitForConfirmation: true });
+  } finally {
+    if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
+  }
 }
 
 function getMovementDateText() {
@@ -9544,6 +9626,7 @@ async function setReservationReturnDecision(reservationId) {
 }
 
 async function reserveSelectedSet() {
+  if (activeKeyControlAction || isConfirmingReturn) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
@@ -9588,39 +9671,44 @@ async function reserveSelectedSet() {
     returnsToAgency,
   };
 
-  updateSelectedSet({
-    reservations: [
-      {
-        id: entry.reservationId,
-        person,
-        company: entry.company || "",
-        phone: entry.phone || "",
-        note: entry.note || "",
-        createdAt,
-        reservationDate: formattedDate,
-        returnsToAgency,
-      },
-      ...(currentSet.reservations || []),
-    ],
-    history: [entry, ...currentSet.history],
-  });
-  logActivity(
-    "R\u00e9serv\u00e9",
-    `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
-    [person ? `Intervenant : ${person}` : "", phone ? `T\u00e9l\u00e9phone : ${phone}` : "", company ? `Soci\u00e9t\u00e9 : ${company}` : "", `Pour le ${formattedDate}`, entry.note].filter(Boolean).join(" | "),
-    { keyId: key.id, setId: selectedSet.id, movementId: entry.id },
-  );
+  if (!beginKeyControlAction(reservedBtn)) return;
+  try {
+    updateSelectedSet({
+      reservations: [
+        {
+          id: entry.reservationId,
+          person,
+          company: entry.company || "",
+          phone: entry.phone || "",
+          note: entry.note || "",
+          createdAt,
+          reservationDate: formattedDate,
+          returnsToAgency,
+        },
+        ...(currentSet.reservations || []),
+      ],
+      history: [entry, ...currentSet.history],
+    });
+    logActivity(
+      "R\u00e9serv\u00e9",
+      `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
+      [person ? `Intervenant : ${person}` : "", phone ? `T\u00e9l\u00e9phone : ${phone}` : "", company ? `Soci\u00e9t\u00e9 : ${company}` : "", `Pour le ${formattedDate}`, entry.note].filter(Boolean).join(" | "),
+      { keyId: key.id, setId: selectedSet.id, movementId: entry.id },
+    );
 
-  movementPersonInput.value = "";
-  movementNameInput.value = "";
-  movementCompanyInput.value = "";
-  movementPhoneInput.value = "";
-  movementNoteInput.value = "";
-  contactSelect.value = "";
-  clearSignature();
-  const actionArchivesChanged = Boolean(selectedArchiveRecord);
-  if (selectedArchiveRecord) renderCompromisesPanel();
-  await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged });
+    movementPersonInput.value = "";
+    movementNameInput.value = "";
+    movementCompanyInput.value = "";
+    movementPhoneInput.value = "";
+    movementNoteInput.value = "";
+    contactSelect.value = "";
+    clearSignature();
+    const actionArchivesChanged = Boolean(selectedArchiveRecord);
+    if (selectedArchiveRecord) renderCompromisesPanel();
+    await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged, waitForConfirmation: true });
+  } finally {
+    if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
+  }
 }
 
 function promptReservationReturn() {
@@ -9716,6 +9804,7 @@ function promptCompromiseDate(defaultValue = new Date().toISOString().slice(0, 1
 }
 
 async function archiveSelectedKey(reason) {
+  if (activeKeyControlAction || isConfirmingReturn) return;
   const key = getSelectedKey();
   if (!key || key.archived) return;
   const archiveRegistry = activeRegistry;
@@ -9734,56 +9823,58 @@ async function archiveSelectedKey(reason) {
   if (!confirmed) return;
   const signature = await promptMovementSignature(actionLabel);
   if (signature === null) return;
-  rememberUndoStep();
+  if (!beginKeyControlAction(reason === "rented" ? rentedBtn : removedBtn)) return;
+  try {
+    rememberUndoStep();
 
-  const archivedAt = new Date().toISOString();
-  const selectedSet = getSelectedSet(key);
-  const archiveEntry =
-    selectedSet
+    const archivedAt = new Date().toISOString();
+    const selectedSet = getSelectedSet(key);
+    const archiveEntry =
+      selectedSet
+        ? {
+            id: createHistoryId(),
+            type: reason === "removed" ? "removed" : "rented",
+            actionLabel,
+            person: getMovementPersonInputName(),
+            company: formatCompanyName(movementCompanyInput.value).trim(),
+            phone: formatPhoneNumber(movementPhoneInput.value),
+            note: formatSentenceStart(movementNoteInput.value).trim(),
+            signature,
+            date: new Intl.DateTimeFormat("fr-FR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            }).format(new Date()),
+          }
+        : null;
+    const archivedKey = archiveEntry
       ? {
-          id: createHistoryId(),
-          type: reason === "removed" ? "removed" : "rented",
-          actionLabel,
-          person: getMovementPersonInputName(),
-          company: formatCompanyName(movementCompanyInput.value).trim(),
-          phone: formatPhoneNumber(movementPhoneInput.value),
-          note: formatSentenceStart(movementNoteInput.value).trim(),
-          signature,
-          date: new Intl.DateTimeFormat("fr-FR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          }).format(new Date()),
+          ...key,
+          sets: key.sets.map((set) =>
+            set.id === selectedSet.id
+              ? {
+                  ...set,
+                  history: [archiveEntry, ...set.history],
+                }
+              : set,
+          ),
         }
-      : null;
-  const archivedKey = archiveEntry
-    ? {
-        ...key,
-        sets: key.sets.map((set) =>
-          set.id === selectedSet.id
-            ? {
-                ...set,
-                history: [archiveEntry, ...set.history],
-              }
-            : set,
-        ),
-      }
-    : key;
-  const archiveRecord = {
-    id: `${key.id}-${archivedAt}`,
-    reason,
-    archivedAt,
-    compromiseSignedAt,
-    key: { ...archivedKey, archived: false },
-  };
-  if (!await confirmArchiveBeforeClearing(archiveRecord, archiveRegistry, sourceSnapshot)) return;
-  clearActiveKeySlotForSync(key.id);
-  selectedId = null;
-  selectedArchiveRecord = null;
-  selectedSetId = "main";
-  const movementActor = getTypedMovementActor();
-  logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
-  saveKeys();
-  await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false });
+      : key;
+    const archiveRecord = {
+      id: `${key.id}-${archivedAt}`,
+      reason,
+      archivedAt,
+      compromiseSignedAt,
+      key: { ...archivedKey, archived: false },
+    };
+    if (!await confirmArchiveBeforeClearing(archiveRecord, archiveRegistry, sourceSnapshot)) return;
+    clearActiveKeySlotForSync(key.id);
+    const movementActor = getTypedMovementActor();
+    logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
+    saveKeys();
+    await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false, waitForConfirmation: true });
+  } finally {
+    if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
+  }
 }
 
 function openContactsPanel() {
@@ -10436,6 +10527,8 @@ backupFileInput.addEventListener("change", () => {
   backupFileInput.value = "";
 });
 closePanelBtn.addEventListener("click", () => {
+  if (activeKeyControlAction && !activeKeyControlAction.pending) return;
+  if (activeKeyControlAction?.pending) clearKeyControlAction();
   clearTimeout(detailCloseTimer);
   if (!isPendingNewKeyDraft()) syncCurrentRegistryNow();
   discardPendingNewKeyDraft();
@@ -10451,6 +10544,8 @@ document.addEventListener("pointerdown", (event) => {
   if (detailPanel.contains(event.target)) return;
   if (event.target.closest(".key-tile")) return;
   if (event.target.closest(".photo-viewer, .date-dialog, .movement-signature-dialog")) return;
+  if (activeKeyControlAction && !activeKeyControlAction.pending) return;
+  if (activeKeyControlAction?.pending) clearKeyControlAction();
 
   clearTimeout(detailCloseTimer);
   discardPendingNewKeyDraft();

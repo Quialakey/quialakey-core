@@ -2950,7 +2950,9 @@ body.is-moving-key .photo-hover {
 }
 
 #checkinBtn.is-confirming-return,
-.reservation-history-button.is-confirming-return {
+.reservation-history-button.is-confirming-return,
+.movement-actions button.is-confirming-action,
+.archive-actions button.is-confirming-action {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2959,7 +2961,9 @@ body.is-moving-key .photo-hover {
 }
 
 #checkinBtn.is-confirming-return::after,
-.reservation-history-button.is-confirming-return::after {
+.reservation-history-button.is-confirming-return::after,
+.movement-actions button.is-confirming-action::after,
+.archive-actions button.is-confirming-action::after {
   content: "";
   width: 15px;
   height: 15px;
@@ -2976,7 +2980,16 @@ body.is-moving-key .photo-hover {
 
 @media (prefers-reduced-motion: reduce) {
   #checkinBtn.is-confirming-return::after,
-  .reservation-history-button.is-confirming-return::after { animation: none; }
+  .reservation-history-button.is-confirming-return::after,
+  .movement-actions button.is-confirming-action::after,
+  .archive-actions button.is-confirming-action::after { animation: none; }
+}
+
+.movement-actions button.is-confirming-action:disabled,
+.archive-actions button.is-confirming-action:disabled,
+.movement-actions button.is-action-pending:disabled,
+.archive-actions button.is-action-pending:disabled {
+  opacity: 1;
 }
 
 .rented-button {
