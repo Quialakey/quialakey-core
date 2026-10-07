@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261006-1";
+const appBuildVersion = "20261007-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -913,6 +913,10 @@ let pendingKeySlotWrites = loadPendingKeySlotWrites();
 let cloudRowVersions = loadCloudRowVersions();
 let activeKeyInfoDraft = null;
 let pendingNewKeyDraft = null;
+let isConfirmingReturn = false;
+let confirmingReturnKeyId = null;
+let confirmingReturnRegistry = null;
+let confirmingReturnReservationId = null;
 let hasLoadedCloudState = false;
 let hasCompletedInitialCloudLoad = false;
 let isCloudCheckRunning = false;
@@ -1433,7 +1437,7 @@ function logActivity(action, title, details = "", context = {}) {
     title,
     details,
     device: getDeviceName(),
-    registry: activeRegistry,
+    registry: context.registry || activeRegistry,
     ...(context.keyId ? { keyId: context.keyId } : {}),
     ...(context.setId ? { setId: context.setId } : {}),
     ...(context.movementId ? { movementId: context.movementId } : {}),
@@ -8223,11 +8227,14 @@ function renderPanel() {
   const needsSelectedSetCheckInReason = selectedSet.needsCheckInReason || "";
   const isMainMovementLocked = isReadOnlyArchive || isSelectedSetOutForReservation;
   const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) && !isSelectedSetOutForReservation;
-  checkinBtn.textContent = selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
+  const isThisReturnSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
+  checkinBtn.textContent = isThisReturnSaving ? "Enregistrement..." : selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
+  checkinBtn.classList.toggle("is-confirming-return", isThisReturnSaving);
+  checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
   reservedBtn.textContent = "R\u00e9serv\u00e9";
   checkoutBtn.textContent = "Sorti";
   checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
-  checkinBtn.disabled = !canCheckInSelectedKey;
+  checkinBtn.disabled = isConfirmingReturn || !canCheckInSelectedKey;
   reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey;
   rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
   removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
@@ -8374,11 +8381,14 @@ function renderPanel() {
     actions.classList.add("is-two-action");
     movementButton.type = "button";
     movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
-    movementButton.textContent = isReservationOut ? "Rentr\u00e9" : "Sorti";
-    movementButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+    const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
+    movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
+    movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
+    movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
+    movementButton.disabled = isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
     movementButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
-      toggleReservationMovement(entry.reservationId);
+      toggleReservationMovement(entry.reservationId, movementButton);
     });
 
     removeButton.type = "button";
@@ -8553,9 +8563,12 @@ function renderPanel() {
       actions.classList.add("is-two-action");
       movementButton.type = "button";
       movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
-      movementButton.textContent = isReservationOut ? "Rentr\u00e9" : "Sorti";
-      movementButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
-      movementButton.addEventListener("click", () => toggleReservationMovement(entry.reservationId));
+      const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
+      movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
+      movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
+      movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
+      movementButton.disabled = isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
+      movementButton.addEventListener("click", () => toggleReservationMovement(entry.reservationId, movementButton));
 
       removeButton.type = "button";
       removeButton.className = "reservation-history-button removed";
@@ -8808,7 +8821,122 @@ function setKeySetCount(count, options = {}) {
   updateSelectedKey({ sets: nextSets }, { render: options.render !== false });
 }
 
+async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
+  if (!supabaseClient || !hasCompletedInitialCloudLoad || isCloudSleeping || isAppInBackground()) {
+    throw new Error("Tableau indisponible");
+  }
+  const storageKey = registryConfig[registry].keysStorageKey;
+  const cloudKey = getKeySlotCloudKey(storageKey, key.id);
+  if (hasPendingCloudRowChange(cloudKey)) {
+    await syncStorageKeyToCloud(storageKey);
+    if (hasPendingCloudRowChange(cloudKey)) throw new Error("Fiche en attente");
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data: remoteRow, error: readError } = await supabaseClient.from("app_state")
+      .select("key,value,updated_at").eq("key", cloudKey).maybeSingle();
+    if (readError || !remoteRow) throw readError || new Error("Fiche introuvable");
+    const remoteKey = normalizeCloudSlotKey(remoteRow);
+    const remoteSet = remoteKey.sets.find((savedSet) => savedSet.id === set.id);
+    if (remoteSet?.history.some((movement) => movement.id === entry.id)) return remoteRow;
+    if (remoteKey.owner !== key.owner || remoteKey.property !== key.property ||
+      remoteSet?.status !== "out" || remoteSet.holder !== set.holder ||
+      remoteSet.history[0]?.id !== set.history[0]?.id) {
+      throw new Error("Fiche modifi\u00e9e sur un autre appareil");
+    }
+
+    const nextKey = normalizeKey({
+      ...remoteKey,
+      sets: remoteKey.sets.map((savedSet) => savedSet.id === set.id
+        ? { ...savedSet, ...changes, history: [entry, ...savedSet.history] }
+        : savedSet),
+    });
+    const updatedAt = new Date().toISOString();
+    const payload = getCloudWritePayload(cloudKey, nextKey, updatedAt, remoteRow.updated_at);
+    const { data: writtenRow, error: writeError } = await supabaseClient.from("app_state")
+      .update(payload).eq("key", cloudKey).eq("updated_at", remoteRow.updated_at).maybeSingle();
+    if (!writeError && writtenRow?.value &&
+      normalizeCloudSlotKey(writtenRow).sets.find((savedSet) => savedSet.id === set.id)
+        ?.history.some((movement) => movement.id === entry.id)) {
+      return writtenRow;
+    }
+    if (writeError && !isStaleCloudWriteError(writeError)) {
+      const { data: savedRow } = await supabaseClient.from("app_state")
+        .select("key,value,updated_at").eq("key", cloudKey).maybeSingle();
+      if (savedRow?.value && normalizeCloudSlotKey(savedRow).sets.find((savedSet) => savedSet.id === set.id)
+        ?.history.some((movement) => movement.id === entry.id)) return savedRow;
+      throw writeError;
+    }
+    if (attempt < 2) await waitForKeySlotRetry(attempt);
+  }
+  throw new Error("Retour non confirm\u00e9");
+}
+
+async function runConfirmedReturn(key, set, changes, entry, options = {}) {
+  if (isConfirmingReturn) return false;
+  const registry = activeRegistry;
+  const button = options.button || null;
+  isConfirmingReturn = true;
+  confirmingReturnKeyId = key.id;
+  confirmingReturnRegistry = registry;
+  confirmingReturnReservationId = options.reservationId || null;
+  if (button?.isConnected) {
+    button.textContent = "En cours...";
+    button.classList.add("is-confirming-return");
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  } else renderPanel();
+
+  let didConfirm = false;
+  try {
+    const confirmedRow = await confirmReturnedSetMovement(key, set, changes, entry, registry);
+    const confirmedKey = normalizeCloudSlotKey(confirmedRow);
+    const storageKey = registryConfig[registry].keysStorageKey;
+    const registryKeys = activeRegistry === registry ? keys : loadKeysForRegistry(registry);
+    const updatedKeys = registryKeys.map((savedKey) => savedKey.id === key.id ? confirmedKey : savedKey);
+    setRuntimeStorageValue(storageKey, JSON.stringify(updatedKeys));
+    cloudRowVersions.set(confirmedRow.key, confirmedRow.updated_at || "");
+    saveCloudRowVersions();
+    if (activeRegistry === registry) keys = updatedKeys;
+    logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`,
+      [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
+        keyId: key.id, setId: set.id, movementId: entry.id, registry,
+      });
+    scheduleCloudSyncHeartbeat(0);
+    didConfirm = true;
+    if (activeRegistry === registry && selectedId === key.id && options.closePanel) {
+      movementPersonInput.value = "";
+      movementNameInput.value = "";
+      movementCompanyInput.value = "";
+      movementPhoneInput.value = "";
+      movementNoteInput.value = "";
+      contactSelect.value = "";
+      clearSignature();
+      closeKeyPanelAfterAction();
+    } else if (activeRegistry === registry) render();
+    return true;
+  } catch (error) {
+    console.warn("Key return not confirmed", key.id, error.message);
+    alert("Le retour n'a pas pu \u00eatre confirm\u00e9. Actualisez la fiche avant de r\u00e9essayer.");
+    return false;
+  } finally {
+    isConfirmingReturn = false;
+    confirmingReturnKeyId = null;
+    confirmingReturnRegistry = null;
+    confirmingReturnReservationId = null;
+    if (button?.isConnected) {
+      button.textContent = "Rentr\u00e9";
+      button.classList.remove("is-confirming-return");
+      button.disabled = false;
+      button.setAttribute("aria-busy", "false");
+    }
+    if (activeRegistry === registry && selectedId === key.id &&
+      (didConfirm || !button?.isConnected)) renderPanel();
+  }
+}
+
 async function addMovement(type) {
+  if (isConfirmingReturn) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
@@ -8848,7 +8976,7 @@ async function addMovement(type) {
     }).format(new Date()),
   };
 
-  updateSelectedSet({
+  const changes = {
     status: type === "out" ? "out" : "available",
     needsCheckIn: false,
     needsCheckInReason: "",
@@ -8861,7 +8989,12 @@ async function addMovement(type) {
         ? (selectedSet.reservations || []).filter((reservation) => reservation.id !== selectedSet.holderReservationId)
         : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
-  });
+  };
+  if (isReturningAfterCheckout && !selectedArchiveRecord) {
+    await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
+    return;
+  }
+  updateSelectedSet(changes);
   if (isNewKeyDraft) commitPendingNewKeyDraft();
   logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
     keyId: key.id, setId: selectedSet.id, movementId: entry.id,
@@ -9014,7 +9147,8 @@ function promptMovementSignature(actionLabel) {
   });
 }
 
-async function toggleReservationMovement(reservationId) {
+async function toggleReservationMovement(reservationId, movementButton = null) {
+  if (isConfirmingReturn) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
   const selectedSet = getSetForReservation(key, reservationId) || getSelectedSet(key);
@@ -9046,7 +9180,7 @@ async function toggleReservationMovement(reservationId) {
     reservationId,
   };
 
-  updateSelectedSet({
+  const changes = {
     status: isReservationOut ? "available" : "out",
     holder: isReservationOut ? "" : entry.person,
     holderCompany: isReservationOut ? "" : entry.company,
@@ -9056,7 +9190,12 @@ async function toggleReservationMovement(reservationId) {
       ? (selectedSet.reservations || []).filter((item) => item.id !== reservationId)
       : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
-  });
+  };
+  if (isReservationOut && !selectedArchiveRecord) {
+    await runConfirmedReturn(key, selectedSet, changes, entry, { button: movementButton, reservationId });
+    return;
+  }
+  updateSelectedSet(changes);
   logActivity(
     getMovementActionLabel(entry),
     `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
