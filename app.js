@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261008-1";
+const appBuildVersion = "20261008-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4556,8 +4556,7 @@ function unlockKeyInfoEdit(event) {
   const isArchiveView = Boolean(selectedArchiveRecord);
   if (!key || isArchiveView || isKeyInfoEditUnlocked || isKeyInfoEditPromptOpen || !hasProtectedKeyInfo(key)) return;
 
-  const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
-  const question = `Souhaitez-vous apporter des modifications sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`;
+  const question = "Souhaitez-vous effectuer des modifications ?";
   const targetInput = event?.currentTarget;
   const beginEdit = () => {
     if (getSelectedKey()?.id !== key.id) return;
@@ -4565,15 +4564,10 @@ function unlockKeyInfoEdit(event) {
     renderPanel();
     targetInput?.focus?.({ preventScroll: true });
   };
-  if (!isTouchDevice()) {
-    if (confirm(question)) beginEdit();
-    return;
-  }
-
   isKeyInfoEditPromptOpen = true;
   const dialog = document.createElement("dialog");
   dialog.className = "date-dialog key-info-edit-dialog";
-  dialog.innerHTML = '<h3></h3><div><button type="button" value="cancel">Annuler</button><button type="button" value="confirm">Modifier</button></div>';
+  dialog.innerHTML = '<h3></h3><div><button type="button" value="cancel">Non</button><button type="button" value="confirm">Oui</button></div>';
   dialog.querySelector("h3").textContent = question;
   dialog.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {

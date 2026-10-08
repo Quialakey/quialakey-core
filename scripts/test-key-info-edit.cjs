@@ -53,14 +53,15 @@ async function main() {
           assert.equal(await page.evaluate(() => getSelectedSet().needsCheckIn), false);
           assert.equal(await page.locator("#checkoutBtn").isEnabled(), true);
         }
-        page.once("dialog", (dialog) => dialog.accept());
         await page.locator("#propertyInput").dblclick();
       } else {
         await page.locator("#propertyInput").tap();
         await page.locator("#propertyInput").tap();
-        await page.locator(".key-info-edit-dialog button[value='confirm']").click();
-        assert.equal(await page.evaluate(() => document.activeElement.id), "propertyInput");
       }
+      assert.equal(await page.locator(".key-info-edit-dialog h3").textContent(), "Souhaitez-vous effectuer des modifications ?");
+      assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Non", "Oui"]);
+      await page.locator(".key-info-edit-dialog button[value='confirm']").click();
+      assert.equal(await page.evaluate(() => document.activeElement.id), "propertyInput");
       assert.equal(await page.locator("#propertyInput").evaluate((input) => input.readOnly), false);
       await page.locator("#propertyInput").fill("32 avenue du Test");
       await page.locator("#movementNameInput").click();
