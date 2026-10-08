@@ -694,6 +694,15 @@ async function main() {
     await page.locator(".photo-set-select").nth(1).click();
     assert.equal(await page.evaluate(() => selectedSetId), "double");
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.evaluate(() => getSelectedSet().needsCheckIn), false);
+    assert.equal(await page.locator("#checkoutBtn").isEnabled(), true);
+    assert.equal(await page.locator("#checkinBtn").isDisabled(), true);
+    assert.equal(await page.evaluate(() => normalizeSet({
+      ...makeKeySet("double"), needsCheckIn: true, needsCheckInReason: "added",
+    }).needsCheckIn), false);
+    assert.equal(await page.evaluate(() => normalizeSet({
+      ...makeKeySet("double"), needsCheckIn: true,
+    }).needsCheckIn), false);
     page.once("dialog", (dialog) => dialog.accept());
     await page.evaluate(() => {
       const button = document.querySelector("#keySetCountUnlockBtn");

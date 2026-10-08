@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261007-3";
+const appBuildVersion = "20261008-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -60,6 +60,7 @@ const pendingKeySlotWritesStorageKey = "cles-pending-key-slot-writes-v1";
 const syncMetadataVersionStorageKey = "cles-sync-metadata-version-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const newKeyDraftStorageKey = "cles-new-key-draft-v1";
+const keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
 const indexedStorageKeys = new Set([
   "cles-immobilieres-v1",
   "cles-transaction-v1",
@@ -887,6 +888,8 @@ let undoSnapshot = null;
 let isKeyInfoEditUnlocked = false;
 let isKeySetCountEditUnlocked = false;
 let lastKeySetCountTapAt = 0;
+let lastKeyInfoTap = null;
+let isKeyInfoEditPromptOpen = false;
 let expandedKeyHistoryIds = new Set();
 let expandedKeyDetailsIds = new Set();
 const recentlyClearedKeySlots = new Map();
@@ -2375,6 +2378,7 @@ function clearDirtyKeySlot(storageKey, keyId) {
 function discardPendingKeySlotWrite(cloudKey) {
   const pendingWrite = getPendingKeySlotWrite(cloudKey);
   if (!pendingWrite) return false;
+  clearKeyInfoSessionDraft(pendingWrite.storageKey, pendingWrite.keyId);
 
   pendingKeySlotWrites.delete(cloudKey);
   const memoryKey = getRecentKeySlotMemoryKey(pendingWrite.storageKey, pendingWrite.keyId);
@@ -2397,6 +2401,7 @@ function discardPendingKeySlotWrite(cloudKey) {
 function confirmPendingKeySlotWrite(cloudKey, row) {
   const pendingWrite = getPendingKeySlotWrite(cloudKey);
   if (!pendingWrite || !cloudRowMatchesPendingKeySlotWrite(row, pendingWrite)) return false;
+  clearKeyInfoSessionDraft(pendingWrite.storageKey, pendingWrite.keyId, row);
   pendingKeySlotWrites.delete(cloudKey);
   const memoryKey = getRecentKeySlotMemoryKey(pendingWrite.storageKey, pendingWrite.keyId);
   recentlyForcedKeySlots.delete(memoryKey);
@@ -3790,8 +3795,8 @@ function normalizeSet(set, index = 0) {
     holderCompany: set.holderCompany || "",
     holderPhone: set.holderPhone || "",
     holderReservationId: set.holderReservationId || "",
-    needsCheckIn: Boolean(set.needsCheckIn),
-    needsCheckInReason: set.needsCheckInReason || (set.needsCheckIn ? "added" : ""),
+    needsCheckIn: Boolean(set.needsCheckIn && set.needsCheckInReason === "created"),
+    needsCheckInReason: set.needsCheckIn && set.needsCheckInReason === "created" ? "created" : "",
     status,
     reservations: reservations.length ? reservations : migratedReservation,
     history: Array.isArray(set.history)
@@ -4549,17 +4554,40 @@ function unlockKeySetCountEdit() {
 function unlockKeyInfoEdit(event) {
   const key = getSelectedKey();
   const isArchiveView = Boolean(selectedArchiveRecord);
-  if (!key || isArchiveView || isKeyInfoEditUnlocked || !hasProtectedKeyInfo(key)) return;
+  if (!key || isArchiveView || isKeyInfoEditUnlocked || isKeyInfoEditPromptOpen || !hasProtectedKeyInfo(key)) return;
 
   const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
-  const confirmed = confirm(
-    `Souhaitez-vous apporter des modifications sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`,
-  );
-  if (!confirmed) return;
+  const question = `Souhaitez-vous apporter des modifications sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`;
+  const targetInput = event?.currentTarget;
+  const beginEdit = () => {
+    if (getSelectedKey()?.id !== key.id) return;
+    isKeyInfoEditUnlocked = true;
+    renderPanel();
+    targetInput?.focus?.({ preventScroll: true });
+  };
+  if (!isTouchDevice()) {
+    if (confirm(question)) beginEdit();
+    return;
+  }
 
-  isKeyInfoEditUnlocked = true;
-  render();
-  event?.currentTarget?.focus?.();
+  isKeyInfoEditPromptOpen = true;
+  const dialog = document.createElement("dialog");
+  dialog.className = "date-dialog key-info-edit-dialog";
+  dialog.innerHTML = '<h3></h3><div><button type="button" value="cancel">Annuler</button><button type="button" value="confirm">Modifier</button></div>';
+  dialog.querySelector("h3").textContent = question;
+  dialog.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const confirmed = button.value === "confirm";
+      dialog.close();
+      if (confirmed) beginEdit();
+    });
+  });
+  dialog.addEventListener("close", () => {
+    isKeyInfoEditPromptOpen = false;
+    dialog.remove();
+  }, { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function hasActiveReservations(set) {
@@ -4965,6 +4993,56 @@ function rememberActiveKeyInfoDraft(changes = getKeyInfoDraftChanges()) {
   };
 }
 
+function saveKeyInfoSessionDraft(storageKey, keyId, changes, baseValue) {
+  try {
+    sessionStorage.setItem(keyInfoSessionDraftStorageKey, JSON.stringify({
+      storageKey, keyId, changes,
+      baseOwner: baseValue?.owner || "",
+      baseProperty: baseValue?.property || "",
+      baseChanges: baseValue ? Object.fromEntries(keyInfoFields.map((field) => [field, baseValue[field] || ""])) : null,
+      editedAt: Date.now(),
+    }));
+  } catch {}
+}
+
+function clearKeyInfoSessionDraft(storageKey, keyId, row = null) {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(keyInfoSessionDraftStorageKey) || "null");
+    if (draft?.storageKey !== storageKey || draft.keyId !== keyId) return;
+    if (row && !keyInfoDraftMatchesKey(draft.changes, normalizeCloudSlotKey(row))) return;
+    sessionStorage.removeItem(keyInfoSessionDraftStorageKey);
+  } catch {}
+}
+
+function restoreKeyInfoSessionDraft() {
+  let draft;
+  try {
+    draft = JSON.parse(sessionStorage.getItem(keyInfoSessionDraftStorageKey) || "null");
+  } catch { return; }
+  if (!draft || !isKeysStorageKey(draft.storageKey) || !draft.keyId ||
+    !draft.changes || Date.now() - draft.editedAt > 24 * 60 * 60 * 1000) {
+    try { sessionStorage.removeItem(keyInfoSessionDraftStorageKey); } catch {}
+    return;
+  }
+  const savedKeys = parseStoredArray(draft.storageKey, makeInitialKeys());
+  const key = savedKeys.find((item) => item.id === draft.keyId);
+  if (!key || (key.owner !== draft.baseOwner && key.owner !== draft.changes.owner) ||
+    (key.property !== draft.baseProperty && key.property !== draft.changes.property)) {
+    clearKeyInfoSessionDraft(draft.storageKey, draft.keyId);
+    return;
+  }
+  const nextKey = normalizeKey({ ...key, ...draft.changes });
+  const cloudKey = getKeySlotCloudKey(draft.storageKey, draft.keyId);
+  rememberPendingKeySlotWrite(draft.storageKey, draft.keyId, nextKey, {
+    baseValue: getPendingKeySlotWrite(cloudKey)?.baseValue || { ...key, ...draft.baseChanges },
+  });
+  markDirtyKeySlot(draft.keyId, draft.storageKey);
+  setRuntimeStorageValue(draft.storageKey, JSON.stringify(savedKeys.map((item) =>
+    item.id === draft.keyId ? nextKey : item)));
+  dirtyCloudKeys.add(draft.storageKey);
+  savePendingCloudKeys();
+}
+
 function keyInfoDraftMatchesKey(changes, key) {
   if (!key) return false;
   return Object.entries(changes).every(([field, value]) => String(key[field] || "") === String(value || ""));
@@ -4991,11 +5069,14 @@ function captureActiveKeyInfoDraft() {
   rememberActiveKeyInfoDraft(changes);
   markDirtyKeySlot(selectedId);
   keys = keys.map((key) => (key.id === selectedId ? { ...key, ...changes } : key));
+  const storageKey = getRegistryConfig().keysStorageKey;
+  const baseValue = getPendingKeySlotWrite(getKeySlotCloudKey(storageKey, selectedId))?.baseValue;
+  saveKeyInfoSessionDraft(storageKey, selectedId, changes, baseValue);
   try {
     markLocalEdit();
-    setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
-    scheduleStorageKeySync(getRegistryConfig().keysStorageKey);
-    scheduleDirectKeyStorageFlush(getRegistryConfig().keysStorageKey);
+    setRuntimeStorageValue(storageKey, JSON.stringify(keys));
+    scheduleStorageKeySync(storageKey);
+    scheduleDirectKeyStorageFlush(storageKey);
   } catch (error) {
     console.warn("Local draft save failed", error.message);
   }
@@ -5014,6 +5095,9 @@ function restoreActiveKeyInfoDraftIfNeeded() {
 
 function updateSelectedKeyInfoFromDraft(options = {}) {
   if (!selectedId || selectedArchiveRecord) return;
+  if (!isPendingNewKeyDraft() && !keyInfoDraftMatchesKey(getKeyInfoDraftChanges(), getSelectedKey())) {
+    captureActiveKeyInfoDraft();
+  }
   isSavingKeyInfoDraft = true;
   try {
     const changes = getKeyInfoDraftChanges();
@@ -5022,10 +5106,8 @@ function updateSelectedKeyInfoFromDraft(options = {}) {
       persistPendingNewKeyDraft();
       return;
     }
-    rememberKeyInfoEditBase();
-    rememberActiveKeyInfoDraft(changes);
-    markDirtyKeySlot(selectedId);
-    updateSelectedKey(changes, { renderPanel: false, render: options.render !== false });
+    updateCreationActivityForKey(getSelectedKey());
+    if (options.render !== false) renderGrid();
     void syncStorageKeyToCloud(getRegistryConfig().keysStorageKey);
   } finally {
     isSavingKeyInfoDraft = false;
@@ -8884,9 +8966,9 @@ function setKeySetCount(count, options = {}) {
     }
   }
 
-  const nextSets = nextIds.map((id, index) => {
+  const nextSets = nextIds.map((id) => {
     const savedSet = key.sets.find((set) => set.id === id);
-    return savedSet || { ...makeKeySet(id), needsCheckIn: index >= previousCount, needsCheckInReason: "added" };
+    return savedSet || makeKeySet(id);
   });
   selectedSetId = nextSets.some((set) => set.id === selectedSetId) ? selectedSetId : nextSets[0].id;
   if (nextCount > previousCount) {
@@ -10037,6 +10119,16 @@ protectedKeyInfoInputs.forEach((input) => {
 });
 protectedKeyInfoInputs.forEach((input) => {
   input.addEventListener("dblclick", unlockKeyInfoEdit);
+  input.addEventListener("pointerup", (event) => {
+    if (event.pointerType === "mouse" || isKeyInfoEditUnlocked) return;
+    const now = Date.now();
+    if (lastKeyInfoTap?.input === input && now - lastKeyInfoTap.at < 450) {
+      lastKeyInfoTap = null;
+      unlockKeyInfoEdit({ currentTarget: input });
+    } else {
+      lastKeyInfoTap = { input, at: now };
+    }
+  });
 });
 keySetCountUnlockBtn.addEventListener("dblclick", unlockKeySetCountEdit);
 keySetCountUnlockBtn.addEventListener("pointerup", (event) => {
@@ -10645,6 +10737,8 @@ async function initializeApp() {
   render();
   if (await ensureFreshPublishedAppVersion()) return;
   resetLegacySyncMetadataIfNeeded();
+  restoreKeyInfoSessionDraft();
+  keys = loadKeys();
   removeAutomaticBackupsFromLocalStorage();
   updateAccessLockState();
   ensureDeviceName();
