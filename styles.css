@@ -2814,19 +2814,6 @@ body.is-moving-key .photo-hover {
   font-weight: 700;
 }
 
-.key-info-edit-dialog h3 {
-  font-size: 16px;
-  line-height: 1.35;
-  text-align: center;
-}
-
-.key-info-edit-dialog button[value="confirm"] {
-  border: 2px solid #3d8f5e;
-  background: var(--green-soft);
-  color: #000;
-  -webkit-text-fill-color: #000;
-}
-
 .reservation-edit-dialog {
   width: min(420px, calc(100vw - 32px));
 }

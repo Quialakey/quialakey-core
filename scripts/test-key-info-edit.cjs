@@ -4,6 +4,19 @@ const http = require("node:http");
 const path = require("node:path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
+function dialogAppearance(dialog) {
+  const form = dialog.querySelector("form");
+  const heading = dialog.querySelector("h3");
+  const buttons = [...dialog.querySelectorAll("button")];
+  const properties = (element, names) => Object.fromEntries(names.map((name) => [name, getComputedStyle(element)[name]]));
+  return {
+    dialog: properties(dialog, ["width", "padding", "backgroundColor", "borderColor", "borderWidth", "borderRadius"]),
+    form: properties(form, ["display", "rowGap"]),
+    heading: properties(heading, ["fontSize", "fontWeight", "lineHeight", "textAlign", "marginBottom"]),
+    buttons: buttons.map((button) => properties(button, ["minHeight", "fontWeight", "color", "backgroundColor", "borderColor", "borderWidth", "borderRadius"])),
+  };
+}
+
 async function main() {
   const root = path.resolve(__dirname, "..");
   const server = http.createServer(async (request, response) => {
@@ -59,8 +72,10 @@ async function main() {
         await page.locator("#propertyInput").tap();
       }
       assert.equal(await page.locator(".key-info-edit-dialog h3").textContent(), "Souhaitez-vous effectuer des modifications ?");
-      assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Non", "Oui"]);
-      await page.locator(".key-info-edit-dialog button[value='confirm']").click();
+      assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Oui", "Non"]);
+      assert.equal(await page.locator(".key-info-edit-dialog").evaluate((dialog) => dialog.classList.contains("reservation-return-dialog")), true);
+      const editAppearance = await page.locator(".key-info-edit-dialog").evaluate(dialogAppearance);
+      await page.locator(".key-info-edit-dialog button[value='yes']").click();
       assert.equal(await page.evaluate(() => document.activeElement.id), "propertyInput");
       assert.equal(await page.locator("#propertyInput").evaluate((input) => input.readOnly), false);
       await page.locator("#propertyInput").fill("32 avenue du Test");
@@ -72,6 +87,10 @@ async function main() {
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
       await page.locator("#keyDetailsToggleBtn").click();
       assert.equal(await page.locator("#propertyInput").inputValue(), "32 Av. Du Test");
+      await page.evaluate(() => { void promptReservationReturn(); });
+      const reservationAppearance = await page.locator(".reservation-return-dialog").evaluate(dialogAppearance);
+      assert.deepEqual(editAppearance, reservationAppearance);
+      await page.locator(".reservation-return-dialog button[value='no']").click();
       await context.close();
     }
     console.log("Added key sets, address save/reload, and touch edit focus passed.");

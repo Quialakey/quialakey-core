@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261008-2";
+const appBuildVersion = "20261008-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4566,12 +4566,12 @@ function unlockKeyInfoEdit(event) {
   };
   isKeyInfoEditPromptOpen = true;
   const dialog = document.createElement("dialog");
-  dialog.className = "date-dialog key-info-edit-dialog";
-  dialog.innerHTML = '<h3></h3><div><button type="button" value="cancel">Non</button><button type="button" value="confirm">Oui</button></div>';
+  dialog.className = "date-dialog reservation-return-dialog key-info-edit-dialog";
+  dialog.innerHTML = '<form method="dialog"><h3></h3><div><button type="button" value="yes">Oui</button><button type="button" value="no">Non</button></div></form>';
   dialog.querySelector("h3").textContent = question;
   dialog.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
-      const confirmed = button.value === "confirm";
+      const confirmed = button.value === "yes";
       dialog.close();
       if (confirmed) beginEdit();
     });

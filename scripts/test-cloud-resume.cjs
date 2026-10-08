@@ -741,11 +741,11 @@ async function main() {
     await page.locator("#ownerInput").dblclick();
     const detailsConfirmation = await page.locator(".key-info-edit-dialog h3").textContent();
     assert.equal(detailsConfirmation, "Souhaitez-vous effectuer des modifications ?");
-    assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Non", "Oui"]);
-    await page.locator('.key-info-edit-dialog button[value="cancel"]').click();
+    assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Oui", "Non"]);
+    await page.locator('.key-info-edit-dialog button[value="no"]').click();
     assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), true);
     await page.locator("#ownerInput").dblclick();
-    await page.locator('.key-info-edit-dialog button[value="confirm"]').click();
+    await page.locator('.key-info-edit-dialog button[value="yes"]').click();
     assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
     await page.locator("#propertyInput").click();
     assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
@@ -756,13 +756,13 @@ async function main() {
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").notes), "Note conservée au reverrouillage");
     await page.locator("#ownerInput").dblclick();
     assert.equal(await page.locator(".key-info-edit-dialog h3").textContent(), detailsConfirmation);
-    await page.locator('.key-info-edit-dialog button[value="cancel"]').click();
+    await page.locator('.key-info-edit-dialog button[value="no"]').click();
     await page.locator("#ownerInput").dblclick();
-    await page.locator('.key-info-edit-dialog button[value="confirm"]').click();
+    await page.locator('.key-info-edit-dialog button[value="yes"]').click();
     await page.locator("#selectedTitle").click();
     await page.waitForFunction(() => document.querySelector("#ownerInput").readOnly);
     await page.locator("#ownerInput").dblclick();
-    await page.locator('.key-info-edit-dialog button[value="confirm"]').click();
+    await page.locator('.key-info-edit-dialog button[value="yes"]').click();
     await page.locator("#ownerInput").fill("MEYER MODIFIÉ");
     await page.evaluate(() => {
       document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
@@ -787,7 +787,7 @@ async function main() {
     });
     assert.equal(await page.locator("#ownerInput").inputValue(), "MEYER MODIFIÉ");
     await page.locator("#ownerInput").dblclick();
-    await page.locator('.key-info-edit-dialog button[value="confirm"]').click();
+    await page.locator('.key-info-edit-dialog button[value="yes"]').click();
     await page.locator("#ownerInput").fill("MEYER FINAL");
     await page.locator(".key-tile").filter({ hasText: "T3 #2" }).first().click();
     assert.equal(await page.evaluate(() => selectedId), "T3-2");
