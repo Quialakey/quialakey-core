@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261008-3";
+const appBuildVersion = "20261009-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -5153,9 +5153,8 @@ function scheduleDetailPanelClose() {
   clearTimeout(detailCloseTimer);
 }
 
-function renderContactSelect() {
-  const currentValue = contactSelect.value;
-  contactSelect.innerHTML = '<option value="">Choisir dans la liste</option>';
+function populateContactSelect(select, currentValue = "") {
+  select.innerHTML = '<option value="">Choisir dans la liste</option>';
 
   [
     ["internal", "Intervenants internes"],
@@ -5173,10 +5172,14 @@ function renderContactSelect() {
       option.textContent = getContactSelectName(contact);
       group.append(option);
     });
-    contactSelect.append(group);
+    select.append(group);
   });
 
-  contactSelect.value = contacts.some((contact) => contact.id === currentValue) ? currentValue : "";
+  select.value = contacts.some((contact) => contact.id === currentValue) ? currentValue : "";
+}
+
+function renderContactSelect() {
+  populateContactSelect(contactSelect, contactSelect.value);
 }
 
 function renderContactsPanel() {
@@ -9596,6 +9599,7 @@ function promptReservationEdit(reservation) {
     <form method="dialog">
       <h3>Modifier la réservation</h3>
       <label>Date et heure <input name="date" type="datetime-local" required /></label>
+      <label>Sélectionner un intervenant <select name="contact"></select></label>
       <label>Intervenant <input name="person" type="text" /></label>
       <label>Société <input name="company" type="text" /></label>
       <label>Téléphone <input name="phone" type="tel" /></label>
@@ -9610,6 +9614,17 @@ function promptReservationEdit(reservation) {
     </form>
   `;
   const fields = dialog.querySelector("form").elements;
+  const savedContactSelect = fields.namedItem("contact");
+  populateContactSelect(savedContactSelect);
+  savedContactSelect.addEventListener("change", () => {
+    const contact = contacts.find((savedContact) => savedContact.id === savedContactSelect.value);
+    if (!contact) return;
+    fields.namedItem("person").value = [formatFirstName(contact.firstName), formatLastName(contact.name)]
+      .filter(Boolean).join(" ").trim();
+    fields.namedItem("company").value = contact.type === "external"
+      ? formatCompanyName(contact.companyName || "") : "";
+    fields.namedItem("phone").value = formatPhoneNumber(contact.phone);
+  });
   const timestamp = parseHistoryTimestamp(reservation.reservationDate);
   const date = timestamp ? new Date(timestamp) : new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());

@@ -91,6 +91,26 @@ async function main() {
       const reservationAppearance = await page.locator(".reservation-return-dialog").evaluate(dialogAppearance);
       assert.deepEqual(editAppearance, reservationAppearance);
       await page.locator(".reservation-return-dialog button[value='no']").click();
+      await page.evaluate(() => {
+        contacts = [
+          { id: "internal-test", type: "internal", firstName: "Ana", name: "BERNARD", phone: "06 11 22 33 44" },
+          { id: "external-test", type: "external", firstName: "Luc", name: "DUPONT", companyName: "Agence Test", phone: "07 11 22 33 44" },
+        ];
+        void promptReservationEdit({ person: "Avant", reservationDate: "09/10/2026 12:00", note: "À conserver", returnsToAgency: true });
+      });
+      const contactPicker = page.locator('.reservation-edit-dialog select[name="contact"]');
+      assert.deepEqual(await contactPicker.locator("optgroup").evaluateAll((groups) => groups.map((group) => group.label)),
+        ["Intervenants internes", "Intervenants externes"]);
+      assert.equal(await page.locator('.reservation-edit-dialog input[name="person"]').inputValue(), "Avant");
+      await contactPicker.selectOption("internal-test");
+      assert.equal(await page.locator('.reservation-edit-dialog input[name="person"]').inputValue(), "Ana BERNARD");
+      await contactPicker.selectOption("external-test");
+      assert.equal(await page.locator('.reservation-edit-dialog input[name="person"]').inputValue(), "Luc DUPONT");
+      assert.equal(await page.locator('.reservation-edit-dialog input[name="company"]').inputValue(), "Agence Test");
+      assert.equal(await page.locator('.reservation-edit-dialog input[name="phone"]').inputValue(), "07 11 22 33 44");
+      assert.equal(await page.locator('.reservation-edit-dialog textarea[name="note"]').inputValue(), "À conserver");
+      assert.equal(await page.locator('.reservation-edit-dialog select[name="returns"]').inputValue(), "yes");
+      await page.locator('.reservation-edit-dialog button[value="cancel"]').click();
       await context.close();
     }
     console.log("Added key sets, address save/reload, and touch edit focus passed.");

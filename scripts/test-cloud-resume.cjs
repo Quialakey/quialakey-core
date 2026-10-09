@@ -1285,11 +1285,16 @@ async function main() {
       const originalKeys = keys;
       const originalSelectedId = selectedId;
       const originalSelectedSetId = selectedSetId;
+      const originalContacts = contacts;
       const originalUpdate = updateSelectedSet;
       const originalMark = markKeyControlActionForSync;
       const originalSync = syncCloudAfterAction;
       let saved;
       try {
+        contacts = [
+          { id: "internal-edit-test", type: "internal", firstName: "Ana", name: "BERNARD", phone: "06 11 22 33 44" },
+          { id: "external-edit-test", type: "external", firstName: "Après", name: "DUPONT", companyName: "Entreprise Test", phone: "07 11 22 33 44" },
+        ];
         selectedId = "T3-1";
         selectedSetId = "main";
         keys = keys.map((key) => key.id === selectedId ? {
@@ -1309,7 +1314,18 @@ async function main() {
         document.querySelector(".reservation-edit-button").click();
         const dialog = document.querySelector(".reservation-edit-dialog");
         const fields = dialog.querySelector("form").elements;
-        fields.namedItem("person").value = "Après";
+        const contactPicker = fields.namedItem("contact");
+        const groups = [...contactPicker.querySelectorAll("optgroup")].map((group) => group.label);
+        const originalPerson = fields.namedItem("person").value;
+        contactPicker.value = "internal-edit-test";
+        contactPicker.dispatchEvent(new Event("change", { bubbles: true }));
+        const internal = {
+          person: fields.namedItem("person").value,
+          company: fields.namedItem("company").value,
+          phone: fields.namedItem("phone").value,
+        };
+        contactPicker.value = "external-edit-test";
+        contactPicker.dispatchEvent(new Event("change", { bubbles: true }));
         fields.namedItem("note").value = "Nouveau commentaire";
         fields.namedItem("date").value = "2026-10-02T16:30";
         fields.namedItem("returns").value = "no";
@@ -1318,6 +1334,9 @@ async function main() {
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
         return {
+          groups,
+          originalPerson,
+          internal,
           buttonCount: activeReservationPanel.querySelectorAll(".reservation-edit-button").length,
           reservation: saved?.reservations[0],
           history: saved?.history[0],
@@ -1326,14 +1345,20 @@ async function main() {
         keys = originalKeys;
         selectedId = originalSelectedId;
         selectedSetId = originalSelectedSetId;
+        contacts = originalContacts;
         updateSelectedSet = originalUpdate;
         markKeyControlActionForSync = originalMark;
         syncCloudAfterAction = originalSync;
         renderPanel();
       }
     });
-    assert.equal(reservationEdit.reservation.person, "Après");
-    assert.equal(reservationEdit.history.person, "Après");
+    assert.deepEqual(reservationEdit.groups, ["Intervenants internes", "Intervenants externes"]);
+    assert.equal(reservationEdit.originalPerson, "Avant");
+    assert.deepEqual(reservationEdit.internal, { person: "Ana BERNARD", company: "", phone: "06 11 22 33 44" });
+    assert.equal(reservationEdit.reservation.person, "Après DUPONT");
+    assert.equal(reservationEdit.history.person, "Après DUPONT");
+    assert.equal(reservationEdit.reservation.company, "Entreprise Test");
+    assert.equal(reservationEdit.reservation.phone, "07 11 22 33 44");
     assert.equal(reservationEdit.reservation.reservationDate, "02/10/2026 16:30");
     assert.equal(reservationEdit.history.reservationDate, "02/10/2026 16:30");
     assert.equal(reservationEdit.reservation.returnsToAgency, false);
