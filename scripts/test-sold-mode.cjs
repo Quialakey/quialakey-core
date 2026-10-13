@@ -115,10 +115,17 @@ async function main() {
         settingsPanel.hidden = false;
         renderSettingsPanel();
         const section = document.querySelector(".settings-sale-mode-section");
+        const optionsBounds = section.querySelector(".settings-sale-mode-options").getBoundingClientRect();
+        const questionBounds = section.querySelector("legend").getBoundingClientRect();
         const labels = [...section.querySelectorAll(".settings-sale-mode-options label")];
         const bounds = labels.map((label) => label.getBoundingClientRect());
         return {
           sideBySide: bounds[0].right < bounds[1].left && Math.abs(bounds[0].top - bounds[1].top) < 2,
+          belowQuestion: bounds[0].top >= questionBounds.bottom,
+          centered: Math.abs(
+            (bounds[0].left + bounds[0].right + bounds[1].left + bounds[1].right) / 4 -
+            (optionsBounds.left + optionsBounds.right) / 2,
+          ) < 2,
           withinPanel: bounds[1].right <= settingsPanel.getBoundingClientRect().right,
           sectionBorder: getComputedStyle(section).borderTopWidth,
           labels: labels.map((label) => {
@@ -139,8 +146,10 @@ async function main() {
         };
       });
       assert.equal(layout.sideBySide, true, `${width}px`);
+      assert.equal(layout.belowQuestion, true, `${width}px`);
+      assert.equal(layout.centered, true, `${width}px`);
       assert.equal(layout.withinPanel, true, `${width}px`);
-      assert.equal(layout.sectionBorder, "0px");
+      assert.equal(layout.sectionBorder, "1px");
       for (const label of layout.labels) {
         assert.ok(["flex", "inline-flex"].includes(label.display));
         assert.equal(label.border, "0px");
