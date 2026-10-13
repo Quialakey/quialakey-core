@@ -20,6 +20,7 @@ async function check(registry, action, failure) {
     console: { warn() {} }, Date, Intl, JSON, Map, Set, Object,
     activeRegistry: registry, selectedArchiveRecord: null, selectedId: 'T2-4', selectedSetId: 'main',
     activeKeyControlAction: null, isConfirmingReturn: false,
+    tableSettings: { saleCelebrationEnabled: true }, showSaleCelebration: () => events.push(['celebration']),
     beginKeyControlAction: (button) => {
       events.push(['begin', button.id]);
       context.activeKeyControlAction = { pending: false };
@@ -34,7 +35,10 @@ async function check(registry, action, failure) {
     getRegistryConfig: () => context.registryConfig[context.activeRegistry],
     ensureMovementActor: () => true, ensureCompletePhoneNumber: () => true,
     getTypedMovementActor: () => ({ person: 'Intervenant', company: '', phone: '0102030405' }),
-    confirm: () => true, promptMovementSignature: async () => 'signature-test', promptCompromiseDate: async () => '2026-09-21',
+    confirm: () => true, promptMovementSignature: async () => 'signature-test', promptCompromiseDate: async () => {
+      assert.notEqual(action, 'sold');
+      return '2026-09-21';
+    },
     rememberUndoStep() {}, createHistoryId: () => 'new-history', getMovementDateText: () => '21/09/2026 17:00',
     getInlineReservationComment: () => '', formatSentenceStart: (s) => s, formatCompanyName: (s) => s, formatPhoneNumber: (s) => s,
     getMovementPersonInputName: () => 'Intervenant', keyLabel: () => 'T2 #4', formatDateOnly: (s) => s,
@@ -47,7 +51,7 @@ async function check(registry, action, failure) {
     alert: (message) => events.push(['alert', message]),
     clearActiveKeySlotForSync: () => { events.push(['clear']); context.keys[0] = { ...original, owner: '', sets: [] }; },
     logActivity: () => events.push(['log']), saveKeys: () => events.push(['saveKeys']),
-    finishKeyControlAction: async () => events.push(['finish']),
+    finishKeyControlAction: async () => { events.push(['finish']); return true; },
     upsertCloudRow: async (key, records) => {
       writes++;
       assert.equal(key, `${registry}-archives`);
@@ -94,6 +98,13 @@ async function check(registry, action, failure) {
     assert.ok(remote.some((item) => item.id === 'other-device-archive'));
     if (failure === 'conflict') assert.ok(remote.some((item) => item.id === 'concurrent'));
     const archived = remote.find((item) => item.key.owner === 'ASTIER');
+    if (action === 'sold') {
+      assert.equal(archived.reason, 'sold');
+      assert.equal(archived.compromiseSignedAt, '');
+      assert.equal(archived.key.sets[0].history[0].type, 'sold');
+      assert.ok(events.some(([event, button]) => event === 'begin' && button === 'rentedBtn'));
+      assert.ok(events.findIndex(([event]) => event === 'celebration') > events.findIndex(([event]) => event === 'finish'));
+    }
     assert.equal(archived.key.sets[0].history[0].signature, 'signature-test');
     assert.equal(archived.key.sets[0].history[1].id, 'previous');
   } else {
@@ -107,7 +118,7 @@ async function check(registry, action, failure) {
 (async () => {
   let count = 0;
   for (const registry of ['location', 'transaction']) {
-    for (const action of ['reservation', 'removed', 'rented']) {
+    for (const action of registry === 'transaction' ? ['reservation', 'removed', 'rented', 'sold'] : ['reservation', 'removed', 'rented']) {
       for (const failure of ['', 'read', 'write', 'confirmation', 'missing', 'corrupt', 'pending', 'no-client', 'switch', 'edit', 'conflict']) {
         await check(registry, action, failure);
         count++;

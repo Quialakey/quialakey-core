@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-1" />
-    <link rel="stylesheet" href="styles.css?v=20261009-1" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261013-1" />
+    <link rel="stylesheet" href="styles.css?v=20261013-1" />
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
@@ -74,7 +74,7 @@
           </div>
           <div class="top-actions">
             <button id="compromisesTabBtn" class="archive-tab-button compromise-tab-button" type="button" aria-label="Compromis" hidden>
-              Compromis
+              <span id="compromisesTabLabel">Compromis</span>
               <svg class="tab-icon check-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="4" y="4" width="14" height="14" rx="2"></rect>
                 <path d="M9 12.5 12 15.5 21 6.5"></path>
@@ -459,6 +459,16 @@
             <ol id="settingsReplacementsList" class="settings-list settings-replacements-list"></ol>
           </section>
 
+          <section class="settings-section settings-sale-mode-section">
+            <fieldset class="settings-sale-mode-fieldset">
+              <legend>Une fois un compromis signé, vos clés restent-elles sur le tableau ?</legend>
+              <div class="settings-sale-mode-options">
+                <label><input id="settingsKeepKeysYes" type="radio" name="settingsKeepKeys" value="yes" />Oui</label>
+                <label><input id="settingsKeepKeysNo" type="radio" name="settingsKeepKeys" value="no" checked />Non</label>
+              </div>
+            </fieldset>
+          </section>
+
           <section class="settings-section settings-celebration-section">
             <h3>Félicitations de vente</h3>
             <label class="settings-switch-control">
@@ -490,13 +500,23 @@
         <div class="panel-header">
           <div>
             <p class="eyebrow">Transaction</p>
-            <h2>Compromis</h2>
+            <h2 id="compromisesPanelTitle">Compromis</h2>
           </div>
           <button id="closeCompromisesBtn" class="close-button" type="button" aria-label="Fermer les compromis">x</button>
         </div>
 
+        <input
+          id="soldSearchInput"
+          class="archive-search-input"
+          type="search"
+          placeholder="Rechercher un bien vendu..."
+          aria-label="Rechercher dans les biens vendus"
+          autocomplete="off"
+          hidden
+        />
+
         <section class="archive-section">
-          <h3>Biens dont les compromis sont sign&eacute;s</h3>
+          <h3 id="compromisesSectionTitle">Biens dont les compromis sont sign&eacute;s</h3>
           <ol id="compromisesList" class="archive-list"></ol>
         </section>
       </aside>
@@ -534,13 +554,23 @@
           <h3>Actes authentiques</h3>
           <ol id="authenticatedList" class="archive-list"></ol>
         </section>
+
+        <section id="legacyCompromiseArchiveSection" class="archive-section" hidden>
+          <h3>Compromis antérieurs</h3>
+          <ol id="legacyCompromiseList" class="archive-list"></ol>
+        </section>
+
+        <section id="soldArchiveSection" class="archive-section" hidden>
+          <h3>Biens vendus</h3>
+          <ol id="soldArchiveList" class="archive-list"></ol>
+        </section>
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261009-1"></script>
+    <script src="agency-config.js?v=20261013-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261009-1";
+        const fallbackVersion = "20261013-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

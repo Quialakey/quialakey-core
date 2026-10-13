@@ -1190,6 +1190,58 @@ h3 {
   font-weight: 700;
 }
 
+.settings-sale-mode-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-sale-mode-fieldset legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-sale-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-sale-mode-options label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-sale-mode-options label:has(input:checked) {
+  border-color: #2c6079;
+  background: #d1e5ed;
+  font-weight: 700;
+}
+
+.settings-form .settings-sale-mode-options input[type="radio"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: #2c6079;
+}
+
 .settings-section-heading {
   display: flex;
   align-items: center;

@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261009-1";
+const appBuildVersion = "20261013-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -355,6 +355,7 @@ function getDefaultTableSettings() {
     slotsPerCategory: defaultSlotsPerCategory,
     casesPerLine: defaultCasesPerLine,
     addressReplacements: defaultAddressReplacements.map((item) => ({ ...item })),
+    keepKeysAfterCompromise: false,
     saleCelebrationEnabled: true,
     accessCode: defaultAccessCode,
     accessLockEnabled: false,
@@ -430,6 +431,7 @@ function normalizeTableSettings(value) {
     normalizedAddressReplacements.push({ id: "allee-sans-accent", word: "allee", replacement: "All." });
   }
   const addressReplacements = sortAddressReplacements(normalizedAddressReplacements);
+  const keepKeysAfterCompromise = source.keepKeysAfterCompromise === true;
   const saleCelebrationEnabled = source.saleCelebrationEnabled !== false;
   const agencyName = String(source.agencyName || fallback.agencyName).trim() || fallback.agencyName;
   const accessCode = String(source.accessCode || fallback.accessCode || defaultAccessCode).trim() || defaultAccessCode;
@@ -444,6 +446,7 @@ function normalizeTableSettings(value) {
     slotsPerCategory,
     casesPerLine,
     addressReplacements,
+    keepKeysAfterCompromise,
     saleCelebrationEnabled,
     accessCode,
     accessLockEnabled,
@@ -792,7 +795,11 @@ const closePanelBtn = document.querySelector("#closePanelBtn");
 const saleCelebration = document.querySelector("#saleCelebration");
 const celebrationSky = saleCelebration?.querySelector(".celebration-sky");
 const compromisesTabBtn = document.querySelector("#compromisesTabBtn");
+const compromisesTabLabel = document.querySelector("#compromisesTabLabel");
 const compromisesPanel = document.querySelector("#compromisesPanel");
+const compromisesPanelTitle = document.querySelector("#compromisesPanelTitle");
+const compromisesSectionTitle = document.querySelector("#compromisesSectionTitle");
+const soldSearchInput = document.querySelector("#soldSearchInput");
 const closeCompromisesBtn = document.querySelector("#closeCompromisesBtn");
 const compromisesList = document.querySelector("#compromisesList");
 const archivesTabBtn = document.querySelector("#archivesTabBtn");
@@ -802,10 +809,14 @@ const archiveSearchInput = document.querySelector("#archiveSearchInput");
 const rentedArchiveSection = document.querySelector("#rentedArchiveSection");
 const removedArchiveSection = document.querySelector("#removedArchiveSection");
 const authenticatedArchiveSection = document.querySelector("#authenticatedArchiveSection");
+const legacyCompromiseArchiveSection = document.querySelector("#legacyCompromiseArchiveSection");
+const soldArchiveSection = document.querySelector("#soldArchiveSection");
 const rentedArchiveTitle = document.querySelector("#rentedArchiveTitle");
 const rentedList = document.querySelector("#rentedList");
 const removedList = document.querySelector("#removedList");
 const authenticatedList = document.querySelector("#authenticatedList");
+const legacyCompromiseList = document.querySelector("#legacyCompromiseList");
+const soldArchiveList = document.querySelector("#soldArchiveList");
 const contactsTabBtn = document.querySelector("#contactsTabBtn");
 const contactsPanel = document.querySelector("#contactsPanel");
 const closeContactsBtn = document.querySelector("#closeContactsBtn");
@@ -828,6 +839,8 @@ const settingsDataBtn = document.querySelector("#settingsDataBtn");
 const settingsPanel = document.querySelector("#settingsPanel");
 const closeSettingsBtn = document.querySelector("#closeSettingsBtn");
 const settingsForm = document.querySelector("#settingsForm");
+const settingsKeepKeysYes = document.querySelector("#settingsKeepKeysYes");
+const settingsKeepKeysNo = document.querySelector("#settingsKeepKeysNo");
 const settingsAgencyNameInput = document.querySelector("#settingsAgencyNameInput");
 const settingsRowCountInput = document.querySelector("#settingsRowCountInput");
 const settingsCasesPerLineInput = document.querySelector("#settingsCasesPerLineInput");
@@ -3655,8 +3668,17 @@ function getRegistryConfig() {
   return registryConfig[activeRegistry] || registryConfig.location;
 }
 
+function isSoldMode() {
+  return activeRegistry === "transaction" && tableSettings?.keepKeysAfterCompromise === true;
+}
+
+function getPrimaryArchiveActionLabel() {
+  return isSoldMode() ? "Vendu" : getRegistryConfig().archiveActionLabel;
+}
+
 function updateRegistryHeader() {
   const config = getRegistryConfig();
+  const soldMode = isSoldMode();
   const targetRegistry = activeRegistry === "location" ? "transaction" : "location";
   const targetConfig = registryConfig[targetRegistry];
   appTitleText.textContent = config.title;
@@ -3664,18 +3686,28 @@ function updateRegistryHeader() {
   updateAccessLockTitle();
   document.title = "Quialakey";
   registryToggleBtn.textContent = config.toggleLabel;
-  rentedBtn.textContent = config.archiveActionLabel;
+  rentedBtn.textContent = getPrimaryArchiveActionLabel();
   duplicateKeyBtn.textContent = `Dupliquer dans ${config.title}`;
   transferKeyBtn.textContent = `Transférer vers ${targetConfig.title}`;
   rentedArchiveTitle.textContent = config.rentedArchiveTitle;
   compromisesTabBtn.hidden = activeRegistry !== "transaction";
+  const tabLabel = soldMode ? "Vendus" : "Compromis";
+  compromisesTabLabel.textContent = tabLabel;
+  compromisesTabBtn.setAttribute("aria-label", tabLabel);
+  compromisesPanel.setAttribute("aria-label", tabLabel);
+  compromisesPanelTitle.textContent = tabLabel;
+  compromisesSectionTitle.textContent = soldMode ? "Biens vendus" : "Biens dont les compromis sont signés";
+  soldSearchInput.hidden = !soldMode;
+  closeCompromisesBtn.setAttribute("aria-label", `Fermer les ${tabLabel.toLowerCase()}`);
   topActions?.classList.toggle("is-location-only", activeRegistry === "location");
   rentedArchiveSection.hidden = activeRegistry === "transaction";
-  authenticatedArchiveSection.hidden = activeRegistry !== "transaction";
+  authenticatedArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
+  legacyCompromiseArchiveSection.hidden = activeRegistry !== "transaction" || !soldMode;
+  soldArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
   const orderedArchiveSections =
     activeRegistry === "transaction"
-      ? [authenticatedArchiveSection, removedArchiveSection, rentedArchiveSection]
-      : [rentedArchiveSection, removedArchiveSection, authenticatedArchiveSection];
+      ? [authenticatedArchiveSection, legacyCompromiseArchiveSection, soldArchiveSection, removedArchiveSection, rentedArchiveSection]
+      : [rentedArchiveSection, removedArchiveSection, authenticatedArchiveSection, legacyCompromiseArchiveSection, soldArchiveSection];
   orderedArchiveSections.forEach((section) => archivesPanel.append(section));
   if (registryHistoryDataLabel) {
     registryHistoryDataLabel.textContent = activeRegistry === "location" ? "Historique Location" : "Historique Transaction";
@@ -4275,6 +4307,7 @@ function getMovementActionLabel(entry, history = []) {
   if (entry?.type === "reserved") return "R\u00e9serv\u00e9";
   if (entry?.type === "cancel-reservation") return "Annulation";
   if (entry?.type === "removed") return "Archiv\u00e9";
+  if (entry?.type === "sold") return "Vendu";
   if (entry?.type === "rented") return entry.actionLabel || getRegistryConfig().archiveActionLabel;
   if (entry?.type === "in") return isReturnMovement(entry, history) ? "Rentr\u00e9" : "Entr\u00e9";
   return "Entr\u00e9";
@@ -5377,6 +5410,7 @@ function formatDateOnly(value) {
 
 function archiveReasonText(reason) {
   if (reason === "rented") return getRegistryConfig().rentedArchiveText;
+  if (reason === "sold") return "Vendu";
   if (reason === "removed") return "Archivé";
   if (reason === "authenticated") return "Acte authentique";
   return "";
@@ -5921,18 +5955,20 @@ function getRegistryHistoryEntries(registry) {
 
   registryArchives.forEach((record) => {
     const key = record.key;
-    const archiveMovementType = record.reason === "removed" ? "removed" : "rented";
+    const archiveMovementType = record.reason === "removed" ? "removed" : record.reason === "sold" ? "sold" : "rented";
     const archiveSet = key.sets?.find((set) => set.history?.some((entry) => entry.type === archiveMovementType)) || key.sets?.[0] || {};
     const archiveMovement = [...(archiveSet.history || [])].find((entry) => entry.type === archiveMovementType);
     const latestMovement =
       archiveMovement || (record.reason === "removed" ? null : getLatestMovementEntry(archiveSet.history || []));
-    const usesMovementActor = ["removed", "rented", "authenticated"].includes(record.reason);
+    const usesMovementActor = ["removed", "rented", "sold", "authenticated"].includes(record.reason);
     const defaultInternalActor = record.reason === "removed" ? { person: "", phone: "" } : getDefaultInternalContactActor();
     const archiveActor = latestMovement?.person || latestMovement?.company || defaultInternalActor.person;
     const archiveActorPhone = latestMovement?.phone || defaultInternalActor.phone;
     const action =
       record.reason === "authenticated"
         ? "Acte authentique"
+        : record.reason === "sold"
+          ? "Vendu"
         : record.reason === "removed"
           ? "Archivé"
           : registry === "transaction"
@@ -5966,7 +6002,7 @@ function getActionClass(action) {
   if (readableAction.includes("entr") || readableAction.includes("rentr") || readableAction.includes("creation") || readableAction.includes("restauration")) return "in";
   if (readableAction.includes("sorti") || readableAction.includes("sortie")) return "out";
   if (readableAction.includes("reserv")) return "reserved";
-  if (readableAction.includes("compromis") || readableAction.includes("loue") || readableAction.includes("acte authentique")) return "signed";
+  if (readableAction.includes("compromis") || readableAction.includes("loue") || readableAction.includes("vendu") || readableAction.includes("acte authentique")) return "signed";
   if (readableAction.includes("retir") || readableAction.includes("archiv") || readableAction.includes("suppression")) return "removed";
   if (/\b(?:entr\u00e9e?|rentr\u00e9e?)\b/i.test(String(action || ""))) return "in";
   if (/\b(?:sortie|sorti)\b/i.test(String(action || ""))) return "out";
@@ -5975,7 +6011,7 @@ function getActionClass(action) {
   if (normalized.includes("entrée") || normalized.includes("création") || normalized.includes("restauration")) return "in";
   if (normalized.includes("sortie")) return "out";
   if (normalized.includes("rÃ©serv") || normalized.includes("réserv")) return "reserved";
-  if (normalized.includes("compromis") || normalized.includes("loué") || normalized.includes("acte authentique")) return "signed";
+  if (normalized.includes("compromis") || normalized.includes("loué") || normalized.includes("vendu") || normalized.includes("acte authentique")) return "signed";
   if (normalized.includes("retiré") || normalized.includes("archiv") || normalized.includes("suppression")) return "removed";
   return "neutral";
 }
@@ -6876,6 +6912,7 @@ function updateSettingsDraftFromDom() {
   if (settingsCelebrationInput) {
     settingsDraft.saleCelebrationEnabled = settingsCelebrationInput.checked;
   }
+  settingsDraft.keepKeysAfterCompromise = Boolean(settingsKeepKeysYes?.checked);
   if (settingsAccessLockInput) {
     const wasEnabled = tableSettings?.accessLockEnabled !== false;
     const previousAccessCode = String(tableSettings?.accessCode || defaultAccessCode).trim() || defaultAccessCode;
@@ -7060,6 +7097,8 @@ function renderSettingsPanel() {
     settingsCasesPerLineInput.value = String(settingsDraft.casesPerLine || defaultCasesPerLine);
   }
   if (settingsSlotsInput) settingsSlotsInput.value = String(settingsDraft.slotsPerCategory || defaultSlotsPerCategory);
+  if (settingsKeepKeysYes) settingsKeepKeysYes.checked = settingsDraft.keepKeysAfterCompromise === true;
+  if (settingsKeepKeysNo) settingsKeepKeysNo.checked = settingsDraft.keepKeysAfterCompromise !== true;
   if (settingsCelebrationInput) settingsCelebrationInput.checked = settingsDraft.saleCelebrationEnabled !== false;
   if (settingsAccessLockInput) settingsAccessLockInput.checked = settingsDraft.accessLockEnabled !== false;
   if (settingsAccessCodeText) {
@@ -7489,7 +7528,7 @@ function markCompromiseAsAuthenticated(recordId) {
   const record = archives.find((archive) => archive.id === recordId && archive.reason === "rented");
   if (!record) return;
 
-  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'envoyer dans Archives ?`);
+  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'envoyer dans ${isSoldMode() ? "Vendus" : "Archives"} ?`);
   if (!confirmed) return;
 
   rememberUndoStep();
@@ -7562,9 +7601,11 @@ function renderArchiveList(list, reason, emptyText, options = {}) {
       .toLocaleLowerCase("fr-FR")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
-  const archiveQuery = normalizeArchiveSearchText(archiveSearchInput?.value).trim();
+  const searchField = options.searchInput === undefined ? archiveSearchInput : options.searchInput;
+  const archiveQuery = normalizeArchiveSearchText(searchField?.value).trim();
+  const reasons = Array.isArray(reason) ? reason : [reason];
   const archivedRecords = archives
-    .filter((record) => record.reason === reason)
+    .filter((record) => reasons.includes(record.reason))
     .filter((record) => {
       if (!archiveQuery) return true;
 
@@ -7619,6 +7660,8 @@ function renderArchiveList(list, reason, emptyText, options = {}) {
       ? "Compromis"
       : record.reason === "removed"
         ? "Archivé"
+        : record.reason === "sold"
+          ? "Vendu"
         : record.reason === "authenticated"
           ? "Acte authentique"
           : getRegistryConfig().rentedArchiveText;
@@ -7722,14 +7765,32 @@ function renderArchivesPanel() {
   renderArchiveList(rentedList, "rented", getRegistryConfig().rentedArchiveEmpty);
   renderArchiveList(removedList, "removed", "Aucun bien archivé.");
   renderArchiveList(authenticatedList, "authenticated", "Aucun acte authentique archivé.");
+  const soldMode = isSoldMode();
+  legacyCompromiseArchiveSection.hidden = !soldMode || !archives.some((record) => record.reason === "rented");
+  soldArchiveSection.hidden = activeRegistry !== "transaction" || soldMode || !archives.some((record) => record.reason === "sold");
+  authenticatedArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
+  if (!legacyCompromiseArchiveSection.hidden) {
+    renderArchiveList(legacyCompromiseList, "rented", "Aucun ancien compromis.", {
+      showAuthenticatedAction: true,
+      showCompromiseDetails: true,
+      hideExport: true,
+    });
+  }
+  if (!soldArchiveSection.hidden) renderArchiveList(soldArchiveList, "sold", "Aucun bien vendu.");
 }
 
 function renderCompromisesPanel() {
+  if (isSoldMode()) {
+    renderArchiveList(compromisesList, ["sold", "authenticated"], "Aucun bien vendu.", { searchInput: soldSearchInput });
+    compromisesTabBtn.dataset.movementStatus = "";
+    return;
+  }
   renderArchiveList(compromisesList, "rented", "Aucun bien en compromis.", {
     showAuthenticatedAction: true,
     showCompromiseDetails: true,
     sortByCompromiseDate: true,
     hideExport: true,
+    searchInput: null,
   });
   const compromisedRecords = archives.filter((record) => record.reason === "rented");
   const tabStatus = compromisedRecords.some((record) => getCompromiseMovementStatus(record) === "out")
@@ -8397,7 +8458,7 @@ function renderPanel() {
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
   reservedBtn.textContent = "R\u00e9serv\u00e9";
   checkoutBtn.textContent = "Sorti";
-  rentedBtn.textContent = getRegistryConfig().archiveActionLabel;
+  rentedBtn.textContent = getPrimaryArchiveActionLabel();
   removedBtn.textContent = "Archiv\u00e9";
   checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
   checkinBtn.disabled = !canCheckInSelectedKey;
@@ -8464,6 +8525,19 @@ function renderPanel() {
       id: `${selectedArchiveRecord.id}-rented`,
       type: "rented",
       actionLabel: getRegistryConfig().archiveActionLabel,
+      person: latestMovementEntry.person || "",
+      company: latestMovementEntry.company || "",
+      phone: latestMovementEntry.phone || "",
+      note: "",
+      signature: "",
+      date: formatArchiveDate(selectedArchiveRecord.archivedAt),
+    });
+  }
+  if (selectedArchiveRecord?.reason === "sold" && !displayedHistory.some((entry) => entry.type === "sold")) {
+    displayedHistory.unshift({
+      id: `${selectedArchiveRecord.id}-sold`,
+      type: "sold",
+      actionLabel: "Vendu",
       person: latestMovementEntry.person || "",
       company: latestMovementEntry.company || "",
       phone: latestMovementEntry.phone || "",
@@ -8660,7 +8734,7 @@ function renderPanel() {
         ? "out"
         : entry.type === "removed"
           ? "removed"
-          : entry.type === "rented"
+          : entry.type === "rented" || entry.type === "sold"
             ? "signed"
             : entry.type === "reserved" || entry.type === "cancel-reservation"
               ? "reserved"
@@ -9901,7 +9975,7 @@ async function archiveSelectedKey(reason) {
   const archiveRegistry = activeRegistry;
   const sourceSnapshot = JSON.stringify(key);
 
-  const actionLabel = reason === "rented" ? getRegistryConfig().archiveActionLabel : "Archivé";
+  const actionLabel = reason === "sold" ? "Vendu" : reason === "rented" ? getRegistryConfig().archiveActionLabel : "Archivé";
   if (!ensureMovementActor(actionLabel)) return;
   if (!ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
   let compromiseSignedAt = "";
@@ -9914,7 +9988,7 @@ async function archiveSelectedKey(reason) {
   if (!confirmed) return;
   const signature = await promptMovementSignature(actionLabel);
   if (signature === null) return;
-  if (!beginKeyControlAction(reason === "rented" ? rentedBtn : removedBtn)) return;
+  if (!beginKeyControlAction(reason === "rented" || reason === "sold" ? rentedBtn : removedBtn)) return;
   try {
     rememberUndoStep();
 
@@ -9924,7 +9998,7 @@ async function archiveSelectedKey(reason) {
       selectedSet
         ? {
             id: createHistoryId(),
-            type: reason === "removed" ? "removed" : "rented",
+            type: reason === "removed" ? "removed" : reason === "sold" ? "sold" : "rented",
             actionLabel,
             person: getMovementPersonInputName(),
             company: formatCompanyName(movementCompanyInput.value).trim(),
@@ -9962,7 +10036,8 @@ async function archiveSelectedKey(reason) {
     const movementActor = getTypedMovementActor();
     logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
     saveKeys();
-    await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false, waitForConfirmation: true });
+    const saved = await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false, waitForConfirmation: true });
+    if (reason === "sold" && saved && tableSettings.saleCelebrationEnabled !== false) showSaleCelebration();
   } finally {
     if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
   }
@@ -10199,7 +10274,7 @@ keySetSelect.addEventListener("change", () => {
 checkoutBtn.addEventListener("click", () => addMovement("out"));
 checkinBtn.addEventListener("click", () => addMovement("in"));
 reservedBtn.addEventListener("click", reserveSelectedSet);
-rentedBtn.addEventListener("click", () => archiveSelectedKey("rented"));
+rentedBtn.addEventListener("click", () => archiveSelectedKey(isSoldMode() ? "sold" : "rented"));
 removedBtn.addEventListener("click", () => archiveSelectedKey("removed"));
 clearSignatureBtn.addEventListener("click", clearSignature);
 keyDetailsToggleBtn.addEventListener("click", toggleSelectedDetails);
@@ -10447,6 +10522,7 @@ signatureCanvas.addEventListener("pointerup", stopSignature);
 signatureCanvas.addEventListener("pointercancel", stopSignature);
 searchInput.addEventListener("input", render);
 archiveSearchInput?.addEventListener("input", renderArchivesPanel);
+soldSearchInput?.addEventListener("input", renderCompromisesPanel);
 textViewBtn.addEventListener("click", () => setTileViewMode("text"));
 photoViewBtn.addEventListener("click", () => setTileViewMode("photo"));
 keyStatusFilterButtons.forEach((button) => {
