@@ -1190,6 +1190,12 @@ h3 {
   font-weight: 700;
 }
 
+.settings-form .settings-sale-mode-section {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
 .settings-sale-mode-fieldset {
   min-width: 0;
   margin: 0;
@@ -1206,27 +1212,27 @@ h3 {
 }
 
 .settings-sale-mode-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
 }
 
-.settings-sale-mode-options label {
-  display: flex;
+.settings-form .settings-sale-mode-options label {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.45);
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--ink);
+  font-size: 13px;
   cursor: pointer;
 }
 
-.settings-sale-mode-options label:has(input:checked) {
-  border-color: #2c6079;
-  background: #d1e5ed;
+.settings-form .settings-sale-mode-options label:has(input:checked) {
   font-weight: 700;
 }
 

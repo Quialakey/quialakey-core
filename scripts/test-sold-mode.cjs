@@ -109,24 +109,47 @@ async function main() {
     assert.equal(persistence.saved, true);
     assert.equal(persistence.stored, true);
     assert.equal(persistence.action, "Vendu");
-    await page.setViewportSize({ width: 390, height: 844 });
-    const mobileLayout = await page.evaluate(() => {
-      settingsPanel.hidden = false;
-      renderSettingsPanel();
-      const options = document.querySelector(".settings-sale-mode-options");
-      const optionBounds = [...options.querySelectorAll("label")].map((label) => label.getBoundingClientRect());
-      const inputBounds = settingsKeepKeysYes.getBoundingClientRect();
-      return {
-        separateColumns: optionBounds[0].right < optionBounds[1].left,
-        withinPanel: optionBounds[1].right <= settingsPanel.getBoundingClientRect().right,
-        radioWidth: inputBounds.width,
-        radioHeight: inputBounds.height,
-      };
-    });
-    assert.equal(mobileLayout.separateColumns, true);
-    assert.equal(mobileLayout.withinPanel, true);
-    assert.equal(mobileLayout.radioWidth, 16);
-    assert.equal(mobileLayout.radioHeight, 16);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      const layout = await page.evaluate(() => {
+        settingsPanel.hidden = false;
+        renderSettingsPanel();
+        const section = document.querySelector(".settings-sale-mode-section");
+        const labels = [...section.querySelectorAll(".settings-sale-mode-options label")];
+        const bounds = labels.map((label) => label.getBoundingClientRect());
+        return {
+          sideBySide: bounds[0].right < bounds[1].left && Math.abs(bounds[0].top - bounds[1].top) < 2,
+          withinPanel: bounds[1].right <= settingsPanel.getBoundingClientRect().right,
+          sectionBorder: getComputedStyle(section).borderTopWidth,
+          labels: labels.map((label) => {
+            const input = label.querySelector("input").getBoundingClientRect();
+            const text = document.createRange();
+            text.selectNode(label.lastChild);
+            const textBounds = text.getBoundingClientRect();
+            const style = getComputedStyle(label);
+            return {
+              display: style.display,
+              border: style.borderTopWidth,
+              background: style.backgroundColor,
+              radioWidth: input.width,
+              radioHeight: input.height,
+              aligned: Math.abs((input.top + input.bottom) / 2 - (textBounds.top + textBounds.bottom) / 2) < 3,
+            };
+          }),
+        };
+      });
+      assert.equal(layout.sideBySide, true, `${width}px`);
+      assert.equal(layout.withinPanel, true, `${width}px`);
+      assert.equal(layout.sectionBorder, "0px");
+      for (const label of layout.labels) {
+        assert.ok(["flex", "inline-flex"].includes(label.display));
+        assert.equal(label.border, "0px");
+        assert.equal(label.background, "rgba(0, 0, 0, 0)");
+        assert.equal(label.radioWidth, 16);
+        assert.equal(label.radioHeight, 16);
+        assert.equal(label.aligned, true);
+      }
+    }
     console.log("Sold mode, legacy compromises, and location isolation passed.");
   } finally {
     await browser?.close();
