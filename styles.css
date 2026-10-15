@@ -2938,8 +2938,8 @@ body.is-moving-key .photo-hover {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 34px;
-  padding: 6px 9px;
+  min-height: 40px;
+  padding: 8px 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
   color: var(--muted);
@@ -3147,41 +3147,7 @@ body.is-moving-key .photo-hover {
 }
 
 .history-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-bottom: 8px;
-}
-
-.history-heading h3 {
-  margin: 0;
-}
-
-.history-toggle-button {
-  display: inline-grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  color: var(--ink);
-  background: #d8dcd8;
-}
-
-.history-toggle-button::before {
-  content: "";
-  width: 0;
-  height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 7px solid currentColor;
-  transform: translateX(1px);
-}
-
-.history-toggle-button.is-expanded::before {
-  transform: rotate(90deg) translateX(1px);
 }
 
 .history-list {

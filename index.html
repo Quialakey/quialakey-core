@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261016-1" />
-    <link rel="stylesheet" href="styles.css?v=20261016-1" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261016-2" />
+    <link rel="stylesheet" href="styles.css?v=20261016-2" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -27,8 +27,8 @@
         align-items: center;
         justify-content: space-between;
         width: 100%;
-        min-height: 34px;
-        padding: 6px 9px;
+        min-height: 40px;
+        padding: 8px 9px;
         border: 1px solid var(--line, #b7beb9);
         border-radius: 7px;
         color: var(--muted, #697377);
@@ -353,8 +353,7 @@
 
           <section class="history-section">
             <div class="history-heading">
-              <h3>Historique</h3>
-              <button id="keyHistoryToggleBtn" class="history-toggle-button" type="button" aria-expanded="false" aria-label="Afficher l'historique"></button>
+              <button id="keyHistoryToggleBtn" class="key-details-toggle-button" type="button" aria-controls="historyList" aria-expanded="false" aria-label="Afficher l'historique">Historique</button>
             </div>
             <ol id="historyList" class="history-list"></ol>
           </section>
@@ -591,10 +590,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261016-1"></script>
+    <script src="agency-config.js?v=20261016-2"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261016-1";
+        const fallbackVersion = "20261016-2";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;
