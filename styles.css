@@ -2932,10 +2932,12 @@ body.is-moving-key .photo-hover {
   font-weight: 800;
 }
 
-.movement-contact-details summary {
+.movement-contact-details summary,
+.key-details-toggle-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   min-height: 34px;
   padding: 6px 9px;
   border: 1px solid var(--line);
@@ -2944,6 +2946,7 @@ body.is-moving-key .photo-hover {
   background: #d8dcd8;
   font-size: 13px;
   font-weight: 800;
+  text-align: left;
   cursor: pointer;
   list-style: none;
 }
@@ -2952,7 +2955,13 @@ body.is-moving-key .photo-hover {
   display: none;
 }
 
-.movement-contact-details summary::after {
+.key-details-toggle-button {
+  appearance: none;
+  -webkit-text-fill-color: var(--muted);
+}
+
+.movement-contact-details summary::after,
+.key-details-toggle-button::after {
   content: "";
   width: 0;
   height: 0;
@@ -2961,7 +2970,8 @@ body.is-moving-key .photo-hover {
   border-left: 7px solid currentColor;
 }
 
-.movement-contact-details[open] summary::after {
+.movement-contact-details[open] summary::after,
+.key-details-toggle-button.is-expanded::after {
   transform: rotate(90deg);
 }
 
@@ -3123,22 +3133,12 @@ body.is-moving-key .photo-hover {
 }
 
 .key-details-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: -2px 0 0;
+  margin: 0;
 }
 
 .key-details-heading[hidden],
 .key-details-content[hidden] {
   display: none;
-}
-
-.key-details-heading h3 {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
 }
 
 .key-details-content {

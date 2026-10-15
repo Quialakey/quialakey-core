@@ -223,7 +223,7 @@ async function main() {
     assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
     const checkoutSpacing = await page.locator("#activeCheckoutPanel li").evaluate(cardSpacing);
     assert.equal(await page.locator("#activeCheckoutPanel li strong").nth(1).textContent(), "Le 07/10/2026 à 18:00");
-    assert.equal(await page.locator("#activeCheckoutPanel li small").textContent(), "07/10/2026 18:00");
+    assert.equal(await page.locator("#activeCheckoutPanel li small").textContent(), "Sorti le 07/10/2026 18:00");
     assert.deepEqual(await page.locator("#activeCheckoutPanel li").evaluate((item) =>
       [...item.children].map((child) => child.tagName)), ["STRONG", "STRONG", "LABEL", "DIV", "SMALL"]);
     assert.equal(await page.locator("#activeCheckoutPanel li").evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");

@@ -57,6 +57,18 @@ async function main() {
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
+      const bandStyles = (element) => {
+        const style = getComputedStyle(element);
+        return Object.fromEntries(["display", "minHeight", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+          "borderTopWidth", "borderTopColor", "borderTopLeftRadius", "backgroundColor", "color", "fontSize",
+          "fontWeight", "textAlign"].map((property) => [property, style[property]]));
+      };
+      assert.deepEqual(await page.locator("#keyDetailsToggleBtn").evaluate(bandStyles),
+        await page.locator("#movementContactDetails summary").evaluate(bandStyles));
+      assert.equal(Math.round((await page.locator("#keyDetailsToggleBtn").boundingBox()).width),
+        Math.round((await page.locator("#keyDetailsHeading").boundingBox()).width));
+      assert.equal(Math.round((await page.locator("#keyDetailsToggleBtn").boundingBox()).height),
+        Math.round((await page.locator("#movementContactDetails summary").boundingBox()).height));
       await page.locator("#keyDetailsToggleBtn").click();
       if (!touch) {
         for (const count of [2, 3, 4]) {

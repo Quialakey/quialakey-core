@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261015-5";
+const appBuildVersion = "20261015-6";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8512,7 +8512,7 @@ function renderPanel() {
     title.textContent = `${outSet.label} - Sorti${outSet.holder ? ` : ${outSet.holder}` : ""}${outSet.holderPhone ? ` - ${formatPhoneNumber(outSet.holderPhone)}` : ""}`;
     if (latestOut?.type === "out" && latestOut.date) {
       movementDate.textContent = `Le ${formatReservationHistoryDate(latestOut.date)}`;
-      date.textContent = latestOut.date;
+      date.textContent = `Sorti le ${latestOut.date}`;
     }
     commentField.className = "reservation-comment-field";
     commentLabel.textContent = "Commentaire";

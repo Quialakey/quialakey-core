@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261015-5" />
-    <link rel="stylesheet" href="styles.css?v=20261015-5" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261015-6" />
+    <link rel="stylesheet" href="styles.css?v=20261015-6" />
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
@@ -229,8 +229,7 @@
 
           <section class="key-details-section">
             <div id="keyDetailsHeading" class="key-details-heading" hidden>
-              <h3>Détails</h3>
-              <button id="keyDetailsToggleBtn" class="history-toggle-button key-details-toggle-button" type="button" aria-expanded="false" aria-label="Afficher les détails"></button>
+              <button id="keyDetailsToggleBtn" class="key-details-toggle-button" type="button" aria-controls="keyDetailsContent" aria-expanded="false" aria-label="Afficher les détails">Détails</button>
             </div>
             <div id="keyDetailsContent" class="key-details-content">
               <label>
@@ -559,10 +558,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261015-5"></script>
+    <script src="agency-config.js?v=20261015-6"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261015-5";
+        const fallbackVersion = "20261015-6";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;
