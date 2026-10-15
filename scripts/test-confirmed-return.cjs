@@ -4,6 +4,20 @@ const http = require("node:http");
 const path = require("node:path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
+function cardSpacing(item) {
+  const styles = (selector, properties) => {
+    const target = selector ? item.querySelector(selector) : item;
+    return properties.map((property) => getComputedStyle(target)[property]);
+  };
+  return {
+    card: styles(null, ["rowGap", "paddingTop", "paddingBottom"]),
+    heading: styles("strong", ["marginBottom", "lineHeight"]),
+    comment: styles(".reservation-comment-field", ["rowGap", "marginTop"]),
+    actions: styles(".reservation-history-actions", ["rowGap", "marginTop", "marginBottom"]),
+    footer: styles("small", ["marginTop", "lineHeight"]),
+  };
+}
+
 async function main() {
   const root = path.resolve(__dirname, "..");
   const server = http.createServer(async (request, response) => {
@@ -207,10 +221,11 @@ async function main() {
     await page.locator("#movementContactDetails summary").click();
     assert.equal(await page.locator("#movementNameInput").isVisible(), true);
     assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
+    const checkoutSpacing = await page.locator("#activeCheckoutPanel li").evaluate(cardSpacing);
     assert.equal(await page.locator("#activeCheckoutPanel li strong").nth(1).textContent(), "Le 07/10/2026 à 18:00");
     assert.equal(await page.locator("#activeCheckoutPanel li small").textContent(), "07/10/2026 18:00");
     assert.deepEqual(await page.locator("#activeCheckoutPanel li").evaluate((item) =>
-      [...item.children].map((child) => child.tagName)), ["STRONG", "STRONG", "LABEL", "BUTTON", "SMALL"]);
+      [...item.children].map((child) => child.tagName)), ["STRONG", "STRONG", "LABEL", "DIV", "SMALL"]);
     assert.equal(await page.locator("#activeCheckoutPanel li").evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
     assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").evaluate((button) => getComputedStyle(button).backgroundColor),
       await page.locator("#checkinBtn").evaluate((button) => getComputedStyle(button).backgroundColor));
@@ -305,6 +320,7 @@ async function main() {
       });
       assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
       assert.equal(await page.locator("#checkinBtn").isVisible(), true);
+      assert.deepEqual(await page.locator("#activeReservationPanel li").first().evaluate(cardSpacing), checkoutSpacing);
       await page.waitForFunction(() => typeof window.__resolveWrite === "function");
       await page.evaluate(() => renderPanel());
       const pending = await page.evaluate(() => ({

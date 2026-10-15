@@ -3241,23 +3241,11 @@ body.is-moving-key .photo-hover {
   background: #f8d19a;
 }
 
-.active-reservation-panel li[data-history-action="reserved"] {
+.active-reservation-panel li[data-history-action="reserved"],
+.active-checkout-panel li[data-history-action="out"] {
   position: relative;
   gap: 2px;
   padding: 8px;
-}
-
-.active-checkout-panel li[data-history-action="out"] {
-  gap: 2px;
-  padding: 8px;
-}
-
-.active-checkout-panel .reservation-history-button {
-  margin-top: 3px;
-}
-
-.active-checkout-panel small {
-  margin-top: 2px;
 }
 
 .active-reservation-panel li[data-history-action="reserved"] > strong:first-child {
@@ -3368,6 +3356,10 @@ body.is-moving-key .photo-hover {
 
 .reservation-history-actions.is-two-action {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reservation-history-actions.is-one-action {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .reservation-history-button {

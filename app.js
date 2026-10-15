@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261015-4";
+const appBuildVersion = "20261015-5";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8505,6 +8505,7 @@ function renderPanel() {
     const commentField = document.createElement("label");
     const commentLabel = document.createElement("span");
     const commentInput = document.createElement("textarea");
+    const actions = document.createElement("div");
     const returnButton = document.createElement("button");
     const commentKey = `${activeRegistry}:${key.id}:${outSet.id}`;
     item.dataset.historyAction = "out";
@@ -8522,6 +8523,7 @@ function renderPanel() {
     commentInput.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
     commentInput.addEventListener("input", () => checkoutCommentDrafts.set(commentKey, commentInput.value));
     commentField.append(commentLabel, commentInput);
+    actions.className = "reservation-history-actions is-one-action";
     returnButton.type = "button";
     returnButton.className = "reservation-history-button in";
     returnButton.textContent = isThisReturnSaving && selectedSetId === outSet.id ? "Enregistrement..." : "Rentr\u00e9";
@@ -8535,9 +8537,10 @@ function renderPanel() {
       renderPanel();
       void addMovement("in", { note, checkoutCommentKey: commentKey });
     });
+    actions.append(returnButton);
     item.append(title);
     if (movementDate.textContent) item.append(movementDate);
-    item.append(commentField, returnButton);
+    item.append(commentField, actions);
     if (date.textContent) item.append(date);
     activeCheckoutPanel.append(item);
   });
