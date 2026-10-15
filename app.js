@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261015-3";
+const appBuildVersion = "20261015-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -904,6 +904,7 @@ let expandedKeyHistoryIds = new Set();
 let expandedKeyDetailsIds = new Set();
 const recentlyClearedKeySlots = new Map();
 const recentlyForcedKeySlots = new Map();
+const checkoutCommentDrafts = new Map();
 
 const protectedKeyInfoInputs = [ownerInput, ownerFirstNameInput, propertyInput, postalCodeInput, cityInput, notesInput];
 let tileViewMode = loadTileViewMode();
@@ -8446,6 +8447,7 @@ function renderPanel() {
   const isMainMovementLocked = isReadOnlyArchive || isSelectedSetOutForReservation;
   const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) && !isSelectedSetOutForReservation;
   const isThisReturnSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
+  checkinBtn.hidden = isSelectedSetOut && !isSelectedSetOutForReservation && canMoveSelectedKey;
   checkinBtn.textContent = isThisReturnSaving ? "Enregistrement..." : selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
   checkinBtn.classList.toggle("is-confirming-return", isThisReturnSaving);
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
@@ -8498,11 +8500,28 @@ function renderPanel() {
     const item = document.createElement("li");
     const title = document.createElement("strong");
     const latestOut = getLatestMovementEntry(outSet.history);
+    const movementDate = document.createElement("strong");
     const date = document.createElement("small");
+    const commentField = document.createElement("label");
+    const commentLabel = document.createElement("span");
+    const commentInput = document.createElement("textarea");
     const returnButton = document.createElement("button");
+    const commentKey = `${activeRegistry}:${key.id}:${outSet.id}`;
     item.dataset.historyAction = "out";
-    title.textContent = `${outSet.label} - Sorti${outSet.holder ? ` : ${outSet.holder}` : ""}${outSet.holderPhone ? ` - ${outSet.holderPhone}` : ""}`;
-    date.textContent = latestOut?.type === "out" ? latestOut.date : "";
+    title.textContent = `${outSet.label} - Sorti${outSet.holder ? ` : ${outSet.holder}` : ""}${outSet.holderPhone ? ` - ${formatPhoneNumber(outSet.holderPhone)}` : ""}`;
+    if (latestOut?.type === "out" && latestOut.date) {
+      movementDate.textContent = `Le ${formatReservationHistoryDate(latestOut.date)}`;
+      date.textContent = latestOut.date;
+    }
+    commentField.className = "reservation-comment-field";
+    commentLabel.textContent = "Commentaire";
+    commentInput.className = "reservation-comment-input checkout-comment-input";
+    commentInput.rows = 2;
+    commentInput.placeholder = "Motif, rendez-vous, r\u00e9f\u00e9rence...";
+    commentInput.value = checkoutCommentDrafts.get(commentKey) || "";
+    commentInput.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
+    commentInput.addEventListener("input", () => checkoutCommentDrafts.set(commentKey, commentInput.value));
+    commentField.append(commentLabel, commentInput);
     returnButton.type = "button";
     returnButton.className = "reservation-history-button in";
     returnButton.textContent = isThisReturnSaving && selectedSetId === outSet.id ? "Enregistrement..." : "Rentr\u00e9";
@@ -8512,12 +8531,14 @@ function renderPanel() {
     returnButton.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
     returnButton.addEventListener("click", () => {
       selectedSetId = outSet.id;
+      const note = commentInput.value;
       renderPanel();
-      void addMovement("in");
+      void addMovement("in", { note, checkoutCommentKey: commentKey });
     });
     item.append(title);
+    if (movementDate.textContent) item.append(movementDate);
+    item.append(commentField, returnButton);
     if (date.textContent) item.append(date);
-    item.append(returnButton);
     activeCheckoutPanel.append(item);
   });
   activeCheckoutPanel.dataset.heading = activeCheckoutPanel.childElementCount === 1 ? "Sortie en cours" : "Sorties en cours";
@@ -9228,7 +9249,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   }
 }
 
-async function addMovement(type) {
+async function addMovement(type, options = {}) {
   if (isConfirmingReturn || activeKeyControlAction) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
@@ -9260,7 +9281,7 @@ async function addMovement(type) {
     person: forcedPerson || getMovementPersonInputName(),
     company: forcedCompany || formatCompanyName(movementCompanyInput.value).trim(),
     phone: formatPhoneNumber(forcedPhone || movementPhoneInput.value),
-    note: formatSentenceStart(movementNoteInput.value).trim(),
+    note: formatSentenceStart(options.note ?? movementNoteInput.value).trim(),
     signature,
     returnReason: type === "in" && isReturningAfterCheckout ? "returned" : "created",
     date: new Intl.DateTimeFormat("fr-FR", {
@@ -9284,7 +9305,8 @@ async function addMovement(type) {
     history: [entry, ...selectedSet.history],
   };
   if (isReturningAfterCheckout && !selectedArchiveRecord) {
-    await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
+    const returned = await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
+    if (returned && options.checkoutCommentKey) checkoutCommentDrafts.delete(options.checkoutCommentKey);
     return;
   }
   if (!beginKeyControlAction(type === "out" ? checkoutBtn : checkinBtn)) return;
@@ -9305,6 +9327,7 @@ async function addMovement(type) {
     const actionArchivesChanged = Boolean(selectedArchiveRecord);
     if (selectedArchiveRecord) renderCompromisesPanel();
     await finishKeyControlAction(key.id, { keysChanged: !actionArchivesChanged, archivesChanged: actionArchivesChanged, waitForConfirmation: true });
+    if (options.checkoutCommentKey) checkoutCommentDrafts.delete(options.checkoutCommentKey);
   } finally {
     if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
   }

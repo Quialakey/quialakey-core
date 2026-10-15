@@ -201,20 +201,38 @@ async function main() {
     await page.evaluate(() => window.__resetReturn());
     assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), true);
     assert.equal(await page.locator("#activeReservationPanel").isVisible(), false);
+    assert.equal(await page.locator("#checkinBtn").isVisible(), false);
     assert.equal(await page.locator("#movementContactDetails").evaluate((details) => details.open), false);
     assert.equal(await page.locator("#movementNameInput").isVisible(), false);
     await page.locator("#movementContactDetails summary").click();
     assert.equal(await page.locator("#movementNameInput").isVisible(), true);
     assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
+    assert.equal(await page.locator("#activeCheckoutPanel li strong").nth(1).textContent(), "Le 07/10/2026 à 18:00");
+    assert.equal(await page.locator("#activeCheckoutPanel li small").textContent(), "07/10/2026 18:00");
+    assert.deepEqual(await page.locator("#activeCheckoutPanel li").evaluate((item) =>
+      [...item.children].map((child) => child.tagName)), ["STRONG", "STRONG", "LABEL", "BUTTON", "SMALL"]);
     assert.equal(await page.locator("#activeCheckoutPanel li").evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
     assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").evaluate((button) => getComputedStyle(button).backgroundColor),
       await page.locator("#checkinBtn").evaluate((button) => getComputedStyle(button).backgroundColor));
+    await page.locator("#activeCheckoutPanel .checkout-comment-input").fill("Retour rapide avec commentaire");
+    await page.evaluate(() => renderPanel());
+    assert.equal(await page.locator("#activeCheckoutPanel .checkout-comment-input").inputValue(), "Retour rapide avec commentaire");
     await page.locator("#activeCheckoutPanel .reservation-history-button.in").click();
     await page.waitForFunction(() => typeof window.__resolveWrite === "function");
     assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").textContent(), "Enregistrement...");
     assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").getAttribute("aria-busy"), "true");
+    await page.evaluate(() => {
+      window.__resolveWrite("failure");
+      window.__resolveWrite = null;
+    });
+    await page.waitForFunction(() => !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "out");
+    assert.equal(await page.locator("#activeCheckoutPanel .checkout-comment-input").inputValue(), "Retour rapide avec commentaire");
+    await page.locator("#activeCheckoutPanel .reservation-history-button.in").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
     await page.evaluate(() => window.__resolveWrite("success"));
     await page.waitForFunction(() => keys[0].sets[0].status === "available" && !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].history[0].note), "Retour rapide avec commentaire");
     assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
     await page.evaluate(() => {
       window.__resetReturn();
@@ -225,12 +243,18 @@ async function main() {
       renderPanel();
     });
     assert.equal(await page.locator("#activeCheckoutPanel li").count(), 2);
+    await page.locator("#activeCheckoutPanel li").first().locator("textarea").fill("Commentaire jeu 1");
+    await page.locator("#activeCheckoutPanel li").nth(1).locator("textarea").fill("Commentaire jeu 2");
+    await page.evaluate(() => renderPanel());
+    assert.deepEqual(await page.locator("#activeCheckoutPanel textarea").evaluateAll((inputs) => inputs.map((input) => input.value)),
+      ["Commentaire jeu 1", "Commentaire jeu 2"]);
     await page.locator("#activeCheckoutPanel li").nth(1).locator("button").click();
     await page.waitForFunction(() => typeof window.__resolveWrite === "function");
     assert.equal(await page.evaluate(() => selectedSetId), "double");
     await page.evaluate(() => window.__resolveWrite("success"));
     await page.waitForFunction(() => keys[0].sets[1].status === "available" && !isConfirmingReturn);
     assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status)), ["out", "available"]);
+    assert.equal(await page.evaluate(() => keys[0].sets[1].history[0].note), "Commentaire jeu 2");
     const staleReturn = await page.evaluate(async () => {
       window.__resetReturn();
       window.__remoteRow.value.sets[0].history.unshift({
@@ -280,6 +304,7 @@ async function main() {
         window.__returnPromise = toggleReservationMovement("reservation-1", button);
       });
       assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
+      assert.equal(await page.locator("#checkinBtn").isVisible(), true);
       await page.waitForFunction(() => typeof window.__resolveWrite === "function");
       await page.evaluate(() => renderPanel());
       const pending = await page.evaluate(() => ({

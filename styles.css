@@ -3248,12 +3248,16 @@ body.is-moving-key .photo-hover {
 }
 
 .active-checkout-panel li[data-history-action="out"] {
-  gap: 5px;
+  gap: 2px;
   padding: 8px;
 }
 
 .active-checkout-panel .reservation-history-button {
   margin-top: 3px;
+}
+
+.active-checkout-panel small {
+  margin-top: 2px;
 }
 
 .active-reservation-panel li[data-history-action="reserved"] > strong:first-child {
