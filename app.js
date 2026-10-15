@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261015-1";
+const appBuildVersion = "20261015-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4585,7 +4585,6 @@ function unlockKeyInfoEdit(event) {
     if (getSelectedKey()?.id !== key.id) return;
     isKeyInfoEditUnlocked = true;
     renderPanel();
-    targetInput?.focus?.({ preventScroll: true });
   };
   isKeyInfoEditPromptOpen = true;
   const dialog = document.createElement("dialog");
@@ -4595,8 +4594,14 @@ function unlockKeyInfoEdit(event) {
   dialog.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       const confirmed = button.value === "yes";
-      dialog.close();
       if (confirmed) beginEdit();
+      dialog.remove();
+      dialog.close();
+      isKeyInfoEditPromptOpen = false;
+      if (confirmed && getSelectedKey()?.id === key.id) {
+        if (isPhoneOrTabletDevice()) targetInput?.focus?.();
+        else targetInput?.focus?.({ preventScroll: true });
+      }
     });
   });
   dialog.addEventListener("close", () => {

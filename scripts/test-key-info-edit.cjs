@@ -75,9 +75,19 @@ async function main() {
       assert.deepEqual(await page.locator(".key-info-edit-dialog button").allTextContents(), ["Oui", "Non"]);
       assert.equal(await page.locator(".key-info-edit-dialog").evaluate((dialog) => dialog.classList.contains("reservation-return-dialog")), true);
       const editAppearance = await page.locator(".key-info-edit-dialog").evaluate(dialogAppearance);
-      await page.locator(".key-info-edit-dialog button[value='yes']").click();
+      await page.evaluate(() => {
+        window.keyInfoFocusEvents = [];
+        propertyInput.addEventListener("focus", () => window.keyInfoFocusEvents.push({
+          readOnly: propertyInput.readOnly,
+          dialogPresent: Boolean(document.querySelector(".key-info-edit-dialog")),
+        }), { once: true });
+      });
+      if (touch) await page.locator(".key-info-edit-dialog button[value='yes']").tap();
+      else await page.locator(".key-info-edit-dialog button[value='yes']").click();
+      assert.equal(await page.locator(".key-info-edit-dialog").count(), 0);
       assert.equal(await page.evaluate(() => document.activeElement.id), "propertyInput");
       assert.equal(await page.locator("#propertyInput").evaluate((input) => input.readOnly), false);
+      assert.deepEqual(await page.evaluate(() => window.keyInfoFocusEvents), [{ readOnly: false, dialogPresent: false }]);
       await page.locator("#propertyInput").fill("32 avenue du Test");
       await page.locator("#movementNameInput").click();
       await page.waitForFunction(() => document.querySelector("#propertyInput").readOnly);
@@ -87,6 +97,26 @@ async function main() {
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
       await page.locator("#keyDetailsToggleBtn").click();
       assert.equal(await page.locator("#propertyInput").inputValue(), "32 Av. Du Test");
+      const openOwnerEdit = async () => {
+        if (touch) {
+          await page.locator("#ownerInput").tap();
+          await page.locator("#ownerInput").tap();
+        } else {
+          await page.locator("#ownerInput").dblclick();
+        }
+      };
+      await openOwnerEdit();
+      if (touch) await page.locator('.key-info-edit-dialog button[value="no"]').tap();
+      else await page.locator('.key-info-edit-dialog button[value="no"]').click();
+      assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), true);
+      await openOwnerEdit();
+      if (touch) await page.locator('.key-info-edit-dialog button[value="yes"]').tap();
+      else await page.locator('.key-info-edit-dialog button[value="yes"]').click();
+      assert.equal(await page.evaluate(() => document.activeElement.id), "ownerInput");
+      assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
+      await page.locator("#ownerInput").fill("MARTIN");
+      await page.locator("#movementNameInput").click();
+      await page.waitForFunction(() => getSelectedKey().owner === "MARTIN");
       await page.evaluate(() => { void promptReservationReturn(); });
       const reservationAppearance = await page.locator(".reservation-return-dialog").evaluate(dialogAppearance);
       assert.deepEqual(editAppearance, reservationAppearance);
