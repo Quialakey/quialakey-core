@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261013-3";
+const appBuildVersion = "20261015-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -797,9 +797,6 @@ const celebrationSky = saleCelebration?.querySelector(".celebration-sky");
 const compromisesTabBtn = document.querySelector("#compromisesTabBtn");
 const compromisesTabLabel = document.querySelector("#compromisesTabLabel");
 const compromisesPanel = document.querySelector("#compromisesPanel");
-const compromisesPanelTitle = document.querySelector("#compromisesPanelTitle");
-const compromisesSectionTitle = document.querySelector("#compromisesSectionTitle");
-const soldSearchInput = document.querySelector("#soldSearchInput");
 const closeCompromisesBtn = document.querySelector("#closeCompromisesBtn");
 const compromisesList = document.querySelector("#compromisesList");
 const archivesTabBtn = document.querySelector("#archivesTabBtn");
@@ -810,13 +807,11 @@ const rentedArchiveSection = document.querySelector("#rentedArchiveSection");
 const removedArchiveSection = document.querySelector("#removedArchiveSection");
 const authenticatedArchiveSection = document.querySelector("#authenticatedArchiveSection");
 const legacyCompromiseArchiveSection = document.querySelector("#legacyCompromiseArchiveSection");
-const soldArchiveSection = document.querySelector("#soldArchiveSection");
 const rentedArchiveTitle = document.querySelector("#rentedArchiveTitle");
 const rentedList = document.querySelector("#rentedList");
 const removedList = document.querySelector("#removedList");
 const authenticatedList = document.querySelector("#authenticatedList");
 const legacyCompromiseList = document.querySelector("#legacyCompromiseList");
-const soldArchiveList = document.querySelector("#soldArchiveList");
 const contactsTabBtn = document.querySelector("#contactsTabBtn");
 const contactsPanel = document.querySelector("#contactsPanel");
 const closeContactsBtn = document.querySelector("#closeContactsBtn");
@@ -3690,29 +3685,24 @@ function updateRegistryHeader() {
   duplicateKeyBtn.textContent = `Dupliquer dans ${config.title}`;
   transferKeyBtn.textContent = `Transférer vers ${targetConfig.title}`;
   rentedArchiveTitle.textContent = config.rentedArchiveTitle;
-  compromisesTabBtn.hidden = activeRegistry !== "transaction";
-  const tabLabel = soldMode ? "Vendus" : "Compromis";
-  compromisesTabLabel.textContent = tabLabel;
-  compromisesTabBtn.setAttribute("aria-label", tabLabel);
-  compromisesPanel.setAttribute("aria-label", tabLabel);
-  compromisesPanelTitle.textContent = tabLabel;
-  compromisesSectionTitle.textContent = soldMode ? "Biens vendus" : "Biens dont les compromis sont signés";
-  soldSearchInput.hidden = !soldMode;
-  closeCompromisesBtn.setAttribute("aria-label", `Fermer les ${tabLabel.toLowerCase()}`);
+  compromisesTabBtn.hidden = activeRegistry !== "transaction" || soldMode;
+  compromisesTabLabel.textContent = "Compromis";
+  compromisesTabBtn.setAttribute("aria-label", "Compromis");
+  compromisesPanel.setAttribute("aria-label", "Compromis");
+  closeCompromisesBtn.setAttribute("aria-label", "Fermer les compromis");
   topActions?.classList.toggle("is-location-only", activeRegistry === "location");
   rentedArchiveSection.hidden = activeRegistry === "transaction";
-  authenticatedArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
+  authenticatedArchiveSection.hidden = activeRegistry !== "transaction";
   legacyCompromiseArchiveSection.hidden = activeRegistry !== "transaction" || !soldMode;
-  soldArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
   const orderedArchiveSections =
     activeRegistry === "transaction"
-      ? [authenticatedArchiveSection, legacyCompromiseArchiveSection, soldArchiveSection, removedArchiveSection, rentedArchiveSection]
-      : [rentedArchiveSection, removedArchiveSection, authenticatedArchiveSection, legacyCompromiseArchiveSection, soldArchiveSection];
+      ? [authenticatedArchiveSection, legacyCompromiseArchiveSection, removedArchiveSection, rentedArchiveSection]
+      : [rentedArchiveSection, removedArchiveSection, authenticatedArchiveSection, legacyCompromiseArchiveSection];
   orderedArchiveSections.forEach((section) => archivesPanel.append(section));
   if (registryHistoryDataLabel) {
     registryHistoryDataLabel.textContent = activeRegistry === "location" ? "Historique Location" : "Historique Transaction";
   }
-  if (activeRegistry !== "transaction") compromisesPanel.hidden = true;
+  if (compromisesTabBtn.hidden) compromisesPanel.hidden = true;
   registryToggleBtn.title =
     activeRegistry === "location" ? "Basculer vers le registre Transaction" : "Basculer vers le registre Location";
 }
@@ -7528,7 +7518,7 @@ function markCompromiseAsAuthenticated(recordId) {
   const record = archives.find((archive) => archive.id === recordId && archive.reason === "rented");
   if (!record) return;
 
-  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'envoyer dans ${isSoldMode() ? "Vendus" : "Archives"} ?`);
+  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'envoyer dans Archives ?`);
   if (!confirmed) return;
 
   rememberUndoStep();
@@ -7764,11 +7754,10 @@ function renderArchiveList(list, reason, emptyText, options = {}) {
 function renderArchivesPanel() {
   renderArchiveList(rentedList, "rented", getRegistryConfig().rentedArchiveEmpty);
   renderArchiveList(removedList, "removed", "Aucun bien archivé.");
-  renderArchiveList(authenticatedList, "authenticated", "Aucun acte authentique archivé.");
+  renderArchiveList(authenticatedList, ["authenticated", "sold"], "Aucun acte authentique archivé.");
   const soldMode = isSoldMode();
   legacyCompromiseArchiveSection.hidden = !soldMode || !archives.some((record) => record.reason === "rented");
-  soldArchiveSection.hidden = activeRegistry !== "transaction" || soldMode || !archives.some((record) => record.reason === "sold");
-  authenticatedArchiveSection.hidden = activeRegistry !== "transaction" || soldMode;
+  authenticatedArchiveSection.hidden = activeRegistry !== "transaction";
   if (!legacyCompromiseArchiveSection.hidden) {
     renderArchiveList(legacyCompromiseList, "rented", "Aucun ancien compromis.", {
       showAuthenticatedAction: true,
@@ -7776,15 +7765,9 @@ function renderArchivesPanel() {
       hideExport: true,
     });
   }
-  if (!soldArchiveSection.hidden) renderArchiveList(soldArchiveList, "sold", "Aucun bien vendu.");
 }
 
 function renderCompromisesPanel() {
-  if (isSoldMode()) {
-    renderArchiveList(compromisesList, ["sold", "authenticated"], "Aucun bien vendu.", { searchInput: soldSearchInput });
-    compromisesTabBtn.dataset.movementStatus = "";
-    return;
-  }
   renderArchiveList(compromisesList, "rented", "Aucun bien en compromis.", {
     showAuthenticatedAction: true,
     showCompromiseDetails: true,
@@ -7798,7 +7781,7 @@ function renderCompromisesPanel() {
     : compromisedRecords.some((record) => getCompromiseMovementStatus(record) === "reserved")
       ? "reserved"
       : compromisedRecords.length ? "available" : "";
-  compromisesTabBtn.dataset.movementStatus = tabStatus;
+  compromisesTabBtn.dataset.movementStatus = isSoldMode() ? "" : tabStatus;
 }
 
 function findRestoreSlot(archivedKey) {
@@ -10522,7 +10505,6 @@ signatureCanvas.addEventListener("pointerup", stopSignature);
 signatureCanvas.addEventListener("pointercancel", stopSignature);
 searchInput.addEventListener("input", render);
 archiveSearchInput?.addEventListener("input", renderArchivesPanel);
-soldSearchInput?.addEventListener("input", renderCompromisesPanel);
 textViewBtn.addEventListener("click", () => setTileViewMode("text"));
 photoViewBtn.addEventListener("click", () => setTileViewMode("photo"));
 keyStatusFilterButtons.forEach((button) => {

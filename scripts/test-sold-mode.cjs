@@ -38,12 +38,14 @@ async function main() {
       const snapshot = () => ({
         action: rentedBtn.textContent,
         tab: compromisesTabLabel.textContent,
+        tabVisible: !compromisesTabBtn.hidden,
+        tabPanelVisible: !compromisesPanel.hidden,
         tabOwners: [...compromisesList.querySelectorAll("strong")].map((node) => node.textContent),
         legacyVisible: !legacyCompromiseArchiveSection.hidden,
         legacyOwner: legacyCompromiseList.textContent.includes("ANCIEN COMPROMIS"),
-        soldArchiveVisible: !soldArchiveSection.hidden,
-        soldArchiveOwner: soldArchiveList.textContent.includes("VENDU"),
         authenticatedArchiveVisible: !authenticatedArchiveSection.hidden,
+        authenticatedOwners: [...authenticatedList.querySelectorAll("strong")].map((node) => node.textContent),
+        soldTabRemoved: !document.querySelector("#soldArchiveSection") && !document.querySelector("#soldSearchInput"),
         removedVisible: !removedArchiveSection.hidden,
       });
       tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: false });
@@ -55,42 +57,49 @@ async function main() {
       settingsKeepKeysYes.checked = true;
       updateSettingsDraftFromDom();
       tableSettings = normalizeTableSettings(settingsDraft);
+      compromisesPanel.hidden = false;
       updateRegistryHeader(); renderArchivesPanel(); renderCompromisesPanel();
       const yes = snapshot();
-      archiveSearchInput.value = "AUCUN RESULTAT";
-      renderArchivesPanel(); renderCompromisesPanel();
-      const unaffectedByArchiveSearch = compromisesList.querySelectorAll("li").length === 2;
-      soldSearchInput.value = "ACTE";
-      renderCompromisesPanel();
-      const soldSearchWorks = compromisesList.querySelectorAll("li").length === 1 && compromisesList.textContent.includes("ACTE");
+      archiveSearchInput.value = "VENDU";
+      renderArchivesPanel();
+      const soldSearchWorks = authenticatedList.querySelectorAll("li").length === 1 && authenticatedList.textContent.includes("VENDU");
+      archiveSearchInput.value = "";
+      tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: false });
+      updateRegistryHeader(); renderArchivesPanel(); renderCompromisesPanel();
+      const backToNo = snapshot();
       activeRegistry = "location";
       updateRegistryHeader(); renderArchivesPanel();
-      const location = { action: rentedBtn.textContent, soldArchiveVisible: !soldArchiveSection.hidden };
-      return { defaults, defaultChoiceIsNo, no, yes, unaffectedByArchiveSearch, soldSearchWorks, location };
+      const location = { action: rentedBtn.textContent, authenticatedVisible: !authenticatedArchiveSection.hidden };
+      return { defaults, defaultChoiceIsNo, no, yes, soldSearchWorks, backToNo, location };
     });
 
     assert.equal(result.defaults, false);
     assert.equal(result.defaultChoiceIsNo, true);
     assert.equal(result.no.action, "Compromis");
     assert.equal(result.no.tab, "Compromis");
+    assert.equal(result.no.tabVisible, true);
     assert.equal(result.no.tabOwners.length, 1);
     assert.match(result.no.tabOwners[0], /ANCIEN COMPROMIS/);
-    assert.equal(result.no.soldArchiveVisible, true);
-    assert.equal(result.no.soldArchiveOwner, true);
     assert.equal(result.no.authenticatedArchiveVisible, true);
+    assert.equal(result.no.authenticatedOwners.length, 2);
+    assert.match(result.no.authenticatedOwners[0], /VENDU/);
+    assert.match(result.no.authenticatedOwners[1], /ACTE/);
     assert.equal(result.yes.action, "Vendu");
-    assert.equal(result.yes.tab, "Vendus");
-    assert.equal(result.yes.tabOwners.length, 2);
-    assert.match(result.yes.tabOwners[0], /VENDU/);
-    assert.match(result.yes.tabOwners[1], /ACTE/);
+    assert.equal(result.yes.tabVisible, false);
+    assert.equal(result.yes.tabPanelVisible, false);
+    assert.equal(result.yes.soldTabRemoved, true);
+    assert.equal(result.yes.authenticatedArchiveVisible, true);
+    assert.equal(result.yes.authenticatedOwners.length, 2);
+    assert.match(result.yes.authenticatedOwners[0], /VENDU/);
+    assert.match(result.yes.authenticatedOwners[1], /ACTE/);
     assert.equal(result.yes.legacyVisible, true);
     assert.equal(result.yes.legacyOwner, true);
-    assert.equal(result.yes.authenticatedArchiveVisible, false);
     assert.equal(result.yes.removedVisible, true);
-    assert.equal(result.unaffectedByArchiveSearch, true);
     assert.equal(result.soldSearchWorks, true);
+    assert.equal(result.backToNo.tabVisible, true);
+    assert.equal(result.backToNo.authenticatedOwners.length, 2);
     assert.equal(result.location.action, "Loué");
-    assert.equal(result.location.soldArchiveVisible, false);
+    assert.equal(result.location.authenticatedVisible, false);
     const persistence = await page.evaluate(() => {
       activeRegistry = "transaction";
       tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: false });
@@ -104,11 +113,13 @@ async function main() {
         saved,
         stored: JSON.parse(getRuntimeStorageValue(tableSettingsStorageKey)).keepKeysAfterCompromise,
         action: rentedBtn.textContent,
+        compromiseTabHidden: compromisesTabBtn.hidden,
       };
     });
     assert.equal(persistence.saved, true);
     assert.equal(persistence.stored, true);
     assert.equal(persistence.action, "Vendu");
+    assert.equal(persistence.compromiseTabHidden, true);
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
       const layout = await page.evaluate(() => {
