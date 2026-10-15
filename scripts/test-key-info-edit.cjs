@@ -155,6 +155,19 @@ async function main() {
       await page.locator('.reservation-edit-dialog button[value="cancel"]').click();
       await context.close();
     }
+    const staleCssContext = await browser.newContext({ serviceWorkers: "block" });
+    const staleCssPage = await staleCssContext.newPage();
+    await staleCssPage.route("**/styles.css*", (route) => route.fulfill({ status: 200, contentType: "text/css", body: "" }));
+    await staleCssPage.route("**/app.js*", (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "" }));
+    await staleCssPage.goto(`http://127.0.0.1:${server.address().port}/`);
+    const fallbackStyle = await staleCssPage.locator("#keyDetailsToggleBtn").evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { display: style.display, minHeight: style.minHeight, background: style.backgroundColor,
+        border: style.borderTopWidth, after: getComputedStyle(button, "::after").content };
+    });
+    assert.deepEqual(fallbackStyle, { display: "flex", minHeight: "34px", background: "rgb(216, 220, 216)",
+      border: "1px", after: '""' });
+    await staleCssContext.close();
     console.log("Added key sets, address save/reload, and touch edit focus passed.");
   } finally {
     await browser.close();

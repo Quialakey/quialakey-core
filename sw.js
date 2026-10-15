@@ -1,6 +1,6 @@
 const workerUrl = new URL(self.location.href);
 const agencyCacheId = String(workerUrl.searchParams.get("agency") || "default-agency").replace(/[^a-z0-9-]/gi, "-");
-const appVersion = "20261015-6";
+const appVersion = "20261016-1";
 const runtimeCachePrefix = `quialakey-runtime-${agencyCacheId}-`;
 const runtimeCacheName = `${runtimeCachePrefix}${appVersion}`;
 const workerBaseUrl = new URL("./", self.location.href);
@@ -78,6 +78,17 @@ self.addEventListener("activate", (event) => {
 async function serveCoreAsset(request, url, event) {
   const cache = await caches.open(runtimeCacheName);
   const canonicalRequest = new Request(getScopedUrl(`${url.pathname.split("/").pop()}?v=${appVersion}`));
+  const requestedVersion = url.searchParams.get("v");
+  if (requestedVersion && requestedVersion !== appVersion) {
+    try {
+      const response = await fetchWithTimeout(request);
+      if (response?.ok) return cacheResponse(cache, request, response);
+    } catch {
+      // Keep an exact cached copy usable while offline.
+    }
+    const exactCached = await cache.match(request);
+    if (exactCached) return exactCached;
+  }
   const cached = (await cache.match(request)) || (await cache.match(canonicalRequest));
   const refresh = fetchWithTimeout(request)
     .then((response) => cacheResponse(cache, canonicalRequest, response))
