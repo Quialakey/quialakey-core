@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261015-2" />
-    <link rel="stylesheet" href="styles.css?v=20261015-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261015-3" />
+    <link rel="stylesheet" href="styles.css?v=20261015-3" />
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
@@ -269,28 +269,34 @@
             <legend>Mouvements des jeux de clés</legend>
             <select id="keySetSelect" hidden aria-label="Jeu concerné"></select>
             <ol id="activeReservationPanel" class="history-list active-reservation-panel" aria-label="Réservations en cours" hidden></ol>
+            <ol id="activeCheckoutPanel" class="history-list active-checkout-panel" aria-label="Sorties en cours" hidden></ol>
             <label>
               Sélectionner un intervenant
               <select id="contactSelect">
                 <option value="">Choisir dans la liste</option>
               </select>
             </label>
-            <label>
-              Nom de l'intervenant
-              <input id="movementNameInput" type="text" placeholder="Nom de l'intervenant" autocomplete="off" autocapitalize="characters" spellcheck="false" />
-            </label>
-            <label>
-              Pr&eacute;nom de l'intervenant
-              <input id="movementPersonInput" type="text" placeholder="Pr&eacute;nom de l'intervenant" autocomplete="off" autocapitalize="words" spellcheck="false" />
-            </label>
-            <label>
-              Nom de la soci&eacute;t&eacute; de l'intervenant
-              <input id="movementCompanyInput" type="text" placeholder="Nom de la soci&eacute;t&eacute; de l'intervenant" autocomplete="off" autocapitalize="words" spellcheck="false" />
-            </label>
-            <label>
-              Num&eacute;ro de t&eacute;l&eacute;phone de l'intervenant
-              <input id="movementPhoneInput" type="tel" placeholder="Ex. 06 12 34 56 78" autocomplete="off" spellcheck="false" />
-            </label>
+            <details id="movementContactDetails" class="movement-contact-details">
+              <summary>Coordonnées de l'intervenant</summary>
+              <div class="movement-contact-fields">
+                <label>
+                  Nom de l'intervenant
+                  <input id="movementNameInput" type="text" placeholder="Nom de l'intervenant" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+                </label>
+                <label>
+                  Pr&eacute;nom de l'intervenant
+                  <input id="movementPersonInput" type="text" placeholder="Pr&eacute;nom de l'intervenant" autocomplete="off" autocapitalize="words" spellcheck="false" />
+                </label>
+                <label>
+                  Nom de la soci&eacute;t&eacute; de l'intervenant
+                  <input id="movementCompanyInput" type="text" placeholder="Nom de la soci&eacute;t&eacute; de l'intervenant" autocomplete="off" autocapitalize="words" spellcheck="false" />
+                </label>
+                <label>
+                  Num&eacute;ro de t&eacute;l&eacute;phone de l'intervenant
+                  <input id="movementPhoneInput" type="tel" placeholder="Ex. 06 12 34 56 78" autocomplete="off" spellcheck="false" />
+                </label>
+              </div>
+            </details>
             <label>
               Commentaire
               <input id="movementNoteInput" type="text" placeholder="Motif, rendez-vous, référence..." autocomplete="off" autocapitalize="sentences" spellcheck="false" />
@@ -553,10 +559,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261015-2"></script>
+    <script src="agency-config.js?v=20261015-3"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261015-2";
+        const fallbackVersion = "20261015-3";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

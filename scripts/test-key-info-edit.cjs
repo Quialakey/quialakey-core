@@ -89,7 +89,7 @@ async function main() {
       assert.equal(await page.locator("#propertyInput").evaluate((input) => input.readOnly), false);
       assert.deepEqual(await page.evaluate(() => window.keyInfoFocusEvents), [{ readOnly: false, dialogPresent: false }]);
       await page.locator("#propertyInput").fill("32 avenue du Test");
-      await page.locator("#movementNameInput").click();
+      await page.locator("#contactSelect").click();
       await page.waitForFunction(() => document.querySelector("#propertyInput").readOnly);
       assert.equal(await page.evaluate(() => getSelectedKey().property), "32 Av. Du Test");
       await page.reload();
@@ -115,7 +115,7 @@ async function main() {
       assert.equal(await page.evaluate(() => document.activeElement.id), "ownerInput");
       assert.equal(await page.locator("#ownerInput").evaluate((input) => input.readOnly), false);
       await page.locator("#ownerInput").fill("MARTIN");
-      await page.locator("#movementNameInput").click();
+      await page.locator("#contactSelect").click();
       await page.waitForFunction(() => getSelectedKey().owner === "MARTIN");
       await page.evaluate(() => { void promptReservationReturn(); });
       const reservationAppearance = await page.locator(".reservation-return-dialog").evaluate(dialogAppearance);

@@ -198,6 +198,39 @@ async function main() {
       assert.equal(finished.busy, false);
       assert.equal(Boolean(finished.alert), mode === "failure");
     }
+    await page.evaluate(() => window.__resetReturn());
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), true);
+    assert.equal(await page.locator("#activeReservationPanel").isVisible(), false);
+    assert.equal(await page.locator("#movementContactDetails").evaluate((details) => details.open), false);
+    assert.equal(await page.locator("#movementNameInput").isVisible(), false);
+    await page.locator("#movementContactDetails summary").click();
+    assert.equal(await page.locator("#movementNameInput").isVisible(), true);
+    assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
+    assert.equal(await page.locator("#activeCheckoutPanel li").evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
+    assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").evaluate((button) => getComputedStyle(button).backgroundColor),
+      await page.locator("#checkinBtn").evaluate((button) => getComputedStyle(button).backgroundColor));
+    await page.locator("#activeCheckoutPanel .reservation-history-button.in").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").textContent(), "Enregistrement...");
+    assert.equal(await page.locator("#activeCheckoutPanel .reservation-history-button.in").getAttribute("aria-busy"), "true");
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets[0].status === "available" && !isConfirmingReturn);
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
+    await page.evaluate(() => {
+      window.__resetReturn();
+      keys[0].sets.push({ ...makeKeySet("double"), status: "out", holder: "Autre intervenant",
+        holderPhone: "0600000000", history: [{ id: "checkout-2", type: "out", person: "Autre intervenant",
+          date: "07/10/2026 19:00" }] });
+      window.__remoteRow.value = structuredClone(keys[0]);
+      renderPanel();
+    });
+    assert.equal(await page.locator("#activeCheckoutPanel li").count(), 2);
+    await page.locator("#activeCheckoutPanel li").nth(1).locator("button").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    assert.equal(await page.evaluate(() => selectedSetId), "double");
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets[1].status === "available" && !isConfirmingReturn);
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status)), ["out", "available"]);
     const staleReturn = await page.evaluate(async () => {
       window.__resetReturn();
       window.__remoteRow.value.sets[0].history.unshift({
@@ -246,6 +279,7 @@ async function main() {
         if (!button) throw new Error("Reservation return button missing");
         window.__returnPromise = toggleReservationMovement("reservation-1", button);
       });
+      assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
       await page.waitForFunction(() => typeof window.__resolveWrite === "function");
       await page.evaluate(() => renderPanel());
       const pending = await page.evaluate(() => ({

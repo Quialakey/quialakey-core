@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261015-2";
+const appBuildVersion = "20261015-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -768,7 +768,9 @@ const keyDetailsContent = document.querySelector("#keyDetailsContent");
 const keySetPhotoList = document.querySelector("#keySetPhotoList");
 const keySetSelect = document.querySelector("#keySetSelect");
 const activeReservationPanel = document.querySelector("#activeReservationPanel");
+const activeCheckoutPanel = document.querySelector("#activeCheckoutPanel");
 const contactSelect = document.querySelector("#contactSelect");
+const movementContactDetails = document.querySelector("#movementContactDetails");
 const movementPersonInput = document.querySelector("#movementPersonInput");
 const movementNameInput = document.querySelector("#movementNameInput");
 const movementCompanyInput = document.querySelector("#movementCompanyInput");
@@ -4057,6 +4059,7 @@ function ensureCompletePhoneNumber(input, label = "num\u00e9ro de t\u00e9l\u00e9
   if (!digitCount || digitCount === 10) return true;
 
   alert(`Le ${label} semble incomplet : il faut 10 chiffres.`);
+  if (input === movementPhoneInput) movementContactDetails.open = true;
   input.focus();
   return false;
 }
@@ -4071,6 +4074,7 @@ function ensureTypedMovementPhone(actionLabel) {
   const digitCount = getPhoneDigitCount(movementPhoneInput.value);
   if (!digitCount) {
     alert(`Renseigne le num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant avant de cliquer sur ${actionLabel}.`);
+    movementContactDetails.open = true;
     movementPhoneInput.focus();
     return false;
   }
@@ -4210,6 +4214,7 @@ function ensureMovementActor(actionLabel, fallbackActor = {}) {
   if (hasActor) return true;
 
   alert(`Renseigne ou choisis un intervenant avant de cliquer sur ${actionLabel}.`);
+  movementContactDetails.open = true;
   movementNameInput.focus();
   return false;
 }
@@ -8488,6 +8493,35 @@ function renderPanel() {
   historyList.innerHTML = "";
   activeReservationPanel.innerHTML = "";
   activeReservationPanel.hidden = true;
+  activeCheckoutPanel.innerHTML = "";
+  key.sets.filter((set) => set.status === "out" && !set.holderReservationId && canMoveSelectedKey).forEach((outSet) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    const latestOut = getLatestMovementEntry(outSet.history);
+    const date = document.createElement("small");
+    const returnButton = document.createElement("button");
+    item.dataset.historyAction = "out";
+    title.textContent = `${outSet.label} - Sorti${outSet.holder ? ` : ${outSet.holder}` : ""}${outSet.holderPhone ? ` - ${outSet.holderPhone}` : ""}`;
+    date.textContent = latestOut?.type === "out" ? latestOut.date : "";
+    returnButton.type = "button";
+    returnButton.className = "reservation-history-button in";
+    returnButton.textContent = isThisReturnSaving && selectedSetId === outSet.id ? "Enregistrement..." : "Rentr\u00e9";
+    returnButton.setAttribute("aria-label", `Rentr\u00e9 ${outSet.label}`);
+    returnButton.classList.toggle("is-confirming-return", isThisReturnSaving && selectedSetId === outSet.id);
+    returnButton.setAttribute("aria-busy", String(isThisReturnSaving && selectedSetId === outSet.id));
+    returnButton.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
+    returnButton.addEventListener("click", () => {
+      selectedSetId = outSet.id;
+      renderPanel();
+      void addMovement("in");
+    });
+    item.append(title);
+    if (date.textContent) item.append(date);
+    item.append(returnButton);
+    activeCheckoutPanel.append(item);
+  });
+  activeCheckoutPanel.dataset.heading = activeCheckoutPanel.childElementCount === 1 ? "Sortie en cours" : "Sorties en cours";
+  activeCheckoutPanel.hidden = !activeCheckoutPanel.childElementCount;
   const isHistoryExpanded = isSelectedHistoryExpanded(key);
   historyList.hidden = false;
   keyHistoryToggleBtn.classList.toggle("is-expanded", isHistoryExpanded);
@@ -9215,7 +9249,7 @@ async function addMovement(type) {
   const isReturningAfterCheckout = type === "in" && selectedSet.status === "out";
   if (!ensureMovementActor(type === "out" ? "Sorti" : "Entr\u00e9", { person: forcedPerson, company: forcedCompany })) return;
   if (type === "out" && !ensureTypedMovementPhone("Sorti")) return;
-  if (type !== "out" && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
+  if (type !== "out" && !isReturningAfterCheckout && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
   if (type === "out") showCheckoutReservationWarning(selectedSet);
   const signature = await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9");
   if (signature === null) return;

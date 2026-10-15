@@ -2932,6 +2932,45 @@ body.is-moving-key .photo-hover {
   font-weight: 800;
 }
 
+.movement-contact-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: #d8dcd8;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.movement-contact-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.movement-contact-details summary::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid currentColor;
+}
+
+.movement-contact-details[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.movement-contact-fields {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 2px;
+}
+
 .movement-actions,
 .archive-actions {
   display: grid;
@@ -3161,11 +3200,17 @@ body.is-moving-key .photo-hover {
   margin: 2px 0 4px;
 }
 
-.active-reservation-panel[hidden] {
+.active-checkout-panel {
+  margin: 2px 0 4px;
+}
+
+.active-reservation-panel[hidden],
+.active-checkout-panel[hidden] {
   display: none;
 }
 
-.active-reservation-panel::before {
+.active-reservation-panel::before,
+.active-checkout-panel::before {
   color: var(--ink);
   content: attr(data-heading);
   font-size: 13px;
@@ -3200,6 +3245,15 @@ body.is-moving-key .photo-hover {
   position: relative;
   gap: 2px;
   padding: 8px;
+}
+
+.active-checkout-panel li[data-history-action="out"] {
+  gap: 5px;
+  padding: 8px;
+}
+
+.active-checkout-panel .reservation-history-button {
+  margin-top: 3px;
 }
 
 .active-reservation-panel li[data-history-action="reserved"] > strong:first-child {

@@ -710,6 +710,7 @@ async function main() {
       button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch" }));
     });
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
+    await page.locator("#movementContactDetails summary").click();
     await page.locator("#movementNameInput").click();
     await page.waitForFunction(() => document.querySelector("#keySetCountSelect").hidden);
     assert.equal(await page.evaluate(() => document.activeElement.id), "movementNameInput");
