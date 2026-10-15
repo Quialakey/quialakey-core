@@ -3756,6 +3756,11 @@ body.is-moving-key .photo-hover {
 }
 
 @media (max-width: 720px) {
+  .movement-contact-details summary,
+  .key-details-toggle-button {
+    font-size: 15px;
+  }
+
   .workspace,
   .detail-panel {
     padding: 18px;
