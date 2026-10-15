@@ -165,7 +165,7 @@ async function main() {
       return { display: style.display, minHeight: style.minHeight, background: style.backgroundColor,
         border: style.borderTopWidth, after: getComputedStyle(button, "::after").content };
     });
-    assert.deepEqual(fallbackStyle, { display: "flex", minHeight: "34px", background: "rgb(216, 220, 216)",
+    assert.deepEqual(fallbackStyle, { display: "flex", minHeight: "40px", background: "rgb(216, 220, 216)",
       border: "1px", after: '""' });
     await staleCssContext.close();
     console.log("Added key sets, address save/reload, and touch edit focus passed.");

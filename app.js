@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261016-4";
+const appBuildVersion = "20261016-5";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -2160,16 +2160,16 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
         recoveryBackupsCreated.add(cloudKey);
       }
     }
-    const allRowsAlreadyConfirmed = cloudKeys.every((cloudKey) => {
-      const remoteRow = remoteRowsByKey.get(cloudKey);
-      return remoteRow && cloudRowMatchesPendingKeySlotWrite(remoteRow);
+    const allRowsAlreadyConfirmed = uniqueKeyIds.every((keyId) => {
+      const remoteRow = remoteRowsByKey.get(getKeySlotCloudKey(storageKey, keyId));
+      return cloudRowMatchesKeySlotValue(remoteRow, intendedValues.get(keyId));
     });
     if (allRowsAlreadyConfirmed) {
       const confirmedKeys = new Map();
       uniqueKeyIds.forEach((keyId) => {
         const cloudKey = getKeySlotCloudKey(storageKey, keyId);
         const remoteRow = remoteRowsByKey.get(cloudKey);
-        confirmPendingKeySlotWrite(cloudKey, remoteRow);
+        confirmIntendedKeySlotWrite(cloudKey, remoteRow, intendedValues.get(keyId));
         confirmedKeys.set(keyId, normalizeCloudSlotKey(remoteRow));
       });
       return confirmedKeys;
@@ -2183,18 +2183,21 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
         baseValue: getPendingKeySlotWrite(cloudKey)?.baseValue,
       });
       intendedValues.set(keyId, mergedValue);
-      rememberPendingKeySlotWrite(storageKey, keyId, mergedValue);
+      const pendingWrite = getPendingKeySlotWrite(cloudKey);
+      if (!pendingWrite || getComparableKeySlotValue(pendingWrite.value) === getComparableKeySlotValue(intendedValue)) {
+        rememberPendingKeySlotWrite(storageKey, keyId, mergedValue);
+      }
     });
 
-    if (cloudKeys.every((cloudKey) => {
-      const remoteRow = remoteRowsByKey.get(cloudKey);
-      return remoteRow && cloudRowMatchesPendingKeySlotWrite(remoteRow);
+    if (uniqueKeyIds.every((keyId) => {
+      const remoteRow = remoteRowsByKey.get(getKeySlotCloudKey(storageKey, keyId));
+      return cloudRowMatchesKeySlotValue(remoteRow, intendedValues.get(keyId));
     })) {
       const confirmedKeys = new Map();
       uniqueKeyIds.forEach((keyId) => {
         const cloudKey = getKeySlotCloudKey(storageKey, keyId);
         const remoteRow = remoteRowsByKey.get(cloudKey);
-        confirmPendingKeySlotWrite(cloudKey, remoteRow);
+        confirmIntendedKeySlotWrite(cloudKey, remoteRow, intendedValues.get(keyId));
         confirmedKeys.set(keyId, normalizeCloudSlotKey(remoteRow));
       });
       return confirmedKeys;
@@ -2235,29 +2238,33 @@ async function writeConfirmedKeySlotsToCloud(storageKey, keyIds, initialKeysById
     const confirmedRowsByKey = new Map(
       (Array.isArray(confirmedRows) ? confirmedRows : []).map((row) => [row.key, row]),
     );
-    const allRowsConfirmed = cloudKeys.every((cloudKey) => {
-      const confirmedRow = confirmedRowsByKey.get(cloudKey);
-      return confirmedRow && cloudRowMatchesPendingKeySlotWrite(confirmedRow);
+    const allRowsConfirmed = uniqueKeyIds.every((keyId) => {
+      const confirmedRow = confirmedRowsByKey.get(getKeySlotCloudKey(storageKey, keyId));
+      return cloudRowMatchesKeySlotValue(confirmedRow, intendedValues.get(keyId));
     });
     if (allRowsConfirmed) {
       const confirmedKeys = new Map();
       uniqueKeyIds.forEach((keyId) => {
         const cloudKey = getKeySlotCloudKey(storageKey, keyId);
         const confirmedRow = confirmedRowsByKey.get(cloudKey);
-        confirmPendingKeySlotWrite(cloudKey, confirmedRow);
+        confirmIntendedKeySlotWrite(cloudKey, confirmedRow, intendedValues.get(keyId));
         confirmedKeys.set(keyId, normalizeCloudSlotKey(confirmedRow));
       });
       return confirmedKeys;
     }
 
     intendedValues.forEach((intendedValue, keyId) => {
-      const confirmedRow = confirmedRowsByKey.get(getKeySlotCloudKey(storageKey, keyId));
+      const cloudKey = getKeySlotCloudKey(storageKey, keyId);
+      const confirmedRow = confirmedRowsByKey.get(cloudKey);
       if (!confirmedRow?.value) return;
       const mergedValue = mergeKeyRecord(intendedValue, parseCloudObjectValue(confirmedRow.value), {
-        baseValue: getPendingKeySlotWrite(getKeySlotCloudKey(storageKey, keyId))?.baseValue,
+        baseValue: getPendingKeySlotWrite(cloudKey)?.baseValue,
       });
       intendedValues.set(keyId, mergedValue);
-      rememberPendingKeySlotWrite(storageKey, keyId, mergedValue);
+      const pendingWrite = getPendingKeySlotWrite(cloudKey);
+      if (!pendingWrite || getComparableKeySlotValue(pendingWrite.value) === getComparableKeySlotValue(intendedValue)) {
+        rememberPendingKeySlotWrite(storageKey, keyId, mergedValue);
+      }
     });
     if (attempt + 1 < keySlotWriteMaxAttempts) await waitForKeySlotRetry(attempt);
   }
@@ -2368,8 +2375,24 @@ function rememberDirtyKeySlotSnapshots(storageKey) {
 }
 
 function cloudRowMatchesPendingKeySlotWrite(row, pendingWrite = getPendingKeySlotWrite(row?.key)) {
-  if (!pendingWrite || !row?.value) return false;
-  return getComparableKeySlotValue(normalizeCloudSlotKey(row)) === getComparableKeySlotValue(pendingWrite.value);
+  return Boolean(pendingWrite && cloudRowMatchesKeySlotValue(row, pendingWrite.value));
+}
+
+function cloudRowMatchesKeySlotValue(row, value) {
+  if (!row?.value || !value) return false;
+  return getComparableKeySlotValue(normalizeCloudSlotKey(row)) === getComparableKeySlotValue(value);
+}
+
+function confirmIntendedKeySlotWrite(cloudKey, row, intendedValue) {
+  if (!cloudRowMatchesKeySlotValue(row, intendedValue)) return;
+  const pendingWrite = getPendingKeySlotWrite(cloudKey);
+  if (!pendingWrite || cloudRowMatchesPendingKeySlotWrite(row, pendingWrite)) {
+    confirmPendingKeySlotWrite(cloudKey, row);
+    return;
+  }
+  // Keep edits made while the confirmed version was in flight.
+  pendingKeySlotWrites.set(cloudKey, { ...pendingWrite, baseValue: normalizeCloudSlotKey(row) });
+  savePendingKeySlotWrites();
 }
 
 function cloudRowIsNewerThanPendingKeySlotWrite(row, pendingWrite = getPendingKeySlotWrite(row?.key)) {
