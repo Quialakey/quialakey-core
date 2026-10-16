@@ -317,6 +317,7 @@ async function main() {
       set.holder = "";
       set.holderReservationId = "";
       set.history = set.history.filter((entry) => entry.type === "reserved");
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
       window.__remoteRow.value = structuredClone(keys[0]);
       window.__originalSyncCloudAfterAction = syncCloudAfterAction;
       syncCloudAfterAction = async () => {};
@@ -324,16 +325,146 @@ async function main() {
     });
     const activeReservationCard = page.locator("#activeReservationPanel li").first();
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 1);
     assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Sorti", "Annulation"]);
     await activeReservationCard.locator(".reservation-history-button.out").click();
     await page.waitForFunction(() => keys[0].sets[0].status === "out");
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "out");
+    assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 0);
     assert.equal(await activeReservationCard.evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
     assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Rentré"]);
     assert.equal(await activeReservationCard.locator(".reservation-history-actions").evaluate((actions) =>
       getComputedStyle(actions).gridTemplateColumns.split(" ").length), 1);
     assert.equal(await activeReservationCard.locator(".reservation-history-button.in").evaluate((button) => getComputedStyle(button).backgroundColor),
       await page.locator("#checkinBtn").evaluate((button) => getComputedStyle(button).backgroundColor));
+    await page.evaluate(() => {
+      const storageKey = getRegistryConfig().keysStorageKey;
+      const cloudKey = getKeySlotCloudKey(storageKey, selectedId);
+      clearTimeout(directCloudFlushTimers.get(storageKey));
+      directCloudFlushTimers.delete(storageKey);
+      discardPendingKeySlotWrite(cloudKey);
+      clearDirtyKeySlot(storageKey, selectedId);
+      window.__remoteRow.value = structuredClone(keys[0]);
+      const candidate = getUndoCheckout(undoSnapshot);
+      if (!candidate?.isLastAction) throw new Error(JSON.stringify({ candidate: Boolean(candidate),
+        beforeStatus: candidate?.previousSet?.status, afterStatus: candidate?.set?.status,
+        beforeHistory: candidate?.previousSet?.history?.map((entry) => entry.id),
+        afterHistory: candidate?.set?.history?.map((entry) => entry.id),
+        snapshotKey: undoSnapshot?.selectedId, snapshotSet: undoSnapshot?.selectedSetId }));
+      window.__resolveWrite = null;
+      window.__undoPromise = undoPreviousStep();
+    });
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "out");
+    assert.equal(await page.locator("#undoBtn").getAttribute("aria-busy"), "true");
+    assert.equal(await page.locator("#undoBtn").evaluate((button) => getComputedStyle(button, "::after").content), '""');
+    await page.evaluate(async () => {
+      window.__resolveWrite("failure");
+      await window.__undoPromise;
+    });
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "out");
+    assert.equal(await page.locator("#undoBtn").isEnabled(), true);
+    await page.evaluate(() => {
+      window.__resolveWrite = null;
+      window.__undoPromise = undoPreviousStep();
+    });
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    await page.evaluate(async () => {
+      window.__resolveWrite("success");
+      await window.__undoPromise;
+    });
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    assert.equal(await page.evaluate(() => window.__remoteRow.value.sets[0].status), "available");
+    assert.equal(await page.evaluate(() => keys[0].sets[0].reservations.length), 1);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].history[0].returnReason), "undo-checkout");
+    assert.equal(await page.evaluate(() => keys[0].sets[0].history[1].type), "out");
+    assert.equal(await page.evaluate(() => getMovementActionLabel(keys[0].sets[0].history[0])), "Sortie annulée");
+    assert.equal(await page.evaluate(() => {
+      const staleKey = structuredClone(keys[0]);
+      staleKey.sets[0] = { ...staleKey.sets[0], status: "out", holder: "Raquel PEROZO",
+        holderReservationId: "reservation-1", history: staleKey.sets[0].history.slice(1) };
+      return mergeKeyRecord(keys[0], staleKey).sets[0].status;
+    }), "available");
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 1);
+    assert.equal(await page.locator("#undoBtn").isEnabled(), false);
+    await page.evaluate(() => {
+      window.__resetReturn();
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.holder = "";
+      set.holderPhone = "";
+      set.history = [];
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      updateSelectedSet({ status: "out", holder: "Raquel PEROZO", holderPhone: "0700000000",
+        history: [{ id: "plain-checkout", type: "out", person: "Raquel PEROZO", date: "07/10/2026 18:00" }] });
+      const storageKey = getRegistryConfig().keysStorageKey;
+      clearTimeout(directCloudFlushTimers.get(storageKey));
+      directCloudFlushTimers.delete(storageKey);
+      discardPendingKeySlotWrite(getKeySlotCloudKey(storageKey, selectedId));
+      clearDirtyKeySlot(storageKey, selectedId);
+      window.__remoteRow.value = structuredClone(keys[0]);
+      if (!getUndoCheckout(undoSnapshot)?.isLastAction) throw new Error("Ordinary checkout undo was not detected");
+      closeKeyPanelAfterAction();
+      activeRegistry = "location";
+      keys = loadKeys();
+      render();
+      window.__resolveWrite = null;
+      window.__undoPromise = undoPreviousStep();
+    });
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    await page.evaluate(async () => {
+      window.__resolveWrite("success");
+      await window.__undoPromise;
+    });
+    assert.equal(await page.evaluate(() => getSelectedKey().sets[0].status), "available");
+    assert.equal(await page.evaluate(() => getSelectedKey().sets[0].reservations.length), 0);
+    assert.equal(await page.evaluate(() => getSelectedKey().sets[0].history[0].undoOfMovementId), "plain-checkout");
+    assert.equal(await page.evaluate(() => selectedId), "Maison-4");
+    assert.equal(await page.evaluate(() => activeRegistry), "transaction");
+    assert.equal(await page.evaluate(() => window.__remoteRow.value.sets[0].status), "available");
+    const staleUndo = await page.evaluate(async () => {
+      keys = [getSelectedKey()];
+      const storageKey = getRegistryConfig().keysStorageKey;
+      updateSelectedSet({ status: "out", holder: "Raquel PEROZO", holderPhone: "0700000000",
+        history: [{ id: "latest-local-checkout", type: "out", person: "Raquel PEROZO", date: "07/10/2026 19:00" },
+          ...keys[0].sets[0].history] });
+      clearTimeout(directCloudFlushTimers.get(storageKey));
+      directCloudFlushTimers.delete(storageKey);
+      discardPendingKeySlotWrite(getKeySlotCloudKey(storageKey, selectedId));
+      clearDirtyKeySlot(storageKey, selectedId);
+      window.__remoteRow.value = structuredClone(keys[0]);
+      window.__remoteRow.value.sets[0].history.unshift({ id: "other-device-checkout", type: "out",
+        person: "Autre intervenant", date: "07/10/2026 19:05" });
+      window.__returnAlert = "";
+      window.__resolveWrite = null;
+      await undoPreviousStep();
+      return { latest: keys[0].sets[0].history[0].id, undoAvailable: Boolean(undoSnapshot),
+        writeStarted: Boolean(window.__resolveWrite), alert: window.__returnAlert };
+    });
+    assert.deepEqual(staleUndo, { latest: "other-device-checkout", undoAvailable: false, writeStarted: false,
+      alert: "La fiche a changé sur un autre appareil. Elle vient d'être actualisée : vérifiez-la avant de réessayer." });
+    const alreadyReturnedUndo = await page.evaluate(async () => {
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.holder = "";
+      set.holderPhone = "";
+      set.history = [];
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      updateSelectedSet({ status: "out", holder: "Raquel PEROZO", holderPhone: "0700000000",
+        history: [{ id: "checkout-before-remote-return", type: "out", date: "07/10/2026 20:00" }] });
+      keys[0].sets[0].status = "available";
+      keys[0].sets[0].holder = "";
+      keys[0].sets[0].holderPhone = "";
+      keys[0].sets[0].history.unshift({ id: "remote-return", type: "in", date: "07/10/2026 20:05" });
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      window.__returnAlert = "";
+      await undoPreviousStep();
+      return { status: keys[0].sets[0].status, latest: keys[0].sets[0].history[0].id,
+        undoAvailable: Boolean(undoSnapshot), alert: window.__returnAlert };
+    });
+    assert.deepEqual(alreadyReturnedUndo, { status: "available", latest: "remote-return", undoAvailable: false,
+      alert: "La fiche a changé depuis cette sortie. Actualisez le tableau avant de faire un nouveau mouvement." });
     await page.evaluate(() => {
       syncCloudAfterAction = window.__originalSyncCloudAfterAction;
       window.__resetReturn();
@@ -349,6 +480,7 @@ async function main() {
     });
     const otherSetCard = page.locator("#activeReservationPanel li").first();
     assert.equal(await otherSetCard.getAttribute("data-history-action"), "out");
+    assert.equal(await otherSetCard.locator(".reservation-edit-button").count(), 0);
     assert.deepEqual(await otherSetCard.locator(".reservation-history-actions button").allTextContents(), ["Rentré"]);
     for (const mode of ["success", "failure"]) {
       await page.evaluate(() => {

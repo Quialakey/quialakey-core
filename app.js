@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261016-8";
+const appBuildVersion = "20261016-9";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -895,6 +895,7 @@ let isDetailPanelHovered = false;
 let isPhotoImporting = false;
 let photoImportResetTimer = null;
 let undoSnapshot = null;
+let isUndoingCheckout = false;
 let isKeyInfoEditUnlocked = false;
 let isKeySetCountEditUnlocked = false;
 let lastKeySetCountTapAt = 0;
@@ -3626,7 +3627,9 @@ async function loadStorageFromCloud(options = {}) {
 }
 
 function updateUndoButton() {
-  undoBtn.disabled = !undoSnapshot;
+  undoBtn.disabled = !undoSnapshot || isUndoingCheckout;
+  undoBtn.classList.toggle("is-undoing", isUndoingCheckout);
+  undoBtn.setAttribute("aria-busy", String(isUndoingCheckout));
 }
 
 function createUndoSnapshot() {
@@ -3663,10 +3666,101 @@ function restoreStorageSnapshot(snapshot) {
   Promise.all(changedKeys.map(syncStorageKeyToCloud));
 }
 
-function undoPreviousStep() {
-  if (!undoSnapshot) return;
+function getUndoCheckout(snapshot) {
+  const trackedCheckout = snapshot.checkout;
+  if (!trackedCheckout) return null;
+  const registry = trackedCheckout.registry;
+  const storageKey = registryConfig[registry].keysStorageKey;
+  const previousKeys = parseStorageValue(snapshot.storage[storageKey]);
+  if (!Array.isArray(previousKeys)) return { isLastAction: false };
+  const previousKey = previousKeys.find((key) => key.id === trackedCheckout.keyId);
+  const currentKey = loadKeysForRegistry(registry).find((key) => key.id === trackedCheckout.keyId);
+  const setId = trackedCheckout.setId;
+  const previousSet = previousKey?.sets?.find((set) => set.id === setId);
+  const currentSet = currentKey?.sets?.find((set) => set.id === setId);
+  if (!previousSet || !currentSet || previousSet.status === "out") return { isLastAction: false };
+
+  const checkout = (currentSet.history || []).find((entry) => entry.type === "out" && entry.id === trackedCheckout.movementId);
+  if (!checkout) return { isLastAction: false };
+  const restoredSet = {
+    ...currentSet,
+    status: previousSet.status,
+    needsCheckIn: previousSet.needsCheckIn,
+    needsCheckInReason: previousSet.needsCheckInReason,
+    holder: previousSet.holder,
+    holderCompany: previousSet.holderCompany,
+    holderPhone: previousSet.holderPhone,
+    holderReservationId: previousSet.holderReservationId,
+    history: currentSet.history.slice(1),
+  };
+  const restoredKey = {
+    ...currentKey,
+    sets: currentKey.sets.map((set) => set.id === setId ? restoredSet : set),
+  };
+  const isLastAction = currentSet.status === "out" && currentSet.history[0]?.id === checkout.id &&
+    getComparableKeySlotValue(restoredKey) === getComparableKeySlotValue(previousKey);
+  return { registry, key: currentKey, set: currentSet, previousSet, checkout, isLastAction };
+}
+
+async function undoPreviousStep() {
+  if (!undoSnapshot || isUndoingCheckout || isConfirmingReturn || activeKeyControlAction) return;
 
   const snapshot = undoSnapshot;
+  const checkout = getUndoCheckout(snapshot);
+  if (checkout) {
+    if (!checkout.isLastAction) {
+      undoSnapshot = null;
+      updateUndoButton();
+      alert("La fiche a changé depuis cette sortie. Actualisez le tableau avant de faire un nouveau mouvement.");
+      return;
+    }
+    const { registry, key, set, previousSet, checkout: outEntry } = checkout;
+    const entry = {
+      id: createHistoryId(),
+      type: "in",
+      person: outEntry.person || set.holder || "",
+      company: outEntry.company || set.holderCompany || "",
+      phone: outEntry.phone || set.holderPhone || "",
+      returnReason: "undo-checkout",
+      reservationId: outEntry.reservationId || "",
+      undoOfMovementId: outEntry.id,
+      date: getMovementDateText(),
+    };
+    const changes = {
+      status: previousSet.status,
+      needsCheckIn: previousSet.needsCheckIn,
+      needsCheckInReason: previousSet.needsCheckInReason,
+      holder: previousSet.holder || "",
+      holderCompany: previousSet.holderCompany || "",
+      holderPhone: previousSet.holderPhone || "",
+      holderReservationId: previousSet.holderReservationId || "",
+    };
+    isUndoingCheckout = true;
+    updateUndoButton();
+    try {
+      const confirmed = await runConfirmedReturn(key, set, changes, entry, {
+        registry,
+        failureMessage: "L'annulation de la sortie n'a pas pu être confirmée. Réessayez dans un instant.",
+        conflictMessage: "La fiche a changé sur un autre appareil. Elle vient d'être actualisée : vérifiez-la avant de réessayer.",
+        onConflict: () => { undoSnapshot = null; },
+      });
+      if (!confirmed) return;
+      undoSnapshot = null;
+      const switchedRegistry = activeRegistry !== registry;
+      activeRegistry = registry;
+      saveActiveRegistry();
+      if (switchedRegistry) keys = loadKeys();
+      selectedId = snapshot.selectedId;
+      selectedSetId = snapshot.selectedSetId || "main";
+      updateRegistryHeader();
+      render();
+    } finally {
+      isUndoingCheckout = false;
+      updateUndoButton();
+    }
+    return;
+  }
+
   undoSnapshot = null;
   restoreStorageSnapshot(snapshot);
   tableSettings = loadTableSettings();
@@ -4322,6 +4416,7 @@ function isReturnMovement(entry, history = []) {
 }
 
 function getMovementActionLabel(entry, history = []) {
+  if (entry?.type === "in" && entry.returnReason === "undo-checkout") return "Sortie annul\u00e9e";
   if (entry?.type === "out") return "Sorti";
   if (entry?.type === "reserved") return "R\u00e9serv\u00e9";
   if (entry?.type === "cancel-reservation") return "Annulation";
@@ -8643,7 +8738,7 @@ function renderPanel() {
     title.textContent = `${reservationSet.label} - ${hasHistoryPerson ? `R\u00e9serv\u00e9 : ${historyPersonName}` : "R\u00e9serv\u00e9"}`;
     reservationDate.textContent = `Pour le ${formatReservationHistoryDate(entry.reservationDate || reservation.reservationDate || entry.date)}`;
     item.append(title, reservationDate);
-    if (!isReadOnlyArchive) item.append(createReservationEditButton(entry.reservationId, reservationSet.id));
+    if (!isReadOnlyArchive && !isReservationOut) item.append(createReservationEditButton(entry.reservationId, reservationSet.id));
 
     if (reservationEntry.company) {
       const company = document.createElement("p");
@@ -8859,7 +8954,8 @@ function renderPanel() {
     let historySummary = null;
     if (activeReservation) {
       historySummary = item.cloneNode(true);
-      if (!isReadOnlyArchive) item.append(createReservationEditButton(entry.reservationId, selectedSet.id));
+      const isReservationOut = selectedSet.status === "out" && selectedSet.holderReservationId === entry.reservationId;
+      if (!isReadOnlyArchive && !isReservationOut) item.append(createReservationEditButton(entry.reservationId, selectedSet.id));
       const reservationCommentField = document.createElement("label");
       const reservationCommentLabel = document.createElement("span");
       const reservationComment = document.createElement("textarea");
@@ -8867,7 +8963,6 @@ function renderPanel() {
       const movementButton = document.createElement("button");
       const removeButton = document.createElement("button");
       const cancelButton = document.createElement("button");
-      const isReservationOut = selectedSet.status === "out" && selectedSet.holderReservationId === entry.reservationId;
       const isOutForAnotherReason = selectedSet.status === "out" && selectedSet.holderReservationId !== entry.reservationId;
       item.dataset.historyAction = isReservationOut ? "out" : "reserved";
 
@@ -9037,6 +9132,18 @@ function updateSelectedKey(changes, options = {}) {
     );
   } else if (nextKey && wasFilled && isKeyFilled(nextKey)) {
     updateCreationActivityForKey(nextKey);
+  }
+  const previousSet = previousKey?.sets.find((set) => set.id === selectedSetId);
+  const nextSet = nextKey?.sets.find((set) => set.id === selectedSetId);
+  const latestMovement = nextSet?.history[0];
+  if (previousSet && previousSet.status !== "out" && nextSet?.status === "out" && latestMovement?.type === "out" &&
+    !previousSet.history?.some((entry) => entry.id === latestMovement.id)) {
+    undoSnapshot.checkout = {
+      registry: activeRegistry,
+      keyId: selectedId,
+      setId: selectedSetId,
+      movementId: latestMovement.id,
+    };
   }
   saveKeys();
   if (shouldRenderPanel) {
@@ -9218,7 +9325,7 @@ function applyReturnSlotRow(row, registry) {
 
 async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   if (isConfirmingReturn) return false;
-  const registry = activeRegistry;
+  const registry = options.registry || activeRegistry;
   const button = options.button || null;
   isConfirmingReturn = true;
   confirmingReturnKeyId = key.id;
@@ -9257,9 +9364,10 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     if (error.latestRow && !hasPendingCloudRowChange(error.latestRow.key)) {
       applyReturnSlotRow(error.latestRow, registry);
       if (activeRegistry === registry) render();
-      alert("La fiche a chang\u00e9 sur un autre appareil. Elle vient d'\u00eatre actualis\u00e9e : v\u00e9rifiez-la avant de r\u00e9essayer.");
+      options.onConflict?.();
+      alert(options.conflictMessage || "La fiche a chang\u00e9 sur un autre appareil. Elle vient d'\u00eatre actualis\u00e9e : v\u00e9rifiez-la avant de r\u00e9essayer.");
     } else {
-      alert("Le retour n'a pas pu \u00eatre confirm\u00e9. R\u00e9essayez dans un instant.");
+      alert(options.failureMessage || "Le retour n'a pas pu \u00eatre confirm\u00e9. R\u00e9essayez dans un instant.");
     }
     return false;
   } finally {

@@ -921,6 +921,28 @@ h3 {
   opacity: 0.45;
 }
 
+.undo-button.is-undoing {
+  position: relative;
+  opacity: 1;
+}
+
+.undo-button.is-undoing::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: return-saving-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .undo-button.is-undoing::after { animation: none; }
+}
+
 .backup-panel-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 132px;
@@ -3232,11 +3254,6 @@ body.is-moving-key .photo-hover {
 .active-reservation-panel li[data-history-action="reserved"] > strong:first-child,
 .active-reservation-panel li[data-history-action="out"] > strong:first-child {
   padding-right: 32px;
-}
-
-.active-reservation-panel li[data-history-action="out"] .reservation-edit-button {
-  border-color: #ce6a60;
-  background: #f7ded9;
 }
 
 .reservation-edit-button {
