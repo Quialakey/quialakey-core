@@ -2932,11 +2932,51 @@ body.is-moving-key .photo-hover {
   font-weight: 800;
 }
 
+.contact-select-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.contact-select-wrap #contactSelect,
+.contact-select-placeholder {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.contact-select-wrap.is-empty #contactSelect {
+  height: 100%;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.contact-select-wrap #contactSelect option,
+.contact-select-wrap #contactSelect optgroup {
+  color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
+}
+
+.contact-select-placeholder {
+  display: none;
+  align-self: center;
+  margin: 11px 36px 11px 12px;
+  color: var(--ink);
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.contact-select-wrap.is-empty .contact-select-placeholder {
+  display: block;
+}
+
 .movement-contact-details summary,
 .key-details-toggle-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
   min-height: 40px;
   padding: 8px 9px;
@@ -2963,6 +3003,7 @@ body.is-moving-key .photo-hover {
 .movement-contact-details summary::after,
 .key-details-toggle-button::after {
   content: "";
+  flex-shrink: 0;
   width: 0;
   height: 0;
   border-top: 5px solid transparent;
@@ -3629,6 +3670,10 @@ body.is-moving-key .photo-hover {
 
 @media (max-width: 1040px) {
   body {
+    font-size: 18px;
+  }
+
+  .contact-select-placeholder {
     font-size: 18px;
   }
 

@@ -57,6 +57,23 @@ async function main() {
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
+      assert.equal(await page.locator("#contactSelect").evaluate((select) => select.closest("label").firstChild.textContent.trim()), "Intervenants");
+      assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste des intervenants récurrents");
+      assert.equal(await page.locator("#movementContactDetails summary").textContent(), "Saisir les informations d'un intervenant ponctuel");
+      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), true);
+      for (const width of touch ? [390, 320] : [1280]) {
+        if (touch) await page.setViewportSize({ width, height: 844 });
+        const copyFits = await page.locator(".contact-select-placeholder").evaluate((placeholder) => {
+          const select = placeholder.previousElementSibling.getBoundingClientRect();
+          const text = placeholder.getBoundingClientRect();
+          const summary = document.querySelector("#movementContactDetails summary");
+          return getComputedStyle(placeholder).display !== "none" && text.left >= select.left &&
+            text.right <= select.right && text.top >= select.top && text.bottom <= select.bottom &&
+            summary.scrollWidth <= summary.clientWidth + 1;
+        });
+        assert.equal(copyFits, true, `Movement labels must fit at ${width}px`);
+      }
+      if (touch) await page.setViewportSize({ width: 390, height: 844 });
       const bandStyles = (element) => {
         const style = getComputedStyle(element);
         return Object.fromEntries(["display", "minHeight", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
@@ -67,8 +84,8 @@ async function main() {
         await page.locator("#movementContactDetails summary").evaluate(bandStyles));
       assert.equal(Math.round((await page.locator("#keyDetailsToggleBtn").boundingBox()).width),
         Math.round((await page.locator("#keyDetailsHeading").boundingBox()).width));
-      assert.equal(Math.round((await page.locator("#keyDetailsToggleBtn").boundingBox()).height),
-        Math.round((await page.locator("#movementContactDetails summary").boundingBox()).height));
+      assert.ok(Math.round((await page.locator("#movementContactDetails summary").boundingBox()).height) >=
+        Math.round((await page.locator("#keyDetailsToggleBtn").boundingBox()).height));
       await page.locator("#keyDetailsToggleBtn").click();
       if (!touch) {
         for (const count of [2, 3, 4]) {
@@ -138,6 +155,14 @@ async function main() {
           { id: "internal-test", type: "internal", firstName: "Ana", name: "BERNARD", phone: "06 11 22 33 44" },
           { id: "external-test", type: "external", firstName: "Luc", name: "DUPONT", companyName: "Agence Test", phone: "07 11 22 33 44" },
         ];
+        renderContactSelect();
+      });
+      await page.locator("#contactSelect").selectOption("internal-test");
+      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), false);
+      assert.equal(await page.locator("#movementNameInput").inputValue(), "BERNARD");
+      await page.locator("#contactSelect").selectOption("");
+      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), true);
+      await page.evaluate(() => {
         void promptReservationEdit({ person: "Avant", reservationDate: "09/10/2026 12:00", note: "À conserver", returnsToAgency: true });
       });
       const contactPicker = page.locator('.reservation-edit-dialog select[name="contact"]');
@@ -168,7 +193,7 @@ async function main() {
     assert.deepEqual(fallbackStyle, { display: "flex", minHeight: "40px", background: "rgb(216, 220, 216)",
       border: "1px", after: '""' });
     await staleCssContext.close();
-    console.log("Added key sets, address save/reload, and touch edit focus passed.");
+    console.log("Key edits, touch focus, and movement contact labels/selection passed.");
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
