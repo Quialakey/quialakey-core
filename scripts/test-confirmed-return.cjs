@@ -310,6 +310,46 @@ async function main() {
       }
     });
     assert.deepEqual(mergedNoOp, { writes: 0, latestMovement: "newer-checkout" });
+    await page.evaluate(() => {
+      window.__resetReservationReturn();
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.holder = "";
+      set.holderReservationId = "";
+      set.history = set.history.filter((entry) => entry.type === "reserved");
+      window.__remoteRow.value = structuredClone(keys[0]);
+      window.__originalSyncCloudAfterAction = syncCloudAfterAction;
+      syncCloudAfterAction = async () => {};
+      renderPanel();
+    });
+    const activeReservationCard = page.locator("#activeReservationPanel li").first();
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Sorti", "Annulation"]);
+    await activeReservationCard.locator(".reservation-history-button.out").click();
+    await page.waitForFunction(() => keys[0].sets[0].status === "out");
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "out");
+    assert.equal(await activeReservationCard.evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
+    assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Rentré"]);
+    assert.equal(await activeReservationCard.locator(".reservation-history-actions").evaluate((actions) =>
+      getComputedStyle(actions).gridTemplateColumns.split(" ").length), 1);
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.in").evaluate((button) => getComputedStyle(button).backgroundColor),
+      await page.locator("#checkinBtn").evaluate((button) => getComputedStyle(button).backgroundColor));
+    await page.evaluate(() => {
+      syncCloudAfterAction = window.__originalSyncCloudAfterAction;
+      window.__resetReturn();
+      keys[0].sets.push({ ...makeKeySet("second"), label: "Jeu 2", status: "out", holder: "Ana BERNARD",
+        holderReservationId: "reservation-2", reservations: [{ id: "reservation-2", person: "Ana BERNARD",
+          reservationDate: "09/10/2026 12:00", returnsToAgency: true }], history: [
+          { id: "checkout-reservation-2", type: "out", reservationId: "reservation-2", date: "08/10/2026 12:00" },
+          { id: "reserved-2", type: "reserved", reservationId: "reservation-2", person: "Ana BERNARD",
+            reservationDate: "09/10/2026 12:00", date: "07/10/2026 12:00" },
+        ] });
+      selectedSetId = "main";
+      renderPanel();
+    });
+    const otherSetCard = page.locator("#activeReservationPanel li").first();
+    assert.equal(await otherSetCard.getAttribute("data-history-action"), "out");
+    assert.deepEqual(await otherSetCard.locator(".reservation-history-actions button").allTextContents(), ["Rentré"]);
     for (const mode of ["success", "failure"]) {
       await page.evaluate(() => {
         window.__resetReservationReturn();
@@ -347,6 +387,7 @@ async function main() {
       assert.equal(finished.logs, mode === "failure" ? 0 : 1);
       assert.equal(finished.busy, false);
       assert.equal(finished.staleButton, false);
+      assert.equal(await page.locator("#activeReservationPanel").isVisible(), mode === "failure");
     }
     await page.evaluate(() => {
       window.__resetReturn("location");

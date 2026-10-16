@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261016-7";
+const appBuildVersion = "20261016-8";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8638,7 +8638,7 @@ function renderPanel() {
     const isOutForAnotherReason = reservationSet.status === "out" && reservationSet.holderReservationId !== entry.reservationId;
 
     item.dataset.historyId = entry.id;
-    item.dataset.historyAction = "reserved";
+    item.dataset.historyAction = isReservationOut ? "out" : "reserved";
     item.title = "Ctrl + clic pour supprimer cette ligne d'historique";
     title.textContent = `${reservationSet.label} - ${hasHistoryPerson ? `R\u00e9serv\u00e9 : ${historyPersonName}` : "R\u00e9serv\u00e9"}`;
     reservationDate.textContent = `Pour le ${formatReservationHistoryDate(entry.reservationDate || reservation.reservationDate || entry.date)}`;
@@ -8698,7 +8698,7 @@ function renderPanel() {
     if (!isReadOnlyArchive) setupInlineSignatureCanvas(signatureCanvas);
 
     actions.className = "reservation-history-actions";
-    actions.classList.add("is-two-action");
+    actions.classList.add(isReservationOut ? "is-one-action" : "is-two-action");
     movementButton.type = "button";
     movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
     const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
@@ -8740,7 +8740,8 @@ function renderPanel() {
     });
 
     const returnsToAgency = reservation.returnsToAgency ?? entry.returnsToAgency;
-    actions.append(returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton, cancelButton);
+    actions.append(isReservationOut ? movementButton : returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton);
+    if (!isReservationOut) actions.append(cancelButton);
     item.append(actions);
     date.textContent = `R\u00e9serv\u00e9 le ${entry.createdAt || reservation.createdAt || entry.date}`;
     item.append(date);
@@ -8868,6 +8869,7 @@ function renderPanel() {
       const cancelButton = document.createElement("button");
       const isReservationOut = selectedSet.status === "out" && selectedSet.holderReservationId === entry.reservationId;
       const isOutForAnotherReason = selectedSet.status === "out" && selectedSet.holderReservationId !== entry.reservationId;
+      item.dataset.historyAction = isReservationOut ? "out" : "reserved";
 
       reservationCommentField.className = "reservation-comment-field";
       reservationCommentLabel.textContent = "Commentaire";
@@ -8880,7 +8882,7 @@ function renderPanel() {
       item.append(reservationCommentField);
 
       actions.className = "reservation-history-actions";
-      actions.classList.add("is-two-action");
+      actions.classList.add(isReservationOut ? "is-one-action" : "is-two-action");
       movementButton.type = "button";
       movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
       const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
@@ -8937,7 +8939,8 @@ function renderPanel() {
       if (!isReadOnlyArchive) setupInlineSignatureCanvas(signatureCanvas);
 
       const returnsToAgency = activeReservation.returnsToAgency ?? entry.returnsToAgency;
-      actions.append(returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton, cancelButton);
+      actions.append(isReservationOut ? movementButton : returnsToAgency === true ? movementButton : returnsToAgency === false ? removeButton : chooseButton);
+      if (!isReservationOut) actions.append(cancelButton);
       item.append(actions);
     }
     item.append(date);

@@ -225,7 +225,7 @@ async function main() {
       ["Sorti", "Annulation"],
       ["Archivé", "Annulation"],
       ["Préciser le retour", "Annulation"],
-      ["Rentré", "Annulation"],
+      ["Rentré"],
     ]);
     const reservationChoiceViewport = page.viewportSize();
     for (const [width, colorScheme] of [[390, "dark"], [820, "dark"], [1280, "light"]]) {
