@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261016-6";
+const appBuildVersion = "20261016-7";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -5211,10 +5211,7 @@ function scheduleDetailPanelClose() {
 }
 
 function populateContactSelect(select, currentValue = "") {
-  const placeholder = select === contactSelect
-    ? "Choisir dans la liste des intervenants récurrents"
-    : "Choisir dans la liste";
-  select.innerHTML = `<option value="">${placeholder}</option>`;
+  select.innerHTML = '<option value="">Choisir dans la liste</option>';
 
   [
     ["internal", "Intervenants internes"],
@@ -5240,11 +5237,6 @@ function populateContactSelect(select, currentValue = "") {
 
 function renderContactSelect() {
   populateContactSelect(contactSelect, contactSelect.value);
-  updateContactSelectPlaceholder();
-}
-
-function updateContactSelectPlaceholder() {
-  contactSelect.parentElement.classList.toggle("is-empty", !contactSelect.value);
 }
 
 function renderContactsPanel() {
@@ -10386,7 +10378,6 @@ globalHistoryList.addEventListener("click", (event) => {
   });
 });
 contactSelect.addEventListener("change", () => {
-  updateContactSelectPlaceholder();
   const contact = contacts.find((savedContact) => savedContact.id === contactSelect.value);
   if (!contact) {
     movementNameInput.value = "";

@@ -2932,43 +2932,16 @@ body.is-moving-key .photo-hover {
   font-weight: 800;
 }
 
-.contact-select-wrap {
+.movement-contact-section {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  min-width: 0;
+  gap: 7px;
 }
 
-.contact-select-wrap #contactSelect,
-.contact-select-placeholder {
-  grid-area: 1 / 1;
-  min-width: 0;
-}
-
-.contact-select-wrap.is-empty #contactSelect {
-  height: 100%;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-}
-
-.contact-select-wrap #contactSelect option,
-.contact-select-wrap #contactSelect optgroup {
-  color: var(--ink);
-  -webkit-text-fill-color: var(--ink);
-}
-
-.contact-select-placeholder {
-  display: none;
-  align-self: center;
-  margin: 11px 36px 11px 12px;
-  color: var(--ink);
-  font-size: 1em;
+.movement-contact-heading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1.2;
-  pointer-events: none;
-}
-
-.contact-select-wrap.is-empty .contact-select-placeholder {
-  display: block;
 }
 
 .movement-contact-details summary,
@@ -3670,10 +3643,6 @@ body.is-moving-key .photo-hover {
 
 @media (max-width: 1040px) {
   body {
-    font-size: 18px;
-  }
-
-  .contact-select-placeholder {
     font-size: 18px;
   }
 

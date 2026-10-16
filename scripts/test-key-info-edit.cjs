@@ -57,19 +57,29 @@ async function main() {
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
-      assert.equal(await page.locator("#contactSelect").evaluate((select) => select.closest("label").firstChild.textContent.trim()), "Intervenants");
-      assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste des intervenants récurrents");
-      assert.equal(await page.locator("#movementContactDetails summary").textContent(), "Saisir les informations d'un intervenant ponctuel");
-      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), true);
+      assert.equal(await page.locator("#contactSelect").evaluate((select) => select.closest("label").firstChild.textContent.trim()), "Intervenants récurrents");
+      assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste");
+      assert.equal(await page.locator(".movement-contact-heading").textContent(), "Intervenant ponctuel");
+      assert.equal(await page.locator("#movementContactDetails summary").textContent(), "Saisir les informations");
+      const headingStyles = (element) => {
+        const style = getComputedStyle(element);
+        return Object.fromEntries(["color", "fontSize", "fontWeight"].map((property) => [property, style[property]]));
+      };
+      assert.deepEqual(await page.locator(".movement-contact-heading").evaluate(headingStyles),
+        await page.locator("#contactSelect").evaluate((select) => {
+          const style = getComputedStyle(select.closest("label"));
+          return Object.fromEntries(["color", "fontSize", "fontWeight"].map((property) => [property, style[property]]));
+        }));
       for (const width of touch ? [390, 320] : [1280]) {
         if (touch) await page.setViewportSize({ width, height: 844 });
-        const copyFits = await page.locator(".contact-select-placeholder").evaluate((placeholder) => {
-          const select = placeholder.previousElementSibling.getBoundingClientRect();
-          const text = placeholder.getBoundingClientRect();
+        const copyFits = await page.locator("#contactSelect").evaluate((select) => {
+          const style = getComputedStyle(select);
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          context.font = style.font;
+          const textWidth = context.measureText(select.options[0].text).width;
           const summary = document.querySelector("#movementContactDetails summary");
-          return getComputedStyle(placeholder).display !== "none" && text.left >= select.left &&
-            text.right <= select.right && text.top >= select.top && text.bottom <= select.bottom &&
-            summary.scrollWidth <= summary.clientWidth + 1;
+          return textWidth <= select.clientWidth - 48 && summary.scrollWidth <= summary.clientWidth + 1;
         });
         assert.equal(copyFits, true, `Movement labels must fit at ${width}px`);
       }
@@ -158,10 +168,10 @@ async function main() {
         renderContactSelect();
       });
       await page.locator("#contactSelect").selectOption("internal-test");
-      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), false);
+      assert.equal(await page.locator("#contactSelect").inputValue(), "internal-test");
       assert.equal(await page.locator("#movementNameInput").inputValue(), "BERNARD");
       await page.locator("#contactSelect").selectOption("");
-      assert.equal(await page.locator(".contact-select-wrap").evaluate((wrap) => wrap.classList.contains("is-empty")), true);
+      assert.equal(await page.locator("#contactSelect").inputValue(), "");
       await page.evaluate(() => {
         void promptReservationEdit({ person: "Avant", reservationDate: "09/10/2026 12:00", note: "À conserver", returnsToAgency: true });
       });
