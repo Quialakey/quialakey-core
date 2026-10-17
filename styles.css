@@ -3086,6 +3086,7 @@ body.is-moving-key .photo-hover {
 }
 
 #checkinBtn.is-confirming-return,
+#checkoutBtn.is-confirming-return,
 .reservation-history-button.is-confirming-return,
 .movement-actions button.is-confirming-action,
 .archive-actions button.is-confirming-action {
@@ -3097,6 +3098,7 @@ body.is-moving-key .photo-hover {
 }
 
 #checkinBtn.is-confirming-return::after,
+#checkoutBtn.is-confirming-return::after,
 .reservation-history-button.is-confirming-return::after,
 .movement-actions button.is-confirming-action::after,
 .archive-actions button.is-confirming-action::after {
@@ -3116,6 +3118,7 @@ body.is-moving-key .photo-hover {
 
 @media (prefers-reduced-motion: reduce) {
   #checkinBtn.is-confirming-return::after,
+  #checkoutBtn.is-confirming-return::after,
   .reservation-history-button.is-confirming-return::after,
   .movement-actions button.is-confirming-action::after,
   .archive-actions button.is-confirming-action::after { animation: none; }

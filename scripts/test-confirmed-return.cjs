@@ -168,6 +168,53 @@ async function main() {
       window.__originalLogActivity = originalLogActivity;
     });
 
+    await page.evaluate(() => {
+      window.__resetReturn();
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.holder = "";
+      set.holderPhone = "";
+      set.history = [];
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      window.__remoteRow.value = structuredClone(keys[0]);
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+      window.__resolveWrite = null;
+      renderPanel();
+    });
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
+    assert.equal(await page.locator("#checkoutBtn").textContent(), "En cours...");
+    assert.equal(await page.locator("#checkoutBtn").getAttribute("aria-busy"), "true");
+    assert.notEqual(await page.locator("#checkoutBtn").evaluate((button) => getComputedStyle(button, "::after").content), "none");
+    assert.equal(await page.locator("#checkinBtn").isDisabled(), true);
+    assert.equal(await page.locator("#closePanelBtn").isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.__returnLogs.length), 0);
+    assert.equal(await page.evaluate(() => { switchRegistry(); renderPanel(); return activeRegistry; }), "transaction");
+    assert.equal(await page.locator("#checkoutBtn").textContent(), "En cours...");
+    assert.equal(await page.locator("#checkoutBtn").getAttribute("aria-busy"), "true");
+    assert.equal(await page.locator("#checkinBtn").getAttribute("aria-busy"), "false");
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
+    await page.evaluate(() => window.__resolveWrite("failure"));
+    await page.waitForFunction(() => !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    assert.equal(await page.locator("#checkoutBtn").textContent(), "Sorti");
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
+    assert.equal(await page.evaluate(() => movementPersonInput.value), "Raquel");
+    await page.evaluate(() => { window.__resolveWrite = null; });
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets[0].status === "out" && !isConfirmingReturn);
+    assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), true);
+    assert.equal(await page.evaluate(() => selectedId), "Maison-4");
+    assert.equal(await page.evaluate(() => getUndoCheckout(undoSnapshot)?.isLastAction), true);
+    assert.equal(await page.evaluate(() => movementPersonInput.value), "");
+
     for (const mode of ["success", "failure", "uncertain"]) {
       await page.evaluate(() => {
         window.__resetReturn();
@@ -339,6 +386,10 @@ async function main() {
     assert.equal(await activeReservationCard.locator(".reservation-history-button.cancel").isDisabled(), true);
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").isDisabled(), true);
     assert.equal(await page.evaluate(() => window.__returnLogs.length), 0);
+    await page.evaluate(() => renderPanel());
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.out").textContent(), "En cours...");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.out").getAttribute("aria-busy"), "true");
     await page.evaluate(() => window.__resolveWrite("failure"));
     await page.waitForFunction(() => !isConfirmingReturn);
     assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");

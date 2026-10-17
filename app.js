@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261017-1";
+const appBuildVersion = "20261017-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -929,6 +929,7 @@ let cloudRowVersions = loadCloudRowVersions();
 let activeKeyInfoDraft = null;
 let pendingNewKeyDraft = null;
 let isConfirmingReturn = false;
+let confirmingMovementType = null;
 let confirmingReturnKeyId = null;
 let confirmingReturnRegistry = null;
 let confirmingReturnReservationId = null;
@@ -3839,6 +3840,7 @@ function closeSidePanels() {
 }
 
 function switchRegistry() {
+  if (isConfirmingReturn) return;
   if (activeKeyControlAction && !activeKeyControlAction.pending) return;
   if (activeKeyControlAction?.pending) clearKeyControlAction();
   endKeyWorkProtection();
@@ -8084,6 +8086,10 @@ function renderGrid() {
         }
 
         button.addEventListener("click", (event) => {
+          if (isConfirmingReturn) {
+            event.preventDefault();
+            return;
+          }
           if (activeKeyControlAction && !activeKeyControlAction.pending) {
             event.preventDefault();
             return;
@@ -8564,13 +8570,17 @@ function renderPanel() {
   const needsSelectedSetCheckInReason = selectedSet.needsCheckInReason || "";
   const isMainMovementLocked = isReadOnlyArchive || isSelectedSetOutForReservation;
   const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) && !isSelectedSetOutForReservation;
-  const isThisReturnSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
+  const isThisMovementSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
+  const isThisReturnSaving = isThisMovementSaving && confirmingMovementType === "in";
+  const isThisCheckoutSaving = isThisMovementSaving && confirmingMovementType === "out" && !confirmingReturnReservationId;
+  const isThisReservationMovementSaving = isThisMovementSaving && Boolean(confirmingReturnReservationId);
   checkinBtn.hidden = isSelectedSetOut && !isSelectedSetOutForReservation && canMoveSelectedKey;
   checkinBtn.textContent = isThisReturnSaving ? "Enregistrement..." : selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
   checkinBtn.classList.toggle("is-confirming-return", isThisReturnSaving);
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
   reservedBtn.textContent = "R\u00e9serv\u00e9";
-  checkoutBtn.textContent = "Sorti";
+  checkoutBtn.textContent = isThisCheckoutSaving ? "En cours..." : "Sorti";
+  checkoutBtn.classList.toggle("is-confirming-return", isThisCheckoutSaving);
   rentedBtn.textContent = getPrimaryArchiveActionLabel();
   removedBtn.textContent = "Archiv\u00e9";
   checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
@@ -8586,7 +8596,7 @@ function renderPanel() {
     button.classList.toggle("is-action-pending", Boolean(isActive && activeKeyControlAction.pending));
     if (isActive) button.textContent = activeKeyControlAction.pending ? "En attente" : "En cours...";
     button.setAttribute("aria-busy", String(Boolean(isActive && !activeKeyControlAction.pending) ||
-      (button === checkinBtn && isThisReturnSaving)));
+      (button === checkinBtn && isThisReturnSaving) || (button === checkoutBtn && isThisCheckoutSaving)));
     button.disabled = button.disabled || Boolean(activeKeyControlAction) || isConfirmingReturn;
   }
   duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || Boolean(activeKeyControlAction) || isConfirmingReturn;
@@ -8796,7 +8806,7 @@ function renderPanel() {
     actions.classList.add(isReservationOut ? "is-one-action" : "is-two-action");
     movementButton.type = "button";
     movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
-    const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
+    const isSavingReservationReturn = isThisReservationMovementSaving && confirmingReturnReservationId === entry.reservationId;
     movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
     movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
     movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
@@ -8980,7 +8990,7 @@ function renderPanel() {
       actions.classList.add(isReservationOut ? "is-one-action" : "is-two-action");
       movementButton.type = "button";
       movementButton.className = `reservation-history-button ${isReservationOut ? "in" : "out"}`;
-      const isSavingReservationReturn = isThisReturnSaving && confirmingReturnReservationId === entry.reservationId;
+      const isSavingReservationReturn = isThisReservationMovementSaving && confirmingReturnReservationId === entry.reservationId;
       movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
       movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
       movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
@@ -9328,10 +9338,13 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   const registry = options.registry || activeRegistry;
   const button = options.button || null;
   const adjacentButtons = button?.isConnected
-    ? [...button.closest("li").querySelectorAll("button")].filter((other) => other !== button)
+    ? (button === checkoutBtn
+      ? [checkinBtn, reservedBtn, rentedBtn, removedBtn, closePanelBtn]
+      : [...(button.closest("li")?.querySelectorAll("button") || [])].filter((other) => other !== button))
       .map((other) => ({ button: other, wasDisabled: other.disabled }))
     : [];
   isConfirmingReturn = true;
+  confirmingMovementType = entry.type;
   confirmingReturnKeyId = key.id;
   confirmingReturnRegistry = registry;
   confirmingReturnReservationId = options.reservationId || null;
@@ -9378,6 +9391,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     return false;
   } finally {
     isConfirmingReturn = false;
+    confirmingMovementType = null;
     confirmingReturnKeyId = null;
     confirmingReturnRegistry = null;
     confirmingReturnReservationId = null;
@@ -9390,8 +9404,8 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     adjacentButtons.forEach(({ button: other, wasDisabled }) => {
       if (other.isConnected) other.disabled = wasDisabled;
     });
-    if (activeRegistry === registry && selectedId === key.id &&
-      (didConfirm || !button?.isConnected)) renderPanel();
+    if (button === checkoutBtn || (activeRegistry === registry && selectedId === key.id &&
+      (didConfirm || !button?.isConnected))) renderPanel();
   }
 }
 
@@ -9401,6 +9415,8 @@ async function addMovement(type, options = {}) {
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
+  const sourceRegistry = activeRegistry;
+  const sourceArchiveId = selectedArchiveRecord?.id || "";
   const isNewKeyDraft = isPendingNewKeyDraft(key.id);
   if (isNewKeyDraft && type !== "in") {
     alert("Valide d'abord la création de cette fiche avec le bouton Entré.");
@@ -9420,6 +9436,8 @@ async function addMovement(type, options = {}) {
   if (type === "out") showCheckoutReservationWarning(selectedSet);
   const signature = await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9");
   if (signature === null) return;
+  if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
+    getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id) return;
 
   const entry = {
     id: createHistoryId(),
@@ -9453,6 +9471,27 @@ async function addMovement(type, options = {}) {
   if (isReturningAfterCheckout && !selectedArchiveRecord) {
     const returned = await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
     if (returned && options.checkoutCommentKey) checkoutCommentDrafts.delete(options.checkoutCommentKey);
+    return;
+  }
+  if (type === "out" && !selectedArchiveRecord) {
+    const snapshot = createUndoSnapshot();
+    await runConfirmedReturn(key, selectedSet, changes, entry, {
+      button: checkoutBtn,
+      buttonIdleLabel: "Sorti",
+      failureMessage: "La sortie n'a pas pu \u00eatre confirm\u00e9e. R\u00e9essayez dans un instant.",
+      onConfirmed: () => {
+        snapshot.checkout = { registry: sourceRegistry, keyId: key.id, setId: selectedSet.id, movementId: entry.id };
+        undoSnapshot = snapshot;
+        updateUndoButton();
+        movementPersonInput.value = "";
+        movementNameInput.value = "";
+        movementCompanyInput.value = "";
+        movementPhoneInput.value = "";
+        movementNoteInput.value = "";
+        contactSelect.value = "";
+        clearSignature();
+      },
+    });
     return;
   }
   if (!beginKeyControlAction(type === "out" ? checkoutBtn : checkinBtn)) return;
