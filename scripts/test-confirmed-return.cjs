@@ -328,6 +328,29 @@ async function main() {
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 1);
     assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Sorti", "Annulation"]);
     await activeReservationCard.locator(".reservation-history-button.out").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(248, 209, 154)");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.out").textContent(), "En cours...");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.out").getAttribute("aria-busy"), "true");
+    assert.notEqual(await activeReservationCard.locator(".reservation-history-button.out").evaluate((button) =>
+      getComputedStyle(button, "::after").content), "none");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.cancel").isDisabled(), true);
+    assert.equal(await activeReservationCard.locator(".reservation-edit-button").isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.__returnLogs.length), 0);
+    await page.evaluate(() => window.__resolveWrite("failure"));
+    await page.waitForFunction(() => !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.out").textContent(), "Sorti");
+    assert.equal(await activeReservationCard.locator(".reservation-history-button.cancel").isEnabled(), true);
+    assert.equal(await activeReservationCard.locator(".reservation-edit-button").isEnabled(), true);
+    assert.match(await page.evaluate(() => window.__returnAlert), /sortie.*confirm/i);
+    await activeReservationCard.locator(".reservation-history-button.out").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
+    await page.evaluate(() => window.__resolveWrite("success"));
     await page.waitForFunction(() => keys[0].sets[0].status === "out");
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "out");
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 0);
@@ -388,6 +411,23 @@ async function main() {
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 1);
     assert.equal(await page.locator("#undoBtn").isEnabled(), false);
+    await page.evaluate(() => {
+      window.__resetReservationReturn();
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.holder = "";
+      set.holderReservationId = "";
+      set.history = set.history.filter((entry) => entry.type === "reserved");
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      window.__resolveWrite = null;
+      renderPanel();
+    });
+    await activeReservationCard.locator(".reservation-history-button.out").click();
+    await page.waitForFunction(() => !isConfirmingReturn && Boolean(window.__returnAlert));
+    assert.equal(await page.evaluate(() => Boolean(window.__resolveWrite)), false);
+    assert.equal(await page.evaluate(() => keys[0].sets[0].status), "out");
+    assert.equal(await activeReservationCard.getAttribute("data-history-action"), "out");
+    assert.match(await page.evaluate(() => window.__returnAlert), /actualis/);
     await page.evaluate(() => {
       window.__resetReturn();
       const set = keys[0].sets[0];

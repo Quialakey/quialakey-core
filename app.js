@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261016-9";
+const appBuildVersion = "20261017-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9277,7 +9277,7 @@ async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
     const remoteSet = remoteKey.sets.find((savedSet) => savedSet.id === set.id);
     if (remoteSet?.history.some((movement) => movement.id === entry.id)) return remoteRow;
     if (remoteKey.owner !== key.owner || remoteKey.property !== key.property ||
-      remoteSet?.status !== "out" || remoteSet.holder !== set.holder ||
+      remoteSet?.status !== set.status || remoteSet.holder !== set.holder ||
       remoteSet.history[0]?.id !== set.history[0]?.id) {
       const conflict = new Error("Fiche modifi\u00e9e sur un autre appareil");
       conflict.latestRow = remoteRow;
@@ -9327,6 +9327,10 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   if (isConfirmingReturn) return false;
   const registry = options.registry || activeRegistry;
   const button = options.button || null;
+  const adjacentButtons = button?.isConnected
+    ? [...button.closest("li").querySelectorAll("button")].filter((other) => other !== button)
+      .map((other) => ({ button: other, wasDisabled: other.disabled }))
+    : [];
   isConfirmingReturn = true;
   confirmingReturnKeyId = key.id;
   confirmingReturnRegistry = registry;
@@ -9336,6 +9340,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     button.classList.add("is-confirming-return");
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
+    adjacentButtons.forEach(({ button: other }) => { other.disabled = true; });
   } else renderPanel();
 
   let didConfirm = false;
@@ -9346,6 +9351,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
       [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
         keyId: key.id, setId: set.id, movementId: entry.id, registry,
       });
+    options.onConfirmed?.();
     scheduleCloudSyncHeartbeat(0);
     didConfirm = true;
     if (activeRegistry === registry && selectedId === key.id && options.closePanel) {
@@ -9360,7 +9366,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     } else if (activeRegistry === registry) render();
     return true;
   } catch (error) {
-    console.warn("Key return not confirmed", key.id, error.message);
+    console.warn("Key movement not confirmed", key.id, error.message);
     if (error.latestRow && !hasPendingCloudRowChange(error.latestRow.key)) {
       applyReturnSlotRow(error.latestRow, registry);
       if (activeRegistry === registry) render();
@@ -9376,11 +9382,14 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     confirmingReturnRegistry = null;
     confirmingReturnReservationId = null;
     if (button?.isConnected) {
-      button.textContent = "Rentr\u00e9";
+      button.textContent = options.buttonIdleLabel || "Rentr\u00e9";
       button.classList.remove("is-confirming-return");
       button.disabled = false;
       button.setAttribute("aria-busy", "false");
     }
+    adjacentButtons.forEach(({ button: other, wasDisabled }) => {
+      if (other.isConnected) other.disabled = wasDisabled;
+    });
     if (activeRegistry === registry && selectedId === key.id &&
       (didConfirm || !button?.isConnected)) renderPanel();
   }
@@ -9606,11 +9615,13 @@ function promptMovementSignature(actionLabel) {
 }
 
 async function toggleReservationMovement(reservationId, movementButton = null) {
-  if (isConfirmingReturn) return;
+  if (isConfirmingReturn || activeKeyControlAction) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
   const selectedSet = getSetForReservation(key, reservationId) || getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
+  const sourceRegistry = activeRegistry;
+  const sourceArchiveId = selectedArchiveRecord?.id || "";
   selectedSetId = selectedSet.id;
 
   const reservation = (selectedSet.reservations || []).find((item) => item.id === reservationId);
@@ -9620,6 +9631,9 @@ async function toggleReservationMovement(reservationId, movementButton = null) {
   if (!isReservationOut) showCheckoutReservationWarning(selectedSet, reservationId);
   const signature = await promptMovementSignature(isReservationOut ? "Rentr\u00e9" : "Sorti");
   if (signature === null) return;
+  if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
+    getSelectedKey()?.id !== key.id ||
+    getSetForReservation(getSelectedKey(), reservationId)?.id !== selectedSet.id) return;
   const inlineComment = formatSentenceStart(getInlineReservationComment(reservationId)).trim();
   const reservationMovement = isReservationOut
     ? `Rentr\u00e9 r\u00e9servation du ${reservation.reservationDate || ""}`.trim()
@@ -9651,6 +9665,21 @@ async function toggleReservationMovement(reservationId, movementButton = null) {
   };
   if (isReservationOut && !selectedArchiveRecord) {
     await runConfirmedReturn(key, selectedSet, changes, entry, { button: movementButton, reservationId });
+    return;
+  }
+  if (!selectedArchiveRecord) {
+    const snapshot = createUndoSnapshot();
+    await runConfirmedReturn(key, selectedSet, changes, entry, {
+      button: movementButton,
+      buttonIdleLabel: "Sorti",
+      reservationId,
+      failureMessage: "La sortie n'a pas pu \u00eatre confirm\u00e9e. R\u00e9essayez dans un instant.",
+      onConfirmed: () => {
+        snapshot.checkout = { registry: sourceRegistry, keyId: key.id, setId: selectedSet.id, movementId: entry.id };
+        undoSnapshot = snapshot;
+        updateUndoButton();
+      },
+    });
     return;
   }
   updateSelectedSet(changes);
