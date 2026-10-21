@@ -37,9 +37,13 @@ async function main() {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.waitForFunction(() => typeof renderPanel === "function" && hasCompletedInitialCloudLoad);
+    await page.waitForFunction(() => typeof renderPanel === "function" &&
+      hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
 
     await page.evaluate(() => {
+      loadStorageFromCloud = async () => {};
+      requestAutomaticCloudRefresh = () => {};
+      retryFailedCloudSyncs = async () => {};
       activeRegistry = "transaction";
       selectedId = "T1-1";
       selectedSetId = "main";
