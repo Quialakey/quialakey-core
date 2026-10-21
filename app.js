@@ -767,6 +767,7 @@ const keyDetailsToggleBtn = document.querySelector("#keyDetailsToggleBtn");
 const keyDetailsContent = document.querySelector("#keyDetailsContent");
 const keySetPhotoList = document.querySelector("#keySetPhotoList");
 const keySetSelect = document.querySelector("#keySetSelect");
+const activeMovementPanel = document.querySelector("#activeMovementPanel");
 const activeReservationPanel = document.querySelector("#activeReservationPanel");
 const activeCheckoutPanel = document.querySelector("#activeCheckoutPanel");
 const contactSelect = document.querySelector("#contactSelect");
@@ -8621,9 +8622,13 @@ function renderPanel() {
   signatureCanvas.classList.toggle("is-readonly", isMainMovementLocked);
 
   historyList.innerHTML = "";
+  activeMovementPanel.replaceChildren(activeReservationPanel, activeCheckoutPanel);
+  activeMovementPanel.hidden = true;
   activeReservationPanel.innerHTML = "";
   activeReservationPanel.hidden = true;
   activeCheckoutPanel.innerHTML = "";
+  activeCheckoutPanel.hidden = true;
+  const activeCheckoutItems = [];
   key.sets.filter((set) => set.status === "out" && !set.holderReservationId && canMoveSelectedKey).forEach((outSet) => {
     const item = document.createElement("li");
     const title = document.createElement("strong");
@@ -8670,10 +8675,8 @@ function renderPanel() {
     if (movementDate.textContent) item.append(movementDate);
     item.append(commentField, actions);
     if (date.textContent) item.append(date);
-    activeCheckoutPanel.append(item);
+    activeCheckoutItems.push({ item, timestamp: parseHistoryTimestamp(latestOut?.date) });
   });
-  activeCheckoutPanel.dataset.heading = activeCheckoutPanel.childElementCount === 1 ? "Sortie en cours" : "Sorties en cours";
-  activeCheckoutPanel.hidden = !activeCheckoutPanel.childElementCount;
   const isHistoryExpanded = isSelectedHistoryExpanded(key);
   historyList.hidden = false;
   keyHistoryToggleBtn.classList.toggle("is-expanded", isHistoryExpanded);
@@ -8721,6 +8724,14 @@ function renderPanel() {
     });
   }
   const activeReservationItems = [];
+  const getActiveReservationTimestamp = (reservation, entry, reservationSet) => {
+    const isOut = reservationSet.status === "out" && reservationSet.holderReservationId === entry.reservationId;
+    const latestMovement = isOut ? getLatestMovementEntry(reservationSet.history) : null;
+    const checkoutDate = latestMovement?.type === "out" && latestMovement.reservationId === entry.reservationId
+      ? latestMovement.date
+      : "";
+    return parseHistoryTimestamp(checkoutDate || reservation.reservationDate || reservation.createdAt || entry.reservationDate || entry.date);
+  };
   const createActiveReservationItem = (entry, reservation, reservationSet) => {
     const item = document.createElement("li");
     const title = document.createElement("strong");
@@ -8854,10 +8865,10 @@ function renderPanel() {
     return {
       item,
       reservationId: entry.reservationId,
-      timestamp: parseHistoryTimestamp(reservation.reservationDate || reservation.createdAt || entry.reservationDate || entry.date),
+      timestamp: getActiveReservationTimestamp(reservation, entry, reservationSet),
     };
   };
-  const renderActiveReservations = () => {
+  const renderActiveMovements = () => {
     const knownReservationIds = new Set(activeReservationItems.map((entry) => entry.reservationId).filter(Boolean));
     key.sets.forEach((reservationSet) => {
       (reservationSet.history || []).forEach((entry) => {
@@ -8870,20 +8881,44 @@ function renderPanel() {
         knownReservationIds.add(entry.reservationId);
       });
     });
-    activeReservationItems
-      .sort((first, second) => first.timestamp - second.timestamp)
-      .forEach(({ item }) => activeReservationPanel.append(item));
-    const heading = activeReservationItems.length === 1 ? "Réservation en cours" : "Réservations en cours";
-    activeReservationPanel.dataset.heading = heading;
-    activeReservationPanel.setAttribute("aria-label", heading);
-    activeReservationPanel.hidden = !activeReservationItems.length;
+    const orderedItems = [
+      ...activeCheckoutItems.map((entry) => ({ ...entry, type: "out" })),
+      ...activeReservationItems.map((entry) => ({ ...entry, type: "reserved" })),
+    ].sort((first, second) =>
+      (first.timestamp || Number.MAX_SAFE_INTEGER) - (second.timestamp || Number.MAX_SAFE_INTEGER) ||
+      (first.type === second.type ? 0 : first.type === "out" ? -1 : 1));
+    const usedPanels = new Set();
+    const groups = [];
+    orderedItems.forEach(({ item, type }) => {
+      let group = groups[groups.length - 1];
+      if (!group || group.type !== type) {
+        const panel = !usedPanels.has(type)
+          ? type === "out" ? activeCheckoutPanel : activeReservationPanel
+          : document.createElement("ol");
+        if (usedPanels.has(type)) panel.className = `history-list active-${type === "out" ? "checkout" : "reservation"}-panel`;
+        panel.hidden = false;
+        activeMovementPanel.append(panel);
+        group = { type, panel };
+        groups.push(group);
+        usedPanels.add(type);
+      }
+      group.panel.append(item);
+    });
+    groups.forEach(({ type, panel }) => {
+      const heading = type === "out"
+        ? panel.childElementCount === 1 ? "Sortie en cours" : "Sorties en cours"
+        : panel.childElementCount === 1 ? "Réservation en cours" : "Réservations en cours";
+      panel.dataset.heading = heading;
+      panel.setAttribute("aria-label", heading);
+    });
+    activeMovementPanel.hidden = !orderedItems.length;
   };
 
   if (!displayedHistory.length) {
     const item = document.createElement("li");
     item.textContent = "Aucun mouvement enregistré pour ce jeu.";
     if (isHistoryExpanded) historyList.append(item);
-    renderActiveReservations();
+    renderActiveMovements();
     return;
   }
 
@@ -9055,14 +9090,14 @@ function renderPanel() {
       activeReservationItems.push({
         item,
         reservationId: entry.reservationId,
-        timestamp: parseHistoryTimestamp(activeReservation.reservationDate || activeReservation.createdAt || entry.reservationDate || entry.date),
+        timestamp: getActiveReservationTimestamp(activeReservation, entry, selectedSet),
       });
       if (shouldShowHistoryEntry) historyList.append(historySummary);
     } else if (shouldShowHistoryEntry) {
       historyList.append(item);
     }
   });
-  renderActiveReservations();
+  renderActiveMovements();
 }
 
 function deleteHistoryEntry(historyId) {
@@ -9526,12 +9561,12 @@ function getMovementDateText() {
 }
 
 function getInlineReservationSignature(reservationId) {
-  const canvas = activeReservationPanel.querySelector(`.reservation-signature-canvas[data-reservation-id="${reservationId}"]`);
+  const canvas = activeMovementPanel.querySelector(`.reservation-signature-canvas[data-reservation-id="${reservationId}"]`);
   return canvas?.dataset.signed === "true" ? canvas.toDataURL("image/png") : "";
 }
 
 function getInlineReservationComment(reservationId) {
-  const input = activeReservationPanel.querySelector(`.reservation-comment-input[data-reservation-id="${reservationId}"]`);
+  const input = activeMovementPanel.querySelector(`.reservation-comment-input[data-reservation-id="${reservationId}"]`);
   return input?.value.trim() || "";
 }
 

@@ -305,8 +305,10 @@
           <fieldset class="movement-box">
             <legend>Mouvements des jeux de clés</legend>
             <select id="keySetSelect" hidden aria-label="Jeu concerné"></select>
-            <ol id="activeReservationPanel" class="history-list active-reservation-panel" aria-label="Réservations en cours" hidden></ol>
-            <ol id="activeCheckoutPanel" class="history-list active-checkout-panel" aria-label="Sorties en cours" hidden></ol>
+            <div id="activeMovementPanel" class="active-movement-panel" hidden>
+              <ol id="activeReservationPanel" class="history-list active-reservation-panel" aria-label="Réservations en cours" hidden></ol>
+              <ol id="activeCheckoutPanel" class="history-list active-checkout-panel" aria-label="Sorties en cours" hidden></ol>
+            </div>
             <label>
               Intervenants récurrents
               <select id="contactSelect">

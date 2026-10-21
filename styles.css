@@ -3201,6 +3201,15 @@ body.is-moving-key .photo-hover {
   display: none;
 }
 
+.active-movement-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.active-movement-panel[hidden] {
+  display: none;
+}
+
 .active-reservation-panel {
   margin: 2px 0 4px;
 }
