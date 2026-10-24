@@ -34,8 +34,15 @@ async function main() {
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => typeof restorePendingNewKeyDraft === "function" && indexedStorageHydrated);
+    const readActionVisibility = () => page.evaluate(() => Object.fromEntries(
+      ["checkinBtn", "reservedBtn", "checkoutBtn", "rentedBtn", "removedBtn"].map((id) => [
+        id, document.getElementById(id).getClientRects().length > 0,
+      ]),
+    ));
 
     for (const registry of ["transaction", "location"]) {
+      await page.setViewportSize(registry === "transaction"
+        ? { width: 390, height: 844 } : { width: 1280, height: 800 });
       const beforePhoto = await page.evaluate(async (name) => {
         activeRegistry = name;
         saveActiveRegistry();
@@ -70,6 +77,9 @@ async function main() {
         return { sleptDuringCamera, owner: ownerInput.value };
       }, registry);
       assert.equal(beforePhoto.sleptDuringCamera, false);
+      assert.deepEqual(await readActionVisibility(), {
+        checkinBtn: true, reservedBtn: false, checkoutBtn: false, rentedBtn: false, removedBtn: false,
+      });
       await page.waitForFunction(() => !isPhotoImporting && pendingNewKeyDraft?.sets[0].photo?.length > 200);
       const beforeReload = await page.evaluate(async () => {
         await waitForIndexedStorageWrite(newKeyDraftStorageKey);
@@ -96,6 +106,9 @@ async function main() {
       assert.equal(recovered.owner, beforeReload.owner);
       assert.equal(recovered.photo, beforeReload.photo);
       assert.equal(recovered.panelOpen, true);
+      assert.deepEqual(await readActionVisibility(), {
+        checkinBtn: true, reservedBtn: false, checkoutBtn: false, rentedBtn: false, removedBtn: false,
+      });
 
       await page.evaluate(async () => {
         discardPendingNewKeyDraft();
@@ -105,8 +118,19 @@ async function main() {
       await page.reload();
       await page.waitForFunction(() => typeof pendingNewKeyDraft !== "undefined" && indexedStorageHydrated);
       assert.equal(await page.evaluate(() => pendingNewKeyDraft), null);
+
+      await page.evaluate(() => {
+        selectedId = "T3-9";
+        beginPendingNewKeyDraft(keys.find((key) => key.id === selectedId));
+        pendingNewKeyDraft.owner = "TEST";
+        commitPendingNewKeyDraft();
+        render();
+      });
+      assert.deepEqual(await readActionVisibility(), {
+        checkinBtn: true, reservedBtn: true, checkoutBtn: true, rentedBtn: true, removedBtn: true,
+      });
     }
-    console.log("Photo draft recovery passed for both registries");
+    console.log("Photo draft recovery and creation action visibility passed for both registries");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
