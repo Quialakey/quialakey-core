@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261024-5";
+const appBuildVersion = "20261024-6";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8576,7 +8576,7 @@ function renderPanel() {
   const isThisReturnSaving = isThisMovementSaving && confirmingMovementType === "in";
   const isThisCheckoutSaving = isThisMovementSaving && confirmingMovementType === "out" && !confirmingReturnReservationId;
   const isThisReservationMovementSaving = isThisMovementSaving && Boolean(confirmingReturnReservationId);
-  checkinBtn.hidden = isSelectedSetOut && !isSelectedSetOutForReservation && canMoveSelectedKey;
+  checkinBtn.hidden = !canCheckInSelectedKey || (isSelectedSetOut && !isSelectedSetOutForReservation);
   checkinBtn.textContent = isThisReturnSaving ? "Enregistrement..." : selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
   checkinBtn.classList.toggle("is-confirming-return", isThisReturnSaving);
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));

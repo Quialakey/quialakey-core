@@ -582,7 +582,7 @@ async function main() {
         window.__returnPromise = toggleReservationMovement("reservation-1", button);
       });
       assert.equal(await page.locator("#activeCheckoutPanel").isVisible(), false);
-      assert.equal(await page.locator("#checkinBtn").isVisible(), true);
+      assert.equal(await page.locator("#checkinBtn").isVisible(), false);
       assert.deepEqual(await page.locator("#activeReservationPanel li").first().evaluate(cardSpacing), checkoutSpacing);
       await page.waitForFunction(() => typeof window.__resolveWrite === "function");
       await page.evaluate(() => renderPanel());

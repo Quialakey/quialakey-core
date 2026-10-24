@@ -127,8 +127,30 @@ async function main() {
         render();
       });
       assert.deepEqual(await readActionVisibility(), {
-        checkinBtn: true, reservedBtn: true, checkoutBtn: true, rentedBtn: true, removedBtn: true,
+        checkinBtn: false, reservedBtn: true, checkoutBtn: true, rentedBtn: true, removedBtn: true,
       });
+      const actionRows = await page.evaluate(() => {
+        const bounds = (id) => {
+          const { left, right, top, bottom } = document.getElementById(id).getBoundingClientRect();
+          return { left, right, top, bottom };
+        };
+        return {
+          reserved: bounds("reservedBtn"), checkout: bounds("checkoutBtn"),
+          rented: bounds("rentedBtn"), removed: bounds("removedBtn"),
+        };
+      });
+      assert.ok(Math.abs(actionRows.reserved.top - actionRows.checkout.top) < 1);
+      assert.ok(Math.abs(actionRows.rented.top - actionRows.removed.top) < 1);
+      assert.ok(actionRows.reserved.right < actionRows.checkout.left);
+      assert.ok(actionRows.rented.right < actionRows.removed.left);
+      assert.ok(actionRows.rented.top > actionRows.reserved.bottom);
+
+      await page.evaluate(() => {
+        getSelectedSet().needsCheckIn = true;
+        getSelectedSet().needsCheckInReason = "created";
+        renderPanel();
+      });
+      assert.equal((await readActionVisibility()).checkinBtn, true);
     }
     console.log("Photo draft recovery and creation action visibility passed for both registries");
   } finally {
