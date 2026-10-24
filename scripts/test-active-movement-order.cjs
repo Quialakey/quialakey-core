@@ -103,7 +103,20 @@ async function main() {
         "Jeu 1 - Sorti : Intervenant Test", "Jeu 3 - Sorti : Intervenant Test",
       ] },
     ]);
-    console.log("Active movements are displayed in ascending date order");
+    const historyHeading = page.locator("#keyHistoryToggleBtn");
+    assert.equal(await historyHeading.textContent(), "Historique du Jeu 1");
+    await page.locator("#keySetPhotoList .photo-set-select").nth(1).click();
+    assert.equal(await historyHeading.textContent(), "Historique du Jeu 2");
+    assert.equal(await historyHeading.getAttribute("aria-label"), "Afficher l'historique du Jeu 2");
+    await page.locator("#keySetPhotoList .photo-set-select").nth(3).click();
+    assert.equal(await historyHeading.textContent(), "Historique du Jeu 4");
+    await page.evaluate(() => {
+      keys[0].sets = [keys[0].sets[0]];
+      selectedSetId = keys[0].sets[0].id;
+      renderPanel();
+    });
+    assert.equal(await historyHeading.textContent(), "Historique");
+    console.log("Active movements and selected-set history headings render correctly");
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));

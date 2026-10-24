@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261024-3";
+const appBuildVersion = "20261024-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8679,9 +8679,11 @@ function renderPanel() {
   });
   const isHistoryExpanded = isSelectedHistoryExpanded(key);
   historyList.hidden = false;
+  const historySetSuffix = key.sets.length > 1 ? ` du ${selectedSet.label}` : "";
+  keyHistoryToggleBtn.textContent = `Historique${historySetSuffix}`;
   keyHistoryToggleBtn.classList.toggle("is-expanded", isHistoryExpanded);
   keyHistoryToggleBtn.setAttribute("aria-expanded", String(isHistoryExpanded));
-  keyHistoryToggleBtn.setAttribute("aria-label", isHistoryExpanded ? "Masquer l'historique" : "Afficher l'historique");
+  keyHistoryToggleBtn.setAttribute("aria-label", `${isHistoryExpanded ? "Masquer" : "Afficher"} l'historique${historySetSuffix}`);
   const displayedHistory = [...selectedSet.history];
   const latestMovementEntry = getLatestMovementEntry(displayedHistory) || {};
   if (selectedArchiveRecord?.reason === "removed" && !displayedHistory.some((entry) => entry.type === "removed")) {
