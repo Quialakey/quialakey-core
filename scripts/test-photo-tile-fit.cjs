@@ -31,12 +31,20 @@ async function main() {
         position: getComputedStyle(image).objectPosition,
         boxWidth: image.clientWidth,
         boxHeight: image.clientHeight,
+        frameWidth: image.parentElement.clientWidth,
+        frameHeight: image.parentElement.clientHeight,
+        frameScrollWidth: image.parentElement.scrollWidth,
+        frameScrollHeight: image.parentElement.scrollHeight,
         naturalWidth: image.naturalWidth,
         naturalHeight: image.naturalHeight,
       }));
       assert.equal(result.fit, "contain", `Photo recadree a ${width}px`);
       assert.equal(result.position, "50% 50%", `Photo non centree a ${width}px`);
       assert.ok(result.boxWidth > 0 && result.boxHeight > 0, `Case invisible a ${width}px`);
+      assert.equal(result.boxWidth, result.frameWidth, `Photo deborde horizontalement a ${width}px`);
+      assert.equal(result.boxHeight, result.frameHeight, `Photo deborde verticalement a ${width}px`);
+      assert.equal(result.frameScrollWidth, result.frameWidth, `Cadre coupe la photo a ${width}px`);
+      assert.equal(result.frameScrollHeight, result.frameHeight, `Cadre coupe la photo a ${width}px`);
       assert.equal(result.naturalHeight, result.naturalWidth * 2);
       await page.close();
     }
