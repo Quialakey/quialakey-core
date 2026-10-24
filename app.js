@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261024-2";
+const appBuildVersion = "20261024-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -7650,7 +7650,7 @@ function markCompromiseAsAuthenticated(recordId) {
   const record = archives.find((archive) => archive.id === recordId && archive.reason === "rented");
   if (!record) return;
 
-  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'envoyer dans Archives ?`);
+  const confirmed = confirm(`Passer ${keyLabel(record.key)} en acte authentique et l'archiver ?`);
   if (!confirmed) return;
 
   rememberUndoStep();
