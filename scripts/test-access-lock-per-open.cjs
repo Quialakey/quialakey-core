@@ -41,6 +41,9 @@ async function main() {
     await page.goto(url);
     await page.locator("#accessLock").waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => isAccessUnlocked()), false);
+    await page.locator("#forgotPasswordBtn").click();
+    assert.equal(await page.locator("#forgotPasswordMessage").textContent(), "Contacter : contact@quialakey.com");
+    assert.equal(await page.locator("#forgotPasswordMessage").isVisible(), true);
 
     await page.locator("#accessCodeInput").fill("0000");
     await page.locator("#accessForm button[type=submit]").click();
