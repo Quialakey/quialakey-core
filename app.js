@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261024-6";
+const appBuildVersion = "20261025-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -879,6 +879,7 @@ let archives = loadArchives();
 let contacts = loadContacts();
 let selectedId = null;
 let selectedSetId = "main";
+let unlockedAccessLockVersion = null;
 let selectedArchiveRecord = null;
 let draggedKeyId = null;
 let suppressKeyTileClickUntil = 0;
@@ -980,7 +981,7 @@ function updateAccessLockTitle() {
 
 function isAccessUnlocked() {
   if (tableSettings?.accessLockEnabled === false) return true;
-  return getRuntimeStorageValue(accessUnlockedStorageKey) === String(tableSettings?.accessLockVersion || 1);
+  return unlockedAccessLockVersion === String(tableSettings?.accessLockVersion || 1);
 }
 
 function showAccessLock() {
@@ -991,7 +992,8 @@ function showAccessLock() {
 }
 
 function unlockAccess() {
-  setRuntimeStorageValue(accessUnlockedStorageKey, String(tableSettings?.accessLockVersion || 1));
+  unlockedAccessLockVersion = String(tableSettings?.accessLockVersion || 1);
+  removeRuntimeStorageValue(accessUnlockedStorageKey);
   hideAccessLock();
 }
 
@@ -7395,6 +7397,7 @@ function getResetTableSettings(settings = tableSettings) {
 function resetTableSettingsKeepingOrganization() {
   tableSettings = getResetTableSettings();
   setRuntimeStorageValue(tableSettingsStorageKey, JSON.stringify(tableSettings));
+  unlockedAccessLockVersion = null;
   removeRuntimeStorageValue(accessUnlockedStorageKey);
   updateAccessLockState();
 }
