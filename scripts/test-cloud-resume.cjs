@@ -62,7 +62,7 @@ async function main() {
 
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     assert.equal(await page.locator("body").evaluate((body) => body.classList.contains("is-access-loading")), true);
-    assert.equal(await page.locator("#startupLoading img").getAttribute("src"), "quialakey-loading-banner-20260927.webp");
+    assert.equal(await page.locator("#startupLoading img").getAttribute("src"), "quialakey-opening-banner-20261025.webp");
     assert.equal(await page.locator("#startupLoading img").evaluate((image) => image.complete && image.naturalWidth > 0), true);
     await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
     await page.waitForFunction(() => !document.body.classList.contains("is-access-loading"));

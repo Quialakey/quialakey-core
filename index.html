@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261025-2" />
-    <link rel="stylesheet" href="styles.css?v=20261025-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261025-3" />
+    <link rel="stylesheet" href="styles.css?v=20261025-3" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -61,7 +61,7 @@
   </head>
   <body class="is-access-loading">
     <div id="startupLoading" class="startup-loading" role="status" aria-live="polite">
-      <img src="quialakey-loading-banner-20260927.webp" alt="Quialakey" />
+      <img src="quialakey-opening-banner-20261025.webp" alt="Quialakey" />
       <span id="startupLoadingMessage">Ouverture du tableau...</span>
       <button id="retryInitialLoadBtn" type="button" hidden>Réessayer</button>
     </div>
@@ -70,7 +70,7 @@
     </button>
     <div id="accessLock" class="access-lock" role="dialog" aria-modal="true" aria-labelledby="accessAgencyTitle" hidden>
       <section class="access-card">
-        <img class="access-logo" src="quialakey-logo-banniere-20260907-2.jpg" alt="Quialakey" />
+        <img class="access-logo" src="quialakey-opening-banner-20261025.webp" alt="Quialakey" />
         <h1 id="accessAgencyTitle">Agence</h1>
         <form id="accessForm" class="access-form">
           <label for="accessCodeInput">Code d'acc&egrave;s</label>
@@ -600,10 +600,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261025-2"></script>
+    <script src="agency-config.js?v=20261025-3"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261025-2";
+        const fallbackVersion = "20261025-3";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

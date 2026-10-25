@@ -41,6 +41,14 @@ async function main() {
     await page.goto(url);
     await page.locator("#accessLock").waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => isAccessUnlocked()), false);
+    assert.equal(await page.locator(".access-logo").getAttribute("src"), "quialakey-opening-banner-20261025.webp");
+    assert.equal(await page.locator(".access-logo").evaluate((image) => image.complete && image.naturalWidth > 0), true);
+    if (process.env.ACCESS_SCREENSHOT_DIR) {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.screenshot({ path: path.join(process.env.ACCESS_SCREENSHOT_DIR, "access-desktop.png") });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: path.join(process.env.ACCESS_SCREENSHOT_DIR, "access-mobile.png") });
+    }
     await page.locator("#forgotPasswordBtn").click();
     assert.equal(await page.locator("#forgotPasswordMessage").textContent(), "Contacter : contact@quialakey.com");
     assert.equal(await page.locator("#forgotPasswordMessage").isVisible(), true);
