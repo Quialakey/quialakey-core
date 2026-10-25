@@ -120,6 +120,32 @@ async function main() {
     assert.equal(persistence.stored, true);
     assert.equal(persistence.action, "Vendu");
     assert.equal(persistence.compromiseTabHidden, true);
+    for (const width of [390, 700, 900]) {
+      await page.setViewportSize({ width, height: 844 });
+      const tabWidths = await page.evaluate(() => {
+        const measure = () => ({
+          actions: topActions.getBoundingClientRect().width,
+          archive: archivesTabBtn.getBoundingClientRect().width,
+          singleTab: topActions.classList.contains("has-single-tab"),
+        });
+        activeRegistry = "location";
+        updateRegistryHeader();
+        const location = measure();
+        activeRegistry = "transaction";
+        tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: true });
+        updateRegistryHeader();
+        const sold = measure();
+        tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: false });
+        updateRegistryHeader();
+        const normal = measure();
+        return { location, sold, normal };
+      });
+      assert.equal(tabWidths.location.singleTab, true, `${width}px location`);
+      assert.equal(tabWidths.sold.singleTab, true, `${width}px vendu`);
+      assert.equal(tabWidths.normal.singleTab, false, `${width}px compromis`);
+      assert.ok(Math.abs(tabWidths.sold.archive - tabWidths.sold.actions) < 2, `${width}px vendu`);
+      assert.ok(Math.abs(tabWidths.location.archive - tabWidths.location.actions) < 2, `${width}px location`);
+    }
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
       const layout = await page.evaluate(() => {

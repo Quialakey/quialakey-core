@@ -609,7 +609,7 @@ h3 {
   gap: 10px;
 }
 
-.top-actions.is-location-only .archive-tab-button {
+.top-actions.has-single-tab .archive-tab-button {
   grid-column: 1 / -1;
 }
 
