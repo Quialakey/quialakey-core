@@ -62,6 +62,31 @@ async function main() {
     await page.evaluate(() => updateAccessLockState());
     assert.equal(await page.locator("#accessLock").isVisible(), false);
 
+    const settingsLabels = await page.evaluate(() => {
+      settingsDraft = cloneTableSettings();
+      renderSettingsPanel();
+      const active = settingsAccessLockLabel.textContent;
+      settingsAccessLockInput.checked = false;
+      settingsAccessLockInput.dispatchEvent(new Event("change", { bubbles: true }));
+      const inactive = settingsAccessLockLabel.textContent;
+      settingsAccessLockInput.checked = true;
+      settingsAccessLockInput.dispatchEvent(new Event("change", { bubbles: true }));
+      return {
+        active,
+        inactive,
+        restored: settingsAccessLockLabel.textContent,
+        heading: document.querySelector(".settings-access-section h3").textContent,
+        replacements: document.querySelector(".settings-replacements-section h3").textContent,
+        saleQuestion: document.querySelector(".settings-sale-mode-fieldset legend").textContent,
+      };
+    });
+    assert.equal(settingsLabels.active, "Oui");
+    assert.equal(settingsLabels.inactive, "Non");
+    assert.equal(settingsLabels.restored, "Oui");
+    assert.match(settingsLabels.heading, /Restreindre le tableau/);
+    assert.equal(settingsLabels.replacements, "Abréviations utilisées");
+    assert.equal(settingsLabels.saleQuestion, "Une fois le compromis signé, vos clés restent-elles sur le tableau ?");
+
     const secondPage = await context.newPage();
     await secondPage.goto(url);
     await secondPage.locator("#accessLock").waitFor({ state: "visible" });

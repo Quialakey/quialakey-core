@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261025-4" />
-    <link rel="stylesheet" href="styles.css?v=20261025-4" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261028-1" />
+    <link rel="stylesheet" href="styles.css?v=20261028-1" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -490,7 +490,7 @@
           <section class="settings-section settings-replacements-section">
             <div class="settings-section-heading">
               <div class="settings-heading-title">
-                <h3>Mots remplacés</h3>
+                <h3>Abréviations utilisées</h3>
                 <button
                   id="toggleSettingsReplacementsBtn"
                   class="settings-collapse-button"
@@ -508,7 +508,7 @@
 
           <section class="settings-section settings-sale-mode-section">
             <fieldset class="settings-sale-mode-fieldset">
-              <legend>Une fois un compromis signé, vos clés restent-elles sur le tableau ?</legend>
+              <legend>Une fois le compromis signé, vos clés restent-elles sur le tableau ?</legend>
               <div class="settings-sale-mode-options">
                 <label><input id="settingsKeepKeysYes" type="radio" name="settingsKeepKeys" value="yes" />Oui</label>
                 <label><input id="settingsKeepKeysNo" type="radio" name="settingsKeepKeys" value="no" checked />Non</label>
@@ -527,13 +527,13 @@
 
           <section class="settings-section settings-access-section">
             <h3>
-              Accès au tableau
+              Restreindre le tableau
               <em id="settingsAccessCodeText" class="settings-access-code" hidden>(Mot de passe : 2121)</em>
               <button id="editSettingsAccessCodeBtn" class="settings-access-edit-button" type="button" hidden>Modifier</button>
             </h3>
             <label class="settings-switch-control">
-              <span>Privatiser le tableau</span>
-              <input id="settingsAccessLockInput" type="checkbox" role="switch" />
+              <span id="settingsAccessLockLabel">Non</span>
+              <input id="settingsAccessLockInput" type="checkbox" role="switch" aria-label="Restreindre le tableau" />
               <span class="settings-switch-track" aria-hidden="true"></span>
             </label>
           </section>
@@ -600,10 +600,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261025-4"></script>
+    <script src="agency-config.js?v=20261028-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261025-4";
+        const fallbackVersion = "20261028-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

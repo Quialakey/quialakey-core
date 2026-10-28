@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261025-4";
+const appBuildVersion = "20261028-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -852,6 +852,7 @@ const toggleSettingsReplacementsBtn = document.querySelector("#toggleSettingsRep
 const addSettingsReplacementBtn = document.querySelector("#addSettingsReplacementBtn");
 const settingsCelebrationInput = document.querySelector("#settingsCelebrationInput");
 const settingsAccessLockInput = document.querySelector("#settingsAccessLockInput");
+const settingsAccessLockLabel = document.querySelector("#settingsAccessLockLabel");
 const settingsAccessCodeText = document.querySelector("#settingsAccessCodeText");
 const editSettingsAccessCodeBtn = document.querySelector("#editSettingsAccessCodeBtn");
 const resetTablesBtn = document.querySelector("#resetTablesBtn");
@@ -7226,6 +7227,7 @@ function renderSettingsPanel() {
   if (settingsKeepKeysNo) settingsKeepKeysNo.checked = settingsDraft.keepKeysAfterCompromise !== true;
   if (settingsCelebrationInput) settingsCelebrationInput.checked = settingsDraft.saleCelebrationEnabled !== false;
   if (settingsAccessLockInput) settingsAccessLockInput.checked = settingsDraft.accessLockEnabled !== false;
+  if (settingsAccessLockLabel) settingsAccessLockLabel.textContent = settingsDraft.accessLockEnabled !== false ? "Oui" : "Non";
   if (settingsAccessCodeText) {
     settingsAccessCodeText.hidden = settingsDraft.accessLockEnabled === false;
     settingsAccessCodeText.textContent = `(Mot de passe : ${settingsDraft.accessCode || defaultAccessCode})`;
