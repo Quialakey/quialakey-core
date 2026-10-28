@@ -62,6 +62,17 @@ async function main() {
       assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste");
       assert.equal(await page.locator(".movement-contact-heading").textContent(), "Intervenant ponctuel");
       assert.equal(await page.locator("#movementContactDetails summary").textContent(), "Saisir les informations");
+      assert.equal(await page.locator("#movementContactDetails").evaluate((details) => details.open), false);
+      for (const button of ["#reservedBtn", "#checkoutBtn", "#rentedBtn", "#removedBtn"]) {
+        let warning = "";
+        page.once("dialog", async (dialog) => {
+          warning = dialog.message();
+          await dialog.accept();
+        });
+        await page.locator(button).click();
+        assert.match(warning, /Renseigne ou choisis un intervenant/);
+        assert.equal(await page.locator("#movementContactDetails").evaluate((details) => details.open), false, button);
+      }
       const headingStyles = (element) => {
         const style = getComputedStyle(element);
         return Object.fromEntries(["color", "fontSize", "fontWeight"].map((property) => [property, style[property]]));
