@@ -151,6 +151,71 @@ async function main() {
         renderPanel();
       });
       assert.equal((await readActionVisibility()).checkinBtn, true);
+
+      for (const count of [2, 3, 4]) {
+        const keyId = `T3-${count + 8}`;
+        await page.evaluate(({ keyId, count }) => {
+          selectedId = keyId;
+          selectedSetId = "main";
+          beginPendingNewKeyDraft(keys.find((key) => key.id === keyId));
+          pendingNewKeyDraft.owner = "MARTIN";
+          setKeySetCount(count);
+          contactSelect.value = "";
+          movementPersonInput.value = "Léa";
+          movementNameInput.value = "Martin";
+          movementCompanyInput.value = "";
+          movementPhoneInput.value = "0612345678";
+          movementNoteInput.value = "Création de fiche";
+        }, { keyId, count });
+        const draftState = await page.evaluate(() => ({
+          selectedId,
+          selectedSetId,
+          draftId: pendingNewKeyDraft?.id,
+          draftSetCount: pendingNewKeyDraft?.sets.length,
+          checkinHidden: checkinBtn.hidden,
+          checkinDisabled: checkinBtn.disabled,
+          activeAction: activeKeyControlAction?.keyId,
+        }));
+        assert.equal(draftState.checkinDisabled, false, JSON.stringify(draftState));
+        await page.locator("#checkinBtn").click();
+        await page.locator(".movement-signature-validate").click();
+        await page.waitForFunction((id) => !isPendingNewKeyDraft(id) &&
+          keys.find((key) => key.id === id)?.sets.every((set) => set.history.length === 1), keyId);
+        const result = await page.evaluate(({ id, registry }) => {
+          const key = keys.find((item) => item.id === id);
+          const entries = key.sets.map((set) => ({ setId: set.id, label: set.label, ...set.history[0] }));
+          const activities = loadActivityLog().filter((item) => item.registry === registry && item.keyId === id && item.action === "Entré");
+          return { entries, activities };
+        }, { id: keyId, registry });
+        assert.equal(result.entries.length, count);
+        assert.equal(new Set(result.entries.map((entry) => entry.id)).size, count);
+        assert.equal(new Set(result.entries.map((entry) => entry.date)).size, 1);
+        for (const entry of result.entries) {
+          assert.equal(entry.type, "in");
+          assert.equal(entry.person, "Léa MARTIN");
+          assert.equal(entry.phone, "06 12 34 56 78");
+          assert.equal(entry.note, "Création de fiche");
+          assert.ok(result.activities.some((item) => item.setId === entry.setId && item.movementId === entry.id));
+        }
+        assert.equal(result.activities.length, count);
+        await page.evaluate(async () => waitForIndexedStorageWrite(getRegistryConfig().keysStorageKey));
+        await page.reload();
+        await page.waitForFunction(() => indexedStorageHydrated);
+        const savedEntries = await page.evaluate((id) => keys.find((key) => key.id === id).sets.map((set) => set.history[0]), keyId);
+        assert.equal(savedEntries.length, count);
+        assert.ok(savedEntries.every((entry) => entry?.type === "in" && entry.person === "Léa MARTIN"));
+        for (let index = 0; index < count; index += 1) {
+          const historyView = await page.evaluate(({ id, index }) => {
+            selectedId = id;
+            selectedSetId = keys.find((key) => key.id === id).sets[index].id;
+            renderPanel();
+            return { heading: keyHistoryToggleBtn.textContent, history: historyList.textContent };
+          }, { id: keyId, index });
+          assert.equal(historyView.heading, `Historique du Jeu ${index + 1}`);
+          assert.match(historyView.history, /Entré : Léa MARTIN/);
+          assert.match(historyView.history, /Commentaire : Création de fiche/);
+        }
+      }
     }
     console.log("Photo draft recovery and creation action visibility passed for both registries");
   } finally {

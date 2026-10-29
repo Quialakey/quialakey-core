@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261028-2";
+const appBuildVersion = "20261029-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9540,10 +9540,26 @@ async function addMovement(type, options = {}) {
   }
   if (!beginKeyControlAction(type === "out" ? checkoutBtn : checkinBtn)) return;
   try {
-    updateSelectedSet(changes);
+    const createdSets = isNewKeyDraft
+      ? key.sets.map((set) => {
+          const setEntry = set.id === selectedSet.id ? entry : { ...entry, id: createHistoryId() };
+          return {
+            ...set,
+            status: "available",
+            needsCheckIn: false,
+            needsCheckInReason: "",
+            history: [setEntry, ...set.history],
+          };
+        })
+      : null;
+    if (createdSets) updateSelectedKey({ sets: createdSets });
+    else updateSelectedSet(changes);
     if (isNewKeyDraft) commitPendingNewKeyDraft();
-    logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`, [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
-      keyId: key.id, setId: selectedSet.id, movementId: entry.id,
+    (createdSets || [selectedSet]).forEach((set) => {
+      const setEntry = createdSets ? set.history[0] : entry;
+      logActivity(getMovementActionLabel(setEntry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`, [setEntry.person || setEntry.company, setEntry.phone, setEntry.note].filter(Boolean).join(" | "), {
+        keyId: key.id, setId: set.id, movementId: setEntry.id,
+      });
     });
 
     movementPersonInput.value = "";
