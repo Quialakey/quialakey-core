@@ -46,6 +46,8 @@ async function main() {
         key(6, [1793372535017, 1793372535015], ["30/10/2026 16:02", "30/10/2026 16:02"], ["returned", "returned"]),
         key(7, [1793372535017, 1793372535018, 1793372535019],
           ["30/10/2026 16:02", "30/10/2026 16:02", "30/10/2026 16:02"]),
+        key(8, [1793372535017, 1793372535018, 1793372535019, 1793372535020],
+          ["30/10/2026 16:02", "30/10/2026 16:02", "30/10/2026 16:02", "30/10/2026 16:02"]),
       ]));
       setRuntimeStorageValue(appActivityLogStorageKey, JSON.stringify([
         ...["main", "double"].map((setId, index) => ({
@@ -69,13 +71,15 @@ async function main() {
     })));
     const grouped = rows.filter((row) => row.keyId === "T2-4" && row.title.includes("Entré"));
     assert.equal(grouped.length, 1);
-    assert.equal(grouped[0].title, "T2 #4 - Entré - Location - MORTEVEILLE - Jeu 1 et Jeu 2");
+    assert.equal(grouped[0].title, "T2 #4 - Entré - Location - MORTEVEILLE - Jeu 1 et 2");
     assert.match(grouped[0].meta, /30\/10\/2026 16:02 - Soraya EL YACOUBI - 06 81 17 45 53/);
     assert.equal(JSON.parse(grouped[0].groupedIds).length, 5);
     assert.equal(rows.filter((row) => row.keyId === "T2-5").length, 2);
     assert.equal(rows.filter((row) => row.keyId === "T2-6").length, 2);
     assert.equal(rows.find((row) => row.keyId === "T2-7")?.title,
-      "T2 #7 - Entré - Location - MORTEVEILLE - Jeu 1, Jeu 2 et Jeu 3");
+      "T2 #7 - Entré - Location - MORTEVEILLE - Jeu 1, 2 et 3");
+    assert.equal(rows.find((row) => row.keyId === "T2-8")?.title,
+      "T2 #8 - Entré - Location - MORTEVEILLE - Jeu 1, 2, 3 et 4");
 
     await page.evaluate(() => { globalHistoryPanel.hidden = false; });
     page.once("dialog", (dialog) => dialog.accept());

@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261030-2";
+const appBuildVersion = "20261030-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -6818,8 +6818,10 @@ function renderGlobalHistoryItems(targetList = globalHistoryList, registryFilter
     if (normalizedEntryAction.includes("modification reglages")) visibleDetails = "";
     if (normalizedEntryAction.includes("transfert")) visibleDetails = "";
     const titleText = getGlobalHistoryTitleText(entry);
-    title.textContent = entry.groupedSetLabels
-      ? `${titleText.replace(/\s+-\s+Jeu\s+\d+$/i, "")} - ${entry.groupedSetLabels.slice(0, -1).join(", ")} et ${entry.groupedSetLabels.at(-1)}`
+    const groupedSetLabels = entry.groupedSetLabels?.map((label, index) =>
+      index ? label.replace(/^Jeu\s+/i, "") : label);
+    title.textContent = groupedSetLabels
+      ? `${titleText.replace(/\s+-\s+Jeu\s+\d+$/i, "")} - ${groupedSetLabels.slice(0, -1).join(", ")} et ${groupedSetLabels.at(-1)}`
       : titleText;
     reservationDateLine.className = "reservation-date-line";
     reservationDateLine.textContent = reservationDateDetail || "";
