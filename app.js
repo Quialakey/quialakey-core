@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261030-1";
+const appBuildVersion = "20261030-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -6070,6 +6070,9 @@ function getRegistryHistoryEntries(registry) {
           action: getMovementActionLabel(movement, set.history),
           actor: movement.person || movement.company || "Intervenant non renseigné",
           actorPhone: movement.phone || "",
+          creationBatchCandidate: movement.type === "in" && movement.returnReason === "created" &&
+            set.history[set.history.length - 1] === movement,
+          movementCreatedAt: Number(String(movement.id || "").match(/^history-(\d+)-/)?.[1]) || 0,
           details: movementDetails.filter(Boolean).join(" | "),
           device: "",
           registry,
@@ -6213,18 +6216,16 @@ function openHistoryKey(entryData) {
   render();
 }
 
-function deleteGlobalHistoryEntry(historyId) {
-  if (!historyId) return;
-  if (!confirm("Supprimer cette ligne de l'historique ?")) return;
+function deleteGlobalHistoryEntry(historyIds) {
+  const ids = Array.isArray(historyIds) ? historyIds : [historyIds];
+  if (!ids.length || !confirm("Supprimer cette ligne de l'historique ?")) return;
 
   const hiddenIds = loadHiddenGlobalHistoryIds();
-  hiddenIds.add(historyId);
+  ids.forEach((id) => hiddenIds.add(id));
   saveHiddenGlobalHistoryIds(hiddenIds);
 
-  if (historyId.startsWith("activity:")) {
-    const activityId = historyId.slice("activity:".length);
-    saveActivityLog(loadActivityLog().filter((entry) => entry.id !== activityId));
-  }
+  const activityIds = new Set(ids.filter((id) => id.startsWith("activity:")).map((id) => id.slice("activity:".length)));
+  if (activityIds.size) saveActivityLog(loadActivityLog().filter((entry) => !activityIds.has(entry.id)));
 
   renderGlobalHistoryPanel(currentGlobalHistoryFilter);
 }
@@ -6689,16 +6690,60 @@ function renderGlobalHistoryItems(targetList = globalHistoryList, registryFilter
     seenMovementEntries.add(movementKey);
     return true;
   });
+  const creationBatches = new Map();
+  entries.forEach((entry) => {
+    if (!entry.creationBatchCandidate || !entry.movementCreatedAt || !entry.keyId || !entry.setId) return;
+    const batchKey = [entry.registry, entry.keyId, entry.date, entry.actor, entry.actorPhone].join("|");
+    const candidates = creationBatches.get(batchKey) || [];
+    candidates.push(entry);
+    creationBatches.set(batchKey, candidates);
+  });
+  const groupedEntries = new Map();
+  const hiddenBatchEntries = new Set();
+  creationBatches.forEach((candidates) => {
+    candidates.sort((first, second) => first.movementCreatedAt - second.movementCreatedAt);
+    const batches = [];
+    candidates.forEach((entry) => {
+      const batch = batches[batches.length - 1];
+      if (batch && entry.movementCreatedAt - batch[0].movementCreatedAt <= 2000) batch.push(entry);
+      else batches.push([entry]);
+    });
+    batches.filter((batch) => batch.length > 1).forEach((batch) => {
+      const setLabels = batch.map((entry) => String(entry.title).match(/\bJeu\s+\d+\b/i)?.[0] || "")
+        .filter(Boolean);
+      if (new Set(setLabels).size !== batch.length) return;
+      setLabels.sort((first, second) => Number(first.match(/\d+/)[0]) - Number(second.match(/\d+/)[0]));
+      const firstSet = batch.find((entry) => entry.title.endsWith(` - ${setLabels[0]}`));
+      if (!firstSet) return;
+      const relatedCreationActivityIds = cleanedActivityLog
+        .filter((activity) => activity.registry === firstSet.registry &&
+          getTitleKeyLabel(activity.title) === getTitleKeyLabel(firstSet.title) &&
+          String(activity.action || "").toLocaleLowerCase("fr-FR").includes("création fiche") &&
+          Math.abs(parseHistoryTimestamp(activity.date) - firstSet.movementCreatedAt) <= 2000)
+        .map((activity) => `activity:${activity.id}`);
+      groupedEntries.set(firstSet, {
+        ...firstSet,
+        groupedSetLabels: setLabels,
+        groupedHistoryIds: [...new Set(batch.flatMap((entry) => [
+          getGlobalHistoryEntryId(entry),
+          getGlobalHistoryEntryId({ ...entry, activityId: "", source: "registry" }),
+        ]).concat(relatedCreationActivityIds))],
+      });
+      batch.filter((entry) => entry !== firstSet).forEach((entry) => hiddenBatchEntries.add(entry));
+    });
+  });
+  const visibleEntries = entries.filter((entry) => !hiddenBatchEntries.has(entry))
+    .map((entry) => groupedEntries.get(entry) || entry);
 
   targetList.innerHTML = "";
-  if (!entries.length) {
+  if (!visibleEntries.length) {
     const item = document.createElement("li");
     item.textContent = "Aucun historique enregistré.";
     targetList.append(item);
     return;
   }
 
-  entries.forEach((entry) => {
+  visibleEntries.forEach((entry) => {
     const item = document.createElement("li");
     const title = document.createElement("strong");
     const reservationDateLine = document.createElement("strong");
@@ -6709,6 +6754,7 @@ function renderGlobalHistoryItems(targetList = globalHistoryList, registryFilter
     const historyKeyId = entry.keyId || getKeyIdFromHistoryTitle(entry.title);
     const actionClass = getActionClass(entry.action);
     item.dataset.globalHistoryId = getGlobalHistoryEntryId(entry);
+    if (entry.groupedHistoryIds) item.dataset.groupedHistoryIds = JSON.stringify(entry.groupedHistoryIds);
     item.dataset.historyRegistry = entry.registry || "";
     item.dataset.historyKeyId = historyKeyId;
     item.dataset.historySetId = entry.setId || "";
@@ -6771,7 +6817,10 @@ function renderGlobalHistoryItems(targetList = globalHistoryList, registryFilter
     if (["in", "out", "signed", "removed"].includes(actionClass)) visibleDetails = "";
     if (normalizedEntryAction.includes("modification reglages")) visibleDetails = "";
     if (normalizedEntryAction.includes("transfert")) visibleDetails = "";
-    title.textContent = getGlobalHistoryTitleText(entry);
+    const titleText = getGlobalHistoryTitleText(entry);
+    title.textContent = entry.groupedSetLabels
+      ? `${titleText.replace(/\s+-\s+Jeu\s+\d+$/i, "")} - ${entry.groupedSetLabels.slice(0, -1).join(", ")} et ${entry.groupedSetLabels.at(-1)}`
+      : titleText;
     reservationDateLine.className = "reservation-date-line";
     reservationDateLine.textContent = reservationDateDetail || "";
     const actorText =
@@ -10616,7 +10665,8 @@ globalHistoryList.addEventListener("click", (event) => {
   if (!item) return;
   event.preventDefault();
   if (event.ctrlKey) {
-    deleteGlobalHistoryEntry(item.dataset.globalHistoryId);
+    deleteGlobalHistoryEntry(item.dataset.groupedHistoryIds
+      ? JSON.parse(item.dataset.groupedHistoryIds) : item.dataset.globalHistoryId);
     return;
   }
 
