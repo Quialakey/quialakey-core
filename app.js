@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261029-1";
+const appBuildVersion = "20261030-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -3944,8 +3944,9 @@ function normalizeSet(set, index = 0) {
     holderCompany: set.holderCompany || "",
     holderPhone: set.holderPhone || "",
     holderReservationId: set.holderReservationId || "",
-    needsCheckIn: Boolean(set.needsCheckIn && set.needsCheckInReason === "created"),
-    needsCheckInReason: set.needsCheckIn && set.needsCheckInReason === "created" ? "created" : "",
+    needsCheckIn: Boolean(set.needsCheckIn && ["created", "added"].includes(set.needsCheckInReason)),
+    needsCheckInReason: set.needsCheckIn && ["created", "added"].includes(set.needsCheckInReason)
+      ? set.needsCheckInReason : "",
     status,
     reservations: reservations.length ? reservations : migratedReservation,
     history: Array.isArray(set.history)
@@ -8593,9 +8594,9 @@ function renderPanel() {
   archiveActions.hidden = isNewKeyDraft;
   checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
   checkinBtn.disabled = !canCheckInSelectedKey;
-  reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey;
-  rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
-  removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived;
+  reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || needsSelectedSetCheckIn;
+  rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
+  removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
   const savingControlAction = activeKeyControlAction &&
     activeKeyControlAction.keyId === key.id && activeKeyControlAction.registry === activeRegistry;
   for (const button of [checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn]) {
@@ -8607,8 +8608,8 @@ function renderPanel() {
       (button === checkinBtn && isThisReturnSaving) || (button === checkoutBtn && isThisCheckoutSaving)));
     button.disabled = button.disabled || Boolean(activeKeyControlAction) || isConfirmingReturn;
   }
-  duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || Boolean(activeKeyControlAction) || isConfirmingReturn;
-  transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || Boolean(activeKeyControlAction) || isConfirmingReturn;
+  duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || Boolean(activeKeyControlAction) || isConfirmingReturn;
+  transferKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || Boolean(activeKeyControlAction) || isConfirmingReturn;
   keySetCountSelect.disabled = isReadOnlyArchive;
   keySetCountSelect.hidden = !isKeySetCountEditUnlocked && !isNewKeyDraft;
   keySetCountUnlockBtn.hidden = isKeySetCountEditUnlocked || isNewKeyDraft;
@@ -8839,7 +8840,7 @@ function renderPanel() {
     removeButton.type = "button";
     removeButton.className = "reservation-history-button removed";
     removeButton.textContent = "Archiv\u00e9";
-    removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+    removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
     removeButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
       archiveReservationKey(entry.reservationId);
@@ -9044,7 +9045,7 @@ function renderPanel() {
       removeButton.type = "button";
       removeButton.className = "reservation-history-button removed";
       removeButton.textContent = "Archivé";
-      removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+      removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
       removeButton.addEventListener("click", () => archiveReservationKey(entry.reservationId));
 
       const chooseButton = document.createElement("button");
@@ -9270,18 +9271,20 @@ function setKeySetCount(count, options = {}) {
     }
   }
 
+  const needsAddedSetEntry = !isPendingNewKeyDraft() && isKeyFilled(key);
   const nextSets = nextIds.map((id) => {
     const savedSet = key.sets.find((set) => set.id === id);
-    return savedSet || makeKeySet(id);
+    return savedSet || {
+      ...makeKeySet(id),
+      needsCheckIn: needsAddedSetEntry,
+      needsCheckInReason: needsAddedSetEntry ? "added" : "",
+    };
   });
   selectedSetId = nextSets.some((set) => set.id === selectedSetId) ? selectedSetId : nextSets[0].id;
   if (nextCount > previousCount) {
     selectedSetId = nextSets[nextCount - 1]?.id || selectedSetId;
-    if (!isPendingNewKeyDraft()) {
-      logActivity("Ajout jeu", `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""}`, [key.owner, `${nextCount} jeux au total`].filter(Boolean).join(" - "));
-    }
   } else if (nextCount < previousCount) {
-    if (!isPendingNewKeyDraft()) {
+    if (!isPendingNewKeyDraft() && removedSets.some((set) => !set.needsCheckIn || set.history.length)) {
       logActivity("Suppression jeu", keyLabel(key), `${removedSets.map((set) => set.label).join(", ")} supprimé(s)`);
     }
   }
@@ -9474,7 +9477,12 @@ async function addMovement(type, options = {}) {
   const forcedPhone = type === "in" && selectedSet.status === "out" ? selectedSet.holderPhone : "";
   const forcedCompany = type === "in" && selectedSet.status === "out" ? selectedSet.holderCompany : "";
   const isReturningAfterCheckout = type === "in" && selectedSet.status === "out";
+  if (type === "out" && selectedSet.needsCheckIn) return;
   if (!ensureMovementActor(type === "out" ? "Sorti" : "Entr\u00e9", { person: forcedPerson, company: forcedCompany })) return;
+  if (type === "in" && selectedSet.needsCheckInReason === "added" && !getPhoneDigitCount(movementPhoneInput.value)) {
+    alert("Renseigne le numéro de téléphone de l'intervenant avant de cliquer sur Entré.");
+    return;
+  }
   if (type === "out" && !ensureTypedMovementPhone("Sorti")) return;
   if (type !== "out" && !isReturningAfterCheckout && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
   if (type === "out") showCheckoutReservationWarning(selectedSet);
@@ -9907,6 +9915,7 @@ async function archiveReservationKey(reservationId) {
   const key = getSelectedKey();
   const selectedSet = getSetForReservation(key, reservationId) || getSelectedSet(key);
   if (!key || !selectedSet || key.archived) return;
+  if (key.sets.some((set) => set.needsCheckIn)) return;
   const archiveRegistry = activeRegistry;
   const sourceSnapshot = JSON.stringify(key);
   selectedSetId = selectedSet.id;
@@ -10106,6 +10115,7 @@ async function reserveSelectedSet() {
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
+  if (selectedSet.needsCheckIn) return;
   clearTimeout(detailCloseTimer);
 
   const contact = contacts.find((savedContact) => savedContact.id === contactSelect.value);
@@ -10282,6 +10292,7 @@ async function archiveSelectedKey(reason) {
   if (activeKeyControlAction || isConfirmingReturn) return;
   const key = getSelectedKey();
   if (!key || key.archived) return;
+  if (key.sets.some((set) => set.needsCheckIn)) return;
   const archiveRegistry = activeRegistry;
   const sourceSnapshot = JSON.stringify(key);
 

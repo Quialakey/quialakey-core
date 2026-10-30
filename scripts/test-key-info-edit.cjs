@@ -114,8 +114,9 @@ async function main() {
           page.once("dialog", (dialog) => dialog.accept());
           await page.locator("#keySetCountUnlockBtn").dblclick();
           await page.locator("#keySetCountSelect").selectOption(String(count));
-          assert.equal(await page.evaluate(() => getSelectedSet().needsCheckIn), false);
-          assert.equal(await page.locator("#checkoutBtn").isEnabled(), true);
+          assert.equal(await page.evaluate(() => getSelectedSet().needsCheckInReason), "added");
+          assert.equal(await page.locator("#checkinBtn").isEnabled(), true);
+          assert.equal(await page.locator("#checkoutBtn").isDisabled(), true);
         }
         await page.locator("#propertyInput").dblclick();
       } else {
