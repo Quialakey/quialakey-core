@@ -165,7 +165,7 @@ async function main() {
       assert.match(visibleHistory.meta, /Soraya EL YACOUBI - 06 81 17 45 53/);
       await page.evaluate(async () => waitForIndexedStorageWrite(getRegistryConfig().keysStorageKey));
       await page.reload();
-      await page.waitForFunction(() => indexedStorageHydrated);
+      await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       assert.equal(await page.evaluate(() => {
         const set = keys.find((key) => key.id === "T2-12").sets[1];
         return !set.needsCheckIn && set.history[0]?.type === "in";

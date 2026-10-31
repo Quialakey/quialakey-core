@@ -655,13 +655,18 @@ async function main() {
     await page.locator("#keySetCountUnlockBtn").click();
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
-    let countConfirmation = "";
-    page.once("dialog", (dialog) => {
-      countConfirmation = dialog.message();
+    const countDialogs = [];
+    const acceptCountDialog = (dialog) => {
+      countDialogs.push(dialog.message());
       return dialog.accept();
-    });
+    };
+    page.on("dialog", acceptCountDialog);
     await page.locator("#keySetCountUnlockBtn").dblclick();
-    assert.equal(countConfirmation, 'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clés du bien T3 #1 : "MEYER" ?');
+    page.off("dialog", acceptCountDialog);
+    assert.deepEqual(countDialogs, [
+      'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clés du bien T3 #1 : "MEYER" ?',
+      'Veillez à valider le changement du nombre de jeux de clés avec le bouton "Entré" pour enregistrer vos modifications dans le tableau !',
+    ]);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
     await page.locator("#keySetCountSelect").selectOption("2");
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
@@ -721,7 +726,7 @@ async function main() {
       return dialog.accept();
     });
     await page.locator("#keySetCountUnlockBtn").dblclick();
-    assert.equal(repeatedCountConfirmation, countConfirmation);
+    assert.equal(repeatedCountConfirmation, countDialogs[0]);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
     await page.evaluate(() => {
       resetKeyInfoEditUnlock(getSelectedKey());
@@ -732,8 +737,15 @@ async function main() {
     });
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
-    page.once("dialog", (dialog) => dialog.dismiss());
+    const cancelledCountDialogs = [];
+    const rejectCountDialog = (dialog) => {
+      cancelledCountDialogs.push(dialog.message());
+      return dialog.dismiss();
+    };
+    page.on("dialog", rejectCountDialog);
     await page.locator("#keySetCountUnlockBtn").dblclick();
+    page.off("dialog", rejectCountDialog);
+    assert.deepEqual(cancelledCountDialogs, [countDialogs[0]]);
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     await page.evaluate(() => {
