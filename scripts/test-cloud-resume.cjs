@@ -661,7 +661,7 @@ async function main() {
       return dialog.accept();
     });
     await page.locator("#keySetCountUnlockBtn").dblclick();
-    assert.equal(countConfirmation, 'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clé du bien de monsieur et/ou madame "MEYER" ?');
+    assert.equal(countConfirmation, 'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clés du bien T3 #1 : "MEYER" ?');
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
     await page.locator("#keySetCountSelect").selectOption("2");
     assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);

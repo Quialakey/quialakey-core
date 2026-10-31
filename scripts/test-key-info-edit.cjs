@@ -57,7 +57,7 @@ async function main() {
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       await page.locator(".key-tile").filter({ hasText: "T3 #1" }).first().click();
-      assert.equal(await page.locator("#detailPanel .panel-header .eyebrow").textContent(), "Fiche de clés");
+      assert.equal(await page.locator("#detailPanel .panel-header .eyebrow").textContent(), "Fiche clés");
       assert.equal(await page.locator("#contactSelect").evaluate((select) => select.closest("label").firstChild.textContent.trim()), "Intervenants récurrents");
       assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste");
       assert.equal(await page.locator(".movement-contact-heading").textContent(), "Intervenant ponctuel");

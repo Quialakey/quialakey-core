@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261031-2";
+const appBuildVersion = "20261031-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4788,7 +4788,7 @@ function unlockKeySetCountEdit() {
   if (isKeySetCountEditUnlocked || !key || isPendingNewKeyDraft(key.id) ||
     (selectedArchiveRecord && !isSelectedCompromiseEditable())) return;
   const ownerName = key.owner ? formatOwner(key.owner) : "PROPRI\u00c9TAIRE NON RENSEIGN\u00c9";
-  if (!confirm(`Souhaitez-vous ajouter ou supprimer un jeu de cl\u00e9s sur la fiche cl\u00e9 du bien de monsieur et/ou madame "${ownerName}" ?`)) return;
+  if (!confirm(`Souhaitez-vous ajouter ou supprimer un jeu de cl\u00e9s sur la fiche cl\u00e9s du bien ${keyLabel(key)} : "${ownerName}" ?`)) return;
   isKeySetCountEditUnlocked = true;
   lastKeySetCountTapAt = 0;
   render();
