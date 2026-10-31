@@ -44,6 +44,7 @@ async function main() {
     for (const registry of ["transaction", "location"]) {
       await page.setViewportSize(registry === "location" ? { width: 390, height: 844 } : { width: 1280, height: 800 });
       await page.evaluate((registry) => {
+        clearKeyControlAction();
         activeRegistry = registry;
         saveActiveRegistry();
         keys = loadKeys();
@@ -57,14 +58,18 @@ async function main() {
       await page.locator("#keySetCountSelect").selectOption("2");
       const pending = await page.evaluate(() => ({
         selectedSetId,
-        set: keys.find((key) => key.id === "T2-12").sets[1],
+        savedSetCount: keys.find((key) => key.id === "T2-12").sets.length,
+        set: getSelectedKey().sets[1],
         activities: loadActivityLog().filter((entry) => entry.registry === activeRegistry && entry.action === "Ajout jeu"),
       }));
       assert.equal(pending.selectedSetId, "double");
+      assert.equal(pending.savedSetCount, 1);
       assert.equal(pending.set.needsCheckIn, true);
       assert.equal(pending.set.needsCheckInReason, "added");
       assert.equal(pending.set.history.length, 0);
       assert.equal(pending.activities.length, 0);
+      assert.equal(await page.evaluate(() => JSON.parse(getRuntimeStorageValue(getRegistryConfig().keysStorageKey))
+        .find((key) => key.id === "T2-12").sets.length), 1);
       assert.equal(await page.locator("#checkinBtn").isEnabled(), true);
       assert.equal(await page.locator("#checkinBtn").evaluate((button) => button.hidden), false);
       for (const selector of ["#reservedBtn", "#checkoutBtn", "#rentedBtn", "#removedBtn"]) {
@@ -75,11 +80,39 @@ async function main() {
       }
       assert.equal(await page.locator(".movement-box .archive-actions").evaluate((actions) => actions.hidden), true);
 
+      await page.evaluate(async () => waitForIndexedStorageWrite(addedKeySetDraftStorageKey));
       await page.reload();
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
+      assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.length), 1);
+      assert.equal(await page.evaluate(() => pendingAddedKeySetDraft), null);
+      await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "main"; render(); });
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.locator("#keySetCountUnlockBtn").dblclick();
+      await page.locator("#keySetCountSelect").selectOption("2");
+      const draftPhoto = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9pTt8AAAAASUVORK5CYII=";
+      await page.evaluate((photo) => {
+        updateSelectedKeySets(getSelectedKey().sets.map((set) =>
+          set.id === "double" ? { ...set, photo } : set));
+      }, draftPhoto);
+      assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.length), 1);
+      await page.evaluate(async () => {
+        setRuntimeStorageValue(addedKeySetPhotoResumeStorageKey, Date.now());
+        await waitForIndexedStorageWrite(addedKeySetDraftStorageKey);
+      });
+      await page.reload();
+      await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
+      assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.length), 1);
       await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "double"; render(); });
       assert.equal(await page.evaluate(() => getSelectedSet().needsCheckInReason), "added");
+      assert.equal(await page.evaluate(() => getSelectedSet().photo), draftPhoto);
       assert.equal(await page.locator("#reservedBtn").evaluate((button) => button.hidden), true);
+      await page.locator("#closePanelBtn").click();
+      assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.length), 1);
+      assert.equal(await page.evaluate(() => getRuntimeStorageValue(addedKeySetDraftStorageKey)), null);
+      await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "main"; render(); });
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.locator("#keySetCountUnlockBtn").dblclick();
+      await page.locator("#keySetCountSelect").selectOption("2");
       let warning = "";
       page.once("dialog", async (dialog) => { warning = dialog.message(); await dialog.accept(); });
       await page.locator("#checkinBtn").click();
@@ -137,6 +170,36 @@ async function main() {
         const set = keys.find((key) => key.id === "T2-12").sets[1];
         return !set.needsCheckIn && set.history[0]?.type === "in";
       }), true);
+      if (registry === "transaction") {
+        const legacySetCount = await page.evaluate(() => {
+          const legacyKey = {
+            id: "T2-99", category: "T2", number: 99, owner: "TEST",
+            sets: [makeKeySet("main"), { ...makeKeySet("double"), needsCheckIn: true, needsCheckInReason: "added" }],
+          };
+          return [normalizeKey(legacyKey).sets.length,
+            normalizeKey(legacyKey, { preservePendingAddedSets: true }).sets.length,
+            normalizeKey({ ...legacyKey, sets: [...legacyKey.sets, { ...makeKeySet("triple"), history: [{ id: "confirmed-third", type: "in" }] }] }).sets.length];
+        });
+        assert.deepEqual(legacySetCount, [1, 2, 3]);
+        await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "main"; render(); });
+        page.once("dialog", (dialog) => dialog.accept());
+        await page.locator("#keySetCountUnlockBtn").dblclick();
+        await page.locator("#keySetCountSelect").selectOption("4");
+        assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.length), 2);
+        assert.equal(await page.evaluate(() => getSelectedKey().sets.length), 4);
+        await page.evaluate(() => {
+          contacts = [{ id: "contact-test", type: "internal", firstName: "Soraya", name: "EL YACOUBI", phone: "06 81 17 45 53" }];
+          renderContactSelect();
+        });
+        await page.locator("#contactSelect").selectOption("contact-test");
+        await page.locator("#checkinBtn").click();
+        await page.locator(".movement-signature-validate").click();
+        await page.waitForFunction(() => keys.find((key) => key.id === "T2-12")?.sets.length === 4);
+        const addedSets = await page.evaluate(() => keys.find((key) => key.id === "T2-12").sets.slice(2));
+        assert.deepEqual(addedSets.map((set) => [set.needsCheckIn, set.history[0]?.type, set.history[0]?.person]), [
+          [false, "in", "Soraya EL YACOUBI"], [false, "in", "Soraya EL YACOUBI"],
+        ]);
+      }
     }
     console.log("Added key sets require an actor and Entré in both registries.");
   } finally {

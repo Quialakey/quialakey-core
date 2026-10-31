@@ -664,7 +664,8 @@ async function main() {
     assert.equal(countConfirmation, 'Souhaitez-vous ajouter ou supprimer un jeu de clés sur la fiche clé du bien de monsieur et/ou madame "MEYER" ?');
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), true);
     await page.locator("#keySetCountSelect").selectOption("2");
-    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
+    assert.equal(await page.evaluate(() => getSelectedKey().sets.length), 2);
     assert.equal(await page.locator("#keySetCountUnlockBtn").isVisible(), true);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     page.once("dialog", (dialog) => dialog.accept());
@@ -675,13 +676,13 @@ async function main() {
       document.activeElement.blur();
     });
     assert.equal(await page.evaluate(() => selectedId), null);
-    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 3);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
     assert.equal(await page.evaluate(async () => {
       const storageKey = getRegistryConfig().keysStorageKey;
       await waitForIndexedStorageWrite(storageKey);
       return JSON.parse((await readIndexedStorageEntry(storageKey)).value)
         .find((key) => key.id === "T3-1").sets.length;
-    }), 3);
+    }), 1);
     await page.evaluate(() => {
       selectedId = "T3-1";
       selectedSetId = "main";
@@ -693,7 +694,7 @@ async function main() {
     await page.locator("#keySetCountSelect").selectOption("2");
     await page.locator(".photo-set-select").nth(1).click();
     assert.equal(await page.evaluate(() => selectedSetId), "double");
-    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
     assert.equal(await page.evaluate(() => getSelectedSet().needsCheckInReason), "added");
     assert.equal(await page.locator("#checkoutBtn").isDisabled(), true);
     assert.equal(await page.locator("#checkinBtn").isEnabled(), true);
@@ -730,10 +731,10 @@ async function main() {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
-    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
     page.once("dialog", (dialog) => dialog.dismiss());
     await page.locator("#keySetCountUnlockBtn").dblclick();
-    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 2);
+    assert.equal(await page.evaluate(() => keys.find((key) => key.id === "T3-1").sets.length), 1);
     assert.equal(await page.locator("#keySetCountSelect").isVisible(), false);
     await page.evaluate(() => {
       resetKeyInfoEditUnlock(getSelectedKey());
@@ -776,10 +777,6 @@ async function main() {
       return JSON.parse((await readIndexedStorageEntry(storageKey)).value)
         .find((key) => key.id === "T3-1").owner;
     }), "MEYER MODIFIÉ");
-    assert.equal(await page.evaluate(() => {
-      const storageKey = getRegistryConfig().keysStorageKey;
-      return getPendingKeySlotWrite(getKeySlotCloudKey(storageKey, "T3-1"))?.baseValue?.owner;
-    }), "MEYER");
     await page.evaluate(() => {
       selectedId = "T3-1";
       selectedSetId = "main";

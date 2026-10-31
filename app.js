@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261031-1";
+const appBuildVersion = "20261031-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -60,6 +60,8 @@ const pendingKeySlotWritesStorageKey = "cles-pending-key-slot-writes-v1";
 const syncMetadataVersionStorageKey = "cles-sync-metadata-version-v1";
 const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const newKeyDraftStorageKey = "cles-new-key-draft-v1";
+const addedKeySetDraftStorageKey = "cles-added-key-set-draft-v1";
+const addedKeySetPhotoResumeStorageKey = "cles-added-key-set-photo-resume-v1";
 const keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
 const indexedStorageKeys = new Set([
   "cles-immobilieres-v1",
@@ -76,6 +78,7 @@ const indexedStorageKeys = new Set([
   syncMetadataVersionStorageKey,
   lastLocalEditStorageKey,
   newKeyDraftStorageKey,
+  addedKeySetDraftStorageKey,
   appActivityLogStorageKey,
 ]);
 const supabaseProjectRef = (() => {
@@ -932,6 +935,7 @@ let pendingKeySlotWrites = loadPendingKeySlotWrites();
 let cloudRowVersions = loadCloudRowVersions();
 let activeKeyInfoDraft = null;
 let pendingNewKeyDraft = null;
+let pendingAddedKeySetDraft = null;
 let isConfirmingReturn = false;
 let confirmingMovementType = null;
 let confirmingReturnKeyId = null;
@@ -3228,6 +3232,7 @@ function closeKeyPanelAfterAction() {
   activeKeyControlAction = null;
   activeKeyInfoDraft = null;
   pendingNewKeyDraft = null;
+  discardPendingAddedKeySetDraft();
   selectedId = null;
   selectedArchiveRecord = null;
   selectedSetId = "main";
@@ -3962,7 +3967,7 @@ function normalizeSet(set, index = 0) {
   });
 }
 
-function normalizeKey(key) {
+function normalizeKey(key, options = {}) {
   let sets =
     Array.isArray(key.sets) && key.sets.length
       ? key.sets.slice(0, 4).map(normalizeSet)
@@ -3989,6 +3994,11 @@ function normalizeKey(key) {
             history: Array.isArray(key.history) ? key.history : [],
           },
         ];
+
+  if (!options.preservePendingAddedSets) {
+    while (sets.length > 1 && sets.at(-1).needsCheckInReason === "added" &&
+      sets.at(-1).needsCheckIn && !sets.at(-1).history.length) sets.pop();
+  }
 
   if (key.photo && !sets.some((set) => set.photo)) {
     sets = sets.map((set, index) => (index === 0 ? { ...set, photo: key.photo } : set));
@@ -4501,7 +4511,88 @@ function getSelectedKey() {
     };
   }
   if (pendingNewKeyDraft?.id === selectedId) return pendingNewKeyDraft;
+  if (isPendingAddedKeySetDraft()) return pendingAddedKeySetDraft.key;
   return keys.find((key) => key.id === selectedId);
+}
+
+function isPendingAddedKeySetDraft(keyId = selectedId) {
+  return Boolean(keyId && pendingAddedKeySetDraft?.registry === activeRegistry && pendingAddedKeySetDraft.key?.id === keyId);
+}
+
+function discardPendingAddedKeySetDraft() {
+  pendingAddedKeySetDraft = null;
+  removeRuntimeStorageValue(addedKeySetDraftStorageKey);
+  removeRuntimeStorageValue(addedKeySetPhotoResumeStorageKey);
+}
+
+function persistPendingAddedKeySetDraft() {
+  if (!pendingAddedKeySetDraft) return;
+  setRuntimeStorageValue(addedKeySetDraftStorageKey, JSON.stringify({
+    ...pendingAddedKeySetDraft,
+    selectedSetId,
+  }));
+}
+
+function restorePendingAddedKeySetDraft() {
+  const saved = getRuntimeStorageValue(addedKeySetDraftStorageKey);
+  if (!saved) return false;
+  const photoStartedAt = Number(getRuntimeStorageValue(addedKeySetPhotoResumeStorageKey));
+  if (!photoStartedAt || Date.now() - photoStartedAt > 10 * 60 * 1000) {
+    discardPendingAddedKeySetDraft();
+    return false;
+  }
+  try {
+    const draft = JSON.parse(saved);
+    if (!registryConfig[draft.registry] || !draft.key?.id) throw new Error("Brouillon invalide");
+    const registryKeys = loadKeysForRegistry(draft.registry);
+    const savedKey = registryKeys.find((key) => key.id === draft.key.id);
+    if (!savedKey || !isKeyFilled(savedKey) || savedKey.sets.length !== draft.baseSetCount ||
+      !Array.isArray(draft.key.sets) || draft.key.sets.length <= savedKey.sets.length) {
+      discardPendingAddedKeySetDraft();
+      return false;
+    }
+    activeRegistry = draft.registry;
+    saveActiveRegistry();
+    keys = registryKeys;
+    archives = loadArchives();
+    pendingAddedKeySetDraft = {
+      registry: draft.registry,
+      baseSetCount: draft.baseSetCount,
+      key: normalizeKey(draft.key, { preservePendingAddedSets: true }),
+    };
+    selectedId = savedKey.id;
+    selectedSetId = draft.key.sets.some((set) => set.id === draft.selectedSetId)
+      ? draft.selectedSetId : draft.key.sets.at(-1).id;
+    beginKeyWorkProtection();
+    resetKeyInfoEditUnlock(pendingAddedKeySetDraft.key);
+    return true;
+  } catch (error) {
+    console.warn("Added key set draft recovery failed", error.message);
+    removeRuntimeStorageValue(addedKeySetDraftStorageKey);
+    return false;
+  }
+}
+
+function commitPendingAddedKeySetDraft(sets) {
+  if (!isPendingAddedKeySetDraft()) return null;
+  const draft = pendingAddedKeySetDraft;
+  const savedKey = keys.find((key) => key.id === draft.key.id);
+  if (!savedKey || savedKey.sets.length !== draft.baseSetCount) {
+    throw new Error("Le nombre de jeux a changé sur un autre appareil. Actualisez la fiche avant de réessayer.");
+  }
+  const nextKey = { ...savedKey, ...draft.key, sets };
+  const previousKeys = keys;
+  rememberUndoStep();
+  markDirtyKeySlot(nextKey.id);
+  keys = keys.map((key) => key.id === nextKey.id ? nextKey : key);
+  try {
+    saveKeys();
+  } catch (error) {
+    keys = previousKeys;
+    throw error;
+  }
+  discardPendingAddedKeySetDraft();
+  return nextKey;
 }
 
 function isPendingNewKeyDraft(keyId = selectedId) {
@@ -5221,6 +5312,10 @@ function captureActiveKeyInfoDraft() {
   rememberActiveKeyInfoDraft(changes);
   markDirtyKeySlot(selectedId);
   keys = keys.map((key) => (key.id === selectedId ? { ...key, ...changes } : key));
+  if (isPendingAddedKeySetDraft()) {
+    pendingAddedKeySetDraft.key = { ...pendingAddedKeySetDraft.key, ...changes };
+    persistPendingAddedKeySetDraft();
+  }
   const storageKey = getRegistryConfig().keysStorageKey;
   const baseValue = getPendingKeySlotWrite(getKeySlotCloudKey(storageKey, selectedId))?.baseValue;
   saveKeyInfoSessionDraft(storageKey, selectedId, changes, baseValue);
@@ -5243,6 +5338,10 @@ function restoreActiveKeyInfoDraftIfNeeded() {
     return;
   }
   keys = keys.map((key) => (key.id === selectedId ? { ...key, ...activeKeyInfoDraft.changes } : key));
+  if (isPendingAddedKeySetDraft()) {
+    pendingAddedKeySetDraft.key = { ...pendingAddedKeySetDraft.key, ...activeKeyInfoDraft.changes };
+    persistPendingAddedKeySetDraft();
+  }
 }
 
 function updateSelectedKeyInfoFromDraft(options = {}) {
@@ -5285,6 +5384,8 @@ function beginPhotoImport(event) {
   isPhotoImporting = true;
   captureActiveKeyInfoDraft();
   persistPendingNewKeyDraft();
+  persistPendingAddedKeySetDraft();
+  if (isPendingAddedKeySetDraft()) setRuntimeStorageValue(addedKeySetPhotoResumeStorageKey, Date.now());
   markLocalEdit();
   clearTimeout(detailCloseTimer);
   clearTimeout(photoImportResetTimer);
@@ -5295,6 +5396,7 @@ function beginPhotoImport(event) {
 function finishPhotoImport() {
   clearTimeout(photoImportResetTimer);
   isPhotoImporting = false;
+  removeRuntimeStorageValue(addedKeySetPhotoResumeStorageKey);
   if (isAppInBackground()) return;
   if (isCloudSleeping) {
     isCloudSleeping = false;
@@ -8157,7 +8259,10 @@ function renderGrid() {
             event.stopPropagation();
             return;
           }
-          if (selectedId !== key.id) discardPendingNewKeyDraft();
+          if (selectedId !== key.id) {
+            discardPendingNewKeyDraft();
+            discardPendingAddedKeySetDraft();
+          }
           closeSidePanels();
           selectedArchiveRecord = null;
           selectedId = key.id;
@@ -8625,9 +8730,11 @@ function renderPanel() {
   const isSelectedSetOutForReservation = isSelectedSetOut && Boolean(selectedSet.holderReservationId);
   const needsSelectedSetCheckIn = Boolean(selectedSet.needsCheckIn);
   const needsSelectedSetCheckInReason = selectedSet.needsCheckInReason || "";
-  const showOnlyEntryAction = isNewKeyDraft || (needsSelectedSetCheckIn && needsSelectedSetCheckInReason === "added");
+  const hasAddedSetDraft = isPendingAddedKeySetDraft(key.id);
+  const showOnlyEntryAction = isNewKeyDraft || hasAddedSetDraft;
   const isMainMovementLocked = isReadOnlyArchive || isSelectedSetOutForReservation;
-  const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) && !isSelectedSetOutForReservation;
+  const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) &&
+    !isSelectedSetOutForReservation && (!hasAddedSetDraft || needsSelectedSetCheckInReason === "added");
   const isThisMovementSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
   const isThisReturnSaving = isThisMovementSaving && confirmingMovementType === "in";
   const isThisCheckoutSaving = isThisMovementSaving && confirmingMovementType === "out" && !confirmingReturnReservationId;
@@ -8644,9 +8751,9 @@ function renderPanel() {
   reservedBtn.hidden = showOnlyEntryAction;
   checkoutBtn.hidden = showOnlyEntryAction;
   archiveActions.hidden = showOnlyEntryAction;
-  checkoutBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
+  checkoutBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
   checkinBtn.disabled = !canCheckInSelectedKey;
-  reservedBtn.disabled = isNewKeyDraft || !canMoveSelectedKey || needsSelectedSetCheckIn;
+  reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || needsSelectedSetCheckIn;
   rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
   removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
   const savingControlAction = activeKeyControlAction &&
@@ -8713,7 +8820,7 @@ function renderPanel() {
     commentInput.rows = 2;
     commentInput.placeholder = "Motif, rendez-vous, r\u00e9f\u00e9rence...";
     commentInput.value = checkoutCommentDrafts.get(commentKey) || "";
-    commentInput.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
+    commentInput.disabled = hasAddedSetDraft || Boolean(activeKeyControlAction) || isConfirmingReturn;
     commentInput.addEventListener("input", () => checkoutCommentDrafts.set(commentKey, commentInput.value));
     commentField.append(commentLabel, commentInput);
     actions.className = "reservation-history-actions is-one-action";
@@ -8723,7 +8830,7 @@ function renderPanel() {
     returnButton.setAttribute("aria-label", `Rentr\u00e9 ${outSet.label}`);
     returnButton.classList.toggle("is-confirming-return", isThisReturnSaving && selectedSetId === outSet.id);
     returnButton.setAttribute("aria-busy", String(isThisReturnSaving && selectedSetId === outSet.id));
-    returnButton.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
+    returnButton.disabled = hasAddedSetDraft || Boolean(activeKeyControlAction) || isConfirmingReturn;
     returnButton.addEventListener("click", () => {
       selectedSetId = outSet.id;
       const note = commentInput.value;
@@ -8821,7 +8928,7 @@ function renderPanel() {
     title.textContent = `${reservationSet.label} - ${hasHistoryPerson ? `R\u00e9serv\u00e9 : ${historyPersonName}` : "R\u00e9serv\u00e9"}`;
     reservationDate.textContent = `Pour le ${formatReservationHistoryDate(entry.reservationDate || reservation.reservationDate || entry.date)}`;
     item.append(title, reservationDate);
-    if (!isReadOnlyArchive && !isReservationOut) item.append(createReservationEditButton(entry.reservationId, reservationSet.id));
+    if (!isReadOnlyArchive && !isReservationOut && !hasAddedSetDraft) item.append(createReservationEditButton(entry.reservationId, reservationSet.id));
 
     if (reservationEntry.company) {
       const company = document.createElement("p");
@@ -8853,7 +8960,7 @@ function renderPanel() {
     reservationComment.rows = 2;
     reservationComment.placeholder = "Motif, rendez-vous, r\u00e9f\u00e9rence...";
     reservationComment.dataset.reservationId = entry.reservationId;
-    reservationComment.disabled = isReadOnlyArchive;
+    reservationComment.disabled = isReadOnlyArchive || hasAddedSetDraft;
     reservationCommentField.append(reservationCommentLabel, reservationComment);
     item.append(reservationCommentField);
 
@@ -8862,7 +8969,7 @@ function renderPanel() {
     signatureLabel.innerHTML = "<span>Signature</span>";
     clearReservationSignatureBtn.type = "button";
     clearReservationSignatureBtn.textContent = "Effacer";
-    clearReservationSignatureBtn.disabled = isReadOnlyArchive;
+    clearReservationSignatureBtn.disabled = isReadOnlyArchive || hasAddedSetDraft;
     signatureCanvas.className = "reservation-signature-canvas";
     signatureCanvas.width = 320;
     signatureCanvas.height = 212;
@@ -8883,7 +8990,7 @@ function renderPanel() {
     movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
     movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
     movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
-    movementButton.disabled = isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
+    movementButton.disabled = hasAddedSetDraft || isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
     movementButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
       toggleReservationMovement(entry.reservationId, movementButton);
@@ -8892,7 +8999,7 @@ function renderPanel() {
     removeButton.type = "button";
     removeButton.className = "reservation-history-button removed";
     removeButton.textContent = "Archiv\u00e9";
-    removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
+    removeButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
     removeButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
       archiveReservationKey(entry.reservationId);
@@ -8902,7 +9009,7 @@ function renderPanel() {
     chooseButton.type = "button";
     chooseButton.className = "reservation-history-button choice";
     chooseButton.textContent = "Préciser le retour";
-    chooseButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+    chooseButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isOutForAnotherReason;
     chooseButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
       void setReservationReturnDecision(entry.reservationId);
@@ -8911,7 +9018,7 @@ function renderPanel() {
     cancelButton.type = "button";
     cancelButton.className = "reservation-history-button cancel";
     cancelButton.textContent = "Annulation";
-    cancelButton.disabled = isReadOnlyArchive || isReservationOut;
+    cancelButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isReservationOut;
     cancelButton.addEventListener("click", () => {
       selectedSetId = reservationSet.id;
       void cancelReservation(entry.reservationId);
@@ -9079,7 +9186,7 @@ function renderPanel() {
       reservationComment.rows = 2;
       reservationComment.placeholder = "Motif, rendez-vous, r\u00e9f\u00e9rence...";
       reservationComment.dataset.reservationId = entry.reservationId;
-      reservationComment.disabled = isReadOnlyArchive;
+      reservationComment.disabled = isReadOnlyArchive || hasAddedSetDraft;
       reservationCommentField.append(reservationCommentLabel, reservationComment);
       item.append(reservationCommentField);
 
@@ -9091,20 +9198,20 @@ function renderPanel() {
       movementButton.textContent = isSavingReservationReturn ? "En cours..." : isReservationOut ? "Rentr\u00e9" : "Sorti";
       movementButton.classList.toggle("is-confirming-return", isSavingReservationReturn);
       movementButton.setAttribute("aria-busy", String(isSavingReservationReturn));
-      movementButton.disabled = isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
+      movementButton.disabled = hasAddedSetDraft || isSavingReservationReturn || isReadOnlyArchive || isOutForAnotherReason;
       movementButton.addEventListener("click", () => toggleReservationMovement(entry.reservationId, movementButton));
 
       removeButton.type = "button";
       removeButton.className = "reservation-history-button removed";
       removeButton.textContent = "Archivé";
-      removeButton.disabled = isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
+      removeButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isOutForAnotherReason || key.sets.some((set) => set.needsCheckIn);
       removeButton.addEventListener("click", () => archiveReservationKey(entry.reservationId));
 
       const chooseButton = document.createElement("button");
       chooseButton.type = "button";
       chooseButton.className = "reservation-history-button choice";
       chooseButton.textContent = "Préciser le retour";
-      chooseButton.disabled = isReadOnlyArchive || isOutForAnotherReason;
+      chooseButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isOutForAnotherReason;
       chooseButton.addEventListener("click", () => {
         void setReservationReturnDecision(entry.reservationId);
       });
@@ -9112,7 +9219,7 @@ function renderPanel() {
       cancelButton.type = "button";
       cancelButton.className = "reservation-history-button cancel";
       cancelButton.textContent = "Annulation";
-      cancelButton.disabled = isReadOnlyArchive || isReservationOut;
+      cancelButton.disabled = hasAddedSetDraft || isReadOnlyArchive || isReservationOut;
       cancelButton.addEventListener("click", () => {
         void cancelReservation(entry.reservationId);
       });
@@ -9127,7 +9234,7 @@ function renderPanel() {
       signatureLabel.innerHTML = "<span>Signature</span>";
       clearReservationSignatureBtn.type = "button";
       clearReservationSignatureBtn.textContent = "Effacer";
-      clearReservationSignatureBtn.disabled = isReadOnlyArchive;
+      clearReservationSignatureBtn.disabled = isReadOnlyArchive || hasAddedSetDraft;
       signatureCanvas.className = "reservation-signature-canvas";
       signatureCanvas.width = 320;
       signatureCanvas.height = 212;
@@ -9205,6 +9312,24 @@ function updateSelectedKey(changes, options = {}) {
   if (isPendingNewKeyDraft()) {
     pendingNewKeyDraft = { ...pendingNewKeyDraft, ...changes };
     persistPendingNewKeyDraft();
+    if (shouldRenderPanel) render();
+    else if (options.render !== false) {
+      renderGrid();
+      renderCompromisesPanel();
+    }
+    return;
+  }
+  if (isPendingAddedKeySetDraft()) {
+    const { sets, ...savedChanges } = changes;
+    if (Object.keys(savedChanges).length) {
+      markDirtyKeySlot(selectedId);
+      rememberUndoStep();
+      keys = keys.map((key) => key.id === selectedId ? { ...key, ...savedChanges } : key);
+      saveKeys();
+      updateCreationActivityForKey(keys.find((key) => key.id === selectedId));
+    }
+    pendingAddedKeySetDraft.key = { ...pendingAddedKeySetDraft.key, ...changes };
+    persistPendingAddedKeySetDraft();
     if (shouldRenderPanel) render();
     else if (options.render !== false) {
       renderGrid();
@@ -9310,6 +9435,14 @@ function setKeySetCount(count, options = {}) {
   const nextCount = Math.max(1, Math.min(4, count));
   const previousCount = key.sets.length;
   if (nextCount === previousCount) return;
+  const savedKey = selectedArchiveRecord ? null : keys.find((item) => item.id === key.id);
+  if (isPendingAddedKeySetDraft(key.id) && nextCount <= savedKey.sets.length) {
+    discardPendingAddedKeySetDraft();
+    selectedSetId = savedKey.sets[0].id;
+    if (nextCount < savedKey.sets.length) setKeySetCount(nextCount, options);
+    else if (options.render !== false) render();
+    return;
+  }
 
   const nextIds = keySetOptions.slice(0, nextCount).map((option) => option.id);
   const removedSets = key.sets.filter((set) => !nextIds.includes(set.id));
@@ -9355,6 +9488,16 @@ function setKeySetCount(count, options = {}) {
       renderCompromisesPanel();
       render();
     }
+    return;
+  }
+  if (needsAddedSetEntry) {
+    pendingAddedKeySetDraft = {
+      registry: activeRegistry,
+      baseSetCount: pendingAddedKeySetDraft?.baseSetCount || savedKey.sets.length,
+      key: { ...key, sets: nextSets },
+    };
+    persistPendingAddedKeySetDraft();
+    if (options.render !== false) render();
     return;
   }
   updateSelectedKey({ sets: nextSets }, { render: options.render !== false });
@@ -9514,6 +9657,7 @@ async function addMovement(type, options = {}) {
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
+  if (isPendingAddedKeySetDraft(key.id) && (type !== "in" || selectedSet.needsCheckInReason !== "added")) return;
   const sourceRegistry = activeRegistry;
   const sourceArchiveId = selectedArchiveRecord?.id || "";
   const isNewKeyDraft = isPendingNewKeyDraft(key.id);
@@ -9600,8 +9744,12 @@ async function addMovement(type, options = {}) {
   }
   if (!beginKeyControlAction(type === "out" ? checkoutBtn : checkinBtn)) return;
   try {
-    const createdSets = isNewKeyDraft
+    const isAddedSetDraft = isPendingAddedKeySetDraft(key.id);
+    const setsToEnter = isNewKeyDraft ? key.sets : isAddedSetDraft
+      ? key.sets.filter((set) => set.needsCheckInReason === "added") : null;
+    const createdSets = setsToEnter
       ? key.sets.map((set) => {
+          if (!setsToEnter.some((pendingSet) => pendingSet.id === set.id)) return set;
           const setEntry = set.id === selectedSet.id ? entry : { ...entry, id: createHistoryId() };
           return {
             ...set,
@@ -9612,15 +9760,24 @@ async function addMovement(type, options = {}) {
           };
         })
       : null;
-    if (createdSets) updateSelectedKey({ sets: createdSets });
+    if (isAddedSetDraft) {
+      try {
+        commitPendingAddedKeySetDraft(createdSets);
+      } catch (error) {
+        alert(error.message || "Le nouveau jeu n'a pas pu être enregistré. Réessayez.");
+        return;
+      }
+    }
+    else if (createdSets) updateSelectedKey({ sets: createdSets });
     else updateSelectedSet(changes);
     if (isNewKeyDraft) commitPendingNewKeyDraft();
-    (createdSets || [selectedSet]).forEach((set) => {
-      const setEntry = createdSets ? set.history[0] : entry;
-      logActivity(getMovementActionLabel(setEntry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`, [setEntry.person || setEntry.company, setEntry.phone, setEntry.note].filter(Boolean).join(" | "), {
-        keyId: key.id, setId: set.id, movementId: setEntry.id,
+    (createdSets ? createdSets.filter((set) => setsToEnter.some((pendingSet) => pendingSet.id === set.id)) : [selectedSet])
+      .forEach((set) => {
+        const setEntry = createdSets ? set.history[0] : entry;
+        logActivity(getMovementActionLabel(setEntry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`, [setEntry.person || setEntry.company, setEntry.phone, setEntry.note].filter(Boolean).join(" | "), {
+          keyId: key.id, setId: set.id, movementId: setEntry.id,
+        });
       });
-    });
 
     movementPersonInput.value = "";
     movementNameInput.value = "";
@@ -9963,6 +10120,7 @@ async function confirmArchiveBeforeClearing(record, registry, sourceSnapshot) {
 }
 
 async function archiveReservationKey(reservationId) {
+  if (isPendingAddedKeySetDraft()) return;
   if (selectedArchiveRecord) return;
   const key = getSelectedKey();
   const selectedSet = getSetForReservation(key, reservationId) || getSelectedSet(key);
@@ -10162,6 +10320,7 @@ async function setReservationReturnDecision(reservationId) {
 }
 
 async function reserveSelectedSet() {
+  if (isPendingAddedKeySetDraft()) return;
   if (activeKeyControlAction || isConfirmingReturn) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
@@ -10341,6 +10500,7 @@ function promptCompromiseDate(defaultValue = new Date().toISOString().slice(0, 1
 }
 
 async function archiveSelectedKey(reason) {
+  if (isPendingAddedKeySetDraft()) return;
   if (activeKeyControlAction || isConfirmingReturn) return;
   const key = getSelectedKey();
   if (!key || key.archived) return;
@@ -11082,6 +11242,7 @@ closePanelBtn.addEventListener("click", () => {
   clearTimeout(detailCloseTimer);
   if (!isPendingNewKeyDraft()) syncCurrentRegistryNow();
   discardPendingNewKeyDraft();
+  discardPendingAddedKeySetDraft();
   selectedId = null;
   selectedArchiveRecord = null;
   resetKeyInfoEditUnlock(null);
@@ -11099,6 +11260,7 @@ document.addEventListener("pointerdown", (event) => {
 
   clearTimeout(detailCloseTimer);
   discardPendingNewKeyDraft();
+  discardPendingAddedKeySetDraft();
   selectedId = null;
   selectedArchiveRecord = null;
   resetKeyInfoEditUnlock(null);
@@ -11152,8 +11314,8 @@ function handleKeySetPhotoChange(event) {
 
       const sets = key.sets.map((set) => (set.id === setId ? { ...set, photo } : set));
       updateSelectedKeySets(sets);
-      if (isPendingNewKeyDraft(key.id)) {
-        await waitForIndexedStorageWrite(newKeyDraftStorageKey);
+      if (isPendingNewKeyDraft(key.id) || isPendingAddedKeySetDraft(key.id)) {
+        await waitForIndexedStorageWrite(isPendingNewKeyDraft(key.id) ? newKeyDraftStorageKey : addedKeySetDraftStorageKey);
         return;
       }
       const storageKey = archiveId ? getRegistryConfig().archivesStorageKey : getRegistryConfig().keysStorageKey;
@@ -11208,6 +11370,7 @@ async function initializeApp() {
   }
   updateAccessLockState();
   restorePendingNewKeyDraft();
+  if (!pendingNewKeyDraft) restorePendingAddedKeySetDraft();
   migrateArchivedSlots();
   subscribeToCloudChanges();
   await migrateStoredPropertyAddresses();
