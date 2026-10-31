@@ -66,14 +66,20 @@ async function main() {
       assert.equal(pending.set.history.length, 0);
       assert.equal(pending.activities.length, 0);
       assert.equal(await page.locator("#checkinBtn").isEnabled(), true);
+      assert.equal(await page.locator("#checkinBtn").evaluate((button) => button.hidden), false);
       for (const selector of ["#reservedBtn", "#checkoutBtn", "#rentedBtn", "#removedBtn"]) {
         assert.equal(await page.locator(selector).isDisabled(), true, selector);
       }
+      for (const selector of ["#reservedBtn", "#checkoutBtn"]) {
+        assert.equal(await page.locator(selector).evaluate((button) => button.hidden), true, selector);
+      }
+      assert.equal(await page.locator(".movement-box .archive-actions").evaluate((actions) => actions.hidden), true);
 
       await page.reload();
       await page.waitForFunction(() => indexedStorageHydrated && !document.body.classList.contains("is-access-loading"));
       await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "double"; render(); });
       assert.equal(await page.evaluate(() => getSelectedSet().needsCheckInReason), "added");
+      assert.equal(await page.locator("#reservedBtn").evaluate((button) => button.hidden), true);
       let warning = "";
       page.once("dialog", async (dialog) => { warning = dialog.message(); await dialog.accept(); });
       await page.locator("#checkinBtn").click();
@@ -108,6 +114,11 @@ async function main() {
       assert.equal(recorded.entry.type, "in");
       assert.equal(recorded.entry.person, "Soraya EL YACOUBI");
       assert.equal(recorded.entry.phone, "06 81 17 45 53");
+      await page.evaluate(() => { selectedId = "T2-12"; selectedSetId = "double"; render(); });
+      for (const selector of ["#reservedBtn", "#checkoutBtn"]) {
+        assert.equal(await page.locator(selector).evaluate((button) => button.hidden), false, selector);
+      }
+      assert.equal(await page.locator(".movement-box .archive-actions").evaluate((actions) => actions.hidden), false);
       assert.equal(recorded.activity.action, "Entré");
       assert.match(recorded.activity.title, /Jeu 2$/);
       assert.match(recorded.activity.details, /Soraya EL YACOUBI \| 06 81 17 45 53/);
