@@ -6,17 +6,18 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const archiveCode = source.slice(source.indexOf('const pendingArchiveSlots ='), source.indexOf('async function reserveSelectedSet('))
   + source.slice(source.indexOf('async function archiveSelectedKey('), source.indexOf('function openContactsPanel('));
 
-async function check(registry, action, failure) {
+async function check(registry, action, failure, onlyOneReservation = false) {
   const events = [];
   const storage = new Map();
   const original = { id: 'T2-4', category: 'T2', number: 4, owner: 'ASTIER', property: 'Adresse test', sets: [{
     id: 'main', status: 'out', holderReservationId: 'reservation-test',
-    reservations: [{ id: 'reservation-test', person: 'Marc FRAYSSE', company: 'Orpi', phone: '0613114483' }],
+    reservations: [{ id: 'reservation-test', person: 'Marc FRAYSSE', company: 'Orpi', phone: '0613114483', createdAt: '21/09/2026 16:00' }],
     history: [{ id: 'previous', type: 'reserved' }],
   }, {
-    id: 'double', status: 'available', reservations: [{ id: 'other-reservation' }],
+    id: 'double', status: 'available', reservations: [{ id: 'other-reservation', createdAt: '21/09/2026 16:00' }],
     history: [{ id: 'other-history', type: 'reserved' }],
   }] };
+  if (onlyOneReservation) original.sets.pop();
   let remote = [{ id: 'other-device-archive', key: { owner: 'AUTRE' } }];
   let reads = 0;
   let writes = 0;
@@ -34,13 +35,16 @@ async function check(registry, action, failure) {
     rentedBtn: { id: 'rentedBtn' }, removedBtn: { id: 'removedBtn' },
     keys: [structuredClone(original)], archives: [], pendingCloudSync: Promise.resolve(), cloudRowVersions: new Map(),
     registryConfig: { location: { keysStorageKey: 'location', archivesStorageKey: 'location-archives', archiveActionLabel: 'Loue' }, transaction: { keysStorageKey: 'transaction', archivesStorageKey: 'transaction-archives', archiveActionLabel: 'Compromis' } },
-    movementPhoneInput: { value: '0102030405' }, movementCompanyInput: { value: '' }, movementNoteInput: { value: '' },
+    movementPhoneInput: { value: onlyOneReservation ? '' : '0102030405' }, movementCompanyInput: { value: '' }, movementNoteInput: { value: '' },
+    contactSelect: { value: '' }, isActiveReservation: (reservation) => Boolean(reservation.createdAt),
     getSelectedKey: () => context.keys[0], getSelectedSet: (key) => key.sets[0], getSetForReservation: (key) => key?.sets[0],
     isPendingAddedKeySetDraft: () => false,
     getRegistryConfig: () => context.registryConfig[context.activeRegistry],
-    ensureMovementActor: () => { events.push(['ensure-actor']); return true; },
-    ensureCompletePhoneNumber: () => { events.push(['ensure-phone']); return true; },
-    getTypedMovementActor: () => ({ person: 'Intervenant', company: '', phone: '0102030405' }),
+    ensureMovementActor: () => { events.push(['ensure-actor']); return !onlyOneReservation; },
+    ensureCompletePhoneNumber: () => { events.push(['ensure-phone']); return !onlyOneReservation; },
+    getTypedMovementActor: () => onlyOneReservation
+      ? ({ person: '', company: '', phone: '' })
+      : ({ person: 'Intervenant', company: '', phone: '0102030405' }),
     confirm: () => true, promptMovementSignature: async () => 'signature-test', promptCompromiseDate: async () => {
       assert.notEqual(action, 'sold');
       return '2026-09-21';
@@ -105,7 +109,11 @@ async function check(registry, action, failure) {
     if (failure === 'conflict') assert.ok(remote.some((item) => item.id === 'concurrent'));
     const archived = remote.find((item) => item.key.owner === 'ASTIER');
     assert.ok(archived.key.sets.every((set) => set.reservations.length === 0));
-    assert.equal(archived.key.sets[1].history[0].id, 'other-history');
+    if (!onlyOneReservation) assert.equal(archived.key.sets[1].history[0].id, 'other-history');
+    if (onlyOneReservation) {
+      assert.equal(archived.key.sets[0].history[0].person, 'Marc FRAYSSE');
+      assert.equal(events.some(([event]) => event === 'ensure-actor' || event === 'ensure-phone'), false);
+    }
     if (action === 'reservation') {
       assert.equal(archived.key.sets[0].history[0].person, 'Marc FRAYSSE');
       assert.equal(archived.key.sets[0].history[0].company, 'Orpi');
@@ -138,6 +146,8 @@ async function check(registry, action, failure) {
         count++;
       }
     }
+    await check(registry, 'removed', '', true);
+    count++;
   }
   console.log(`${count} archive safety scenarios passed.`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

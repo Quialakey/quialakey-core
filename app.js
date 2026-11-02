@@ -10513,8 +10513,15 @@ async function archiveSelectedKey(reason) {
   const sourceSnapshot = JSON.stringify(key);
 
   const actionLabel = reason === "sold" ? "Vendu" : reason === "rented" ? getRegistryConfig().archiveActionLabel : "Archivé";
-  if (!ensureMovementActor(actionLabel)) return;
-  if (!ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
+  const typedActor = getTypedMovementActor();
+  const activeReservations = key.sets.flatMap((set) => (set.reservations || []).filter(isActiveReservation));
+  const reservationActor = reason === "removed" && !contactSelect.value &&
+    !typedActor.person && !typedActor.company && activeReservations.length === 1 &&
+    (activeReservations[0].person || activeReservations[0].company)
+    ? activeReservations[0] : null;
+  if (!reservationActor && !ensureMovementActor(actionLabel)) return;
+  if (!reservationActor && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
+  const archiveActor = reservationActor || typedActor;
   let compromiseSignedAt = "";
   if (reason === "rented" && activeRegistry === "transaction") {
     compromiseSignedAt = await promptCompromiseDate();
@@ -10537,9 +10544,9 @@ async function archiveSelectedKey(reason) {
             id: createHistoryId(),
             type: reason === "removed" ? "removed" : reason === "sold" ? "sold" : "rented",
             actionLabel,
-            person: getMovementPersonInputName(),
-            company: formatCompanyName(movementCompanyInput.value).trim(),
-            phone: formatPhoneNumber(movementPhoneInput.value),
+            person: archiveActor.person || "",
+            company: archiveActor.company || "",
+            phone: formatPhoneNumber(archiveActor.phone || ""),
             note: formatSentenceStart(movementNoteInput.value).trim(),
             signature,
             date: new Intl.DateTimeFormat("fr-FR", {
@@ -10565,8 +10572,7 @@ async function archiveSelectedKey(reason) {
     };
     if (!await confirmArchiveBeforeClearing(archiveRecord, archiveRegistry, sourceSnapshot)) return;
     clearActiveKeySlotForSync(key.id);
-    const movementActor = getTypedMovementActor();
-    logActivity(actionLabel, keyLabel(key), [key.owner, key.property, movementActor.person || movementActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
+    logActivity(actionLabel, keyLabel(key), [key.owner, key.property, archiveActor.person || archiveActor.company, compromiseSignedAt ? `Signature : ${formatDateOnly(compromiseSignedAt)}` : ""].filter(Boolean).join(" - "));
     saveKeys();
     const saved = await finishKeyControlAction(key.id, { keysChanged: true, archivesChanged: false, waitForConfirmation: true });
     if (reason === "sold" && saved && tableSettings.saleCelebrationEnabled !== false) showSaleCelebration();
