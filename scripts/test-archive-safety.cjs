@@ -11,7 +11,11 @@ async function check(registry, action, failure) {
   const storage = new Map();
   const original = { id: 'T2-4', category: 'T2', number: 4, owner: 'ASTIER', property: 'Adresse test', sets: [{
     id: 'main', status: 'out', holderReservationId: 'reservation-test',
-    reservations: [{ id: 'reservation-test' }], history: [{ id: 'previous', type: 'reserved' }],
+    reservations: [{ id: 'reservation-test', person: 'Marc FRAYSSE', company: 'Orpi', phone: '0613114483' }],
+    history: [{ id: 'previous', type: 'reserved' }],
+  }, {
+    id: 'double', status: 'available', reservations: [{ id: 'other-reservation' }],
+    history: [{ id: 'other-history', type: 'reserved' }],
   }] };
   let remote = [{ id: 'other-device-archive', key: { owner: 'AUTRE' } }];
   let reads = 0;
@@ -32,8 +36,10 @@ async function check(registry, action, failure) {
     registryConfig: { location: { keysStorageKey: 'location', archivesStorageKey: 'location-archives', archiveActionLabel: 'Loue' }, transaction: { keysStorageKey: 'transaction', archivesStorageKey: 'transaction-archives', archiveActionLabel: 'Compromis' } },
     movementPhoneInput: { value: '0102030405' }, movementCompanyInput: { value: '' }, movementNoteInput: { value: '' },
     getSelectedKey: () => context.keys[0], getSelectedSet: (key) => key.sets[0], getSetForReservation: (key) => key?.sets[0],
+    isPendingAddedKeySetDraft: () => false,
     getRegistryConfig: () => context.registryConfig[context.activeRegistry],
-    ensureMovementActor: () => true, ensureCompletePhoneNumber: () => true,
+    ensureMovementActor: () => { events.push(['ensure-actor']); return true; },
+    ensureCompletePhoneNumber: () => { events.push(['ensure-phone']); return true; },
     getTypedMovementActor: () => ({ person: 'Intervenant', company: '', phone: '0102030405' }),
     confirm: () => true, promptMovementSignature: async () => 'signature-test', promptCompromiseDate: async () => {
       assert.notEqual(action, 'sold');
@@ -98,6 +104,14 @@ async function check(registry, action, failure) {
     assert.ok(remote.some((item) => item.id === 'other-device-archive'));
     if (failure === 'conflict') assert.ok(remote.some((item) => item.id === 'concurrent'));
     const archived = remote.find((item) => item.key.owner === 'ASTIER');
+    assert.ok(archived.key.sets.every((set) => set.reservations.length === 0));
+    assert.equal(archived.key.sets[1].history[0].id, 'other-history');
+    if (action === 'reservation') {
+      assert.equal(archived.key.sets[0].history[0].person, 'Marc FRAYSSE');
+      assert.equal(archived.key.sets[0].history[0].company, 'Orpi');
+      assert.equal(archived.key.sets[0].history[0].phone, '0613114483');
+      assert.equal(events.some(([event]) => event === 'ensure-actor' || event === 'ensure-phone'), false);
+    }
     if (action === 'sold') {
       assert.equal(archived.reason, 'sold');
       assert.equal(archived.compromiseSignedAt, '');

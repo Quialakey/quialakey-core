@@ -10139,9 +10139,12 @@ async function archiveReservationKey(reservationId) {
   }
 
   const actionLabel = "Archiv\u00e9";
-  if (!ensureMovementActor(actionLabel)) return;
-  if (!ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
-  const archiveActor = getTypedMovementActor();
+  const hasReservationActor = Boolean(reservation.person || reservation.company);
+  if (!hasReservationActor && !ensureMovementActor(actionLabel)) return;
+  if (!hasReservationActor && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
+  const archiveActor = hasReservationActor
+    ? { person: reservation.person || "", company: reservation.company || "", phone: formatPhoneNumber(reservation.phone || "") }
+    : getTypedMovementActor();
   const confirmed = confirm(`Archiver ${keyLabel(key)} et lib\u00e9rer la case ?`);
   if (!confirmed) return;
   const signature = await promptMovementSignature(actionLabel);
@@ -10163,20 +10166,20 @@ async function archiveReservationKey(reservationId) {
   };
   const archivedKey = {
     ...key,
-    sets: key.sets.map((set) =>
-      set.id === selectedSet.id
+    sets: key.sets.map((set) => ({
+      ...set,
+      reservations: [],
+      ...(set.id === selectedSet.id
         ? {
-            ...set,
             status: "available",
             holder: "",
             holderCompany: "",
             holderPhone: "",
             holderReservationId: "",
-            reservations: (set.reservations || []).filter((item) => item.id !== reservationId),
             history: [entry, ...set.history],
           }
-        : set,
-    ),
+        : {}),
+    })),
   };
 
   const archiveRecord = {
@@ -10545,19 +10548,14 @@ async function archiveSelectedKey(reason) {
             }).format(new Date()),
           }
         : null;
-    const archivedKey = archiveEntry
-      ? {
-          ...key,
-          sets: key.sets.map((set) =>
-            set.id === selectedSet.id
-              ? {
-                  ...set,
-                  history: [archiveEntry, ...set.history],
-                }
-              : set,
-          ),
-        }
-      : key;
+    const archivedKey = {
+      ...key,
+      sets: key.sets.map((set) => ({
+        ...set,
+        reservations: [],
+        ...(archiveEntry && set.id === selectedSet.id ? { history: [archiveEntry, ...set.history] } : {}),
+      })),
+    };
     const archiveRecord = {
       id: `${key.id}-${archivedAt}`,
       reason,
