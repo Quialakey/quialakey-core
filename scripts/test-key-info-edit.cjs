@@ -60,7 +60,7 @@ async function main() {
       assert.equal(await page.locator("#detailPanel .panel-header .eyebrow").textContent(), "Fiche clés");
       assert.equal(await page.locator("#contactSelect").evaluate((select) => select.closest("label").firstChild.textContent.trim()), "Intervenants récurrents");
       assert.equal(await page.locator("#contactSelect option").first().textContent(), "Choisir dans la liste");
-      assert.equal(await page.locator(".movement-contact-heading").textContent(), "Intervenant ponctuel");
+      assert.equal(await page.locator(".movement-contact-heading").textContent(), "Intervenant occasionnel");
       assert.equal(await page.locator("#movementContactDetails summary").textContent(), "Saisir les informations");
       assert.equal(await page.locator("#movementContactDetails").evaluate((details) => details.open), false);
       for (const button of ["#reservedBtn", "#checkoutBtn", "#rentedBtn", "#removedBtn"]) {
