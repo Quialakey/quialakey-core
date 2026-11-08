@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261103-1" />
-    <link rel="stylesheet" href="styles.css?v=20261103-1" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261108-1" />
+    <link rel="stylesheet" href="styles.css?v=20261108-1" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -201,7 +201,7 @@
                 <path d="M5.8 16.5A7.5 7.5 0 1 0 5 12"></path>
                 <path d="M12 8v4l3 2"></path>
               </svg>
-              Historique Global
+              <span class="backup-action-label">Historique <span class="backup-action-break">Global</span></span>
             </button>
             <button id="registryHistoryDataBtn" class="history-data-button registry-history-data-button icon-button" type="button">
               <svg class="history-button-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -209,23 +209,23 @@
                 <path d="M5.8 16.5A7.5 7.5 0 1 0 5 12"></path>
                 <path d="M12 8v4l3 2"></path>
               </svg>
-              <span id="registryHistoryDataLabel" class="history-data-label">Historique Transaction</span>
+              <span id="registryHistoryDataLabel" class="history-data-label backup-action-label">Historique <span class="backup-action-break">Transaction</span></span>
             </button>
             <button id="exportFilledDataBtn" class="filled-export-button icon-button" type="button">
               <span aria-hidden="true">↑</span>
-              Exporter données renseignées
+              <span class="backup-action-label">Exporter données <span class="backup-action-break">renseignées</span></span>
             </button>
             <button id="backupDataBtn" class="backup-button icon-button" type="button">
               <span aria-hidden="true">✓</span>
-              Tout sauvegarder
+              <span class="backup-action-label">Tout <span class="backup-action-break">sauvegarder</span></span>
             </button>
             <button id="savedBackupsBtn" class="saved-backups-button icon-button" type="button">
               <span aria-hidden="true">▤</span>
-              Liste des sauvegardes
+              <span class="backup-action-label">Liste des <span class="backup-action-break">sauvegardes</span></span>
             </button>
             <button id="importDataBtn" class="import-button icon-button" type="button">
               <span aria-hidden="true">↓</span>
-              Importer sauvegarde
+              <span class="backup-action-label">Importer <span class="backup-action-break">sauvegarde</span></span>
             </button>
             </div>
           </section>
@@ -600,10 +600,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261103-1"></script>
+    <script src="agency-config.js?v=20261108-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261103-1";
+        const fallbackVersion = "20261108-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

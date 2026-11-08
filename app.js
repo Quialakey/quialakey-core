@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261031-5";
+const appBuildVersion = "20261108-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -3831,7 +3831,10 @@ function updateRegistryHeader() {
       : [rentedArchiveSection, removedArchiveSection, authenticatedArchiveSection, legacyCompromiseArchiveSection];
   orderedArchiveSections.forEach((section) => archivesPanel.append(section));
   if (registryHistoryDataLabel) {
-    registryHistoryDataLabel.textContent = activeRegistry === "location" ? "Historique Location" : "Historique Transaction";
+    const registryName = activeRegistry === "location" ? "Location" : "Transaction";
+    const registryNameLabel = registryHistoryDataLabel.querySelector(".backup-action-break");
+    if (registryNameLabel) registryNameLabel.textContent = registryName;
+    else registryHistoryDataLabel.textContent = `Historique ${registryName}`;
   }
   if (compromisesTabBtn.hidden) compromisesPanel.hidden = true;
   registryToggleBtn.title =
