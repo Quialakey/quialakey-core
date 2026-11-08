@@ -4058,9 +4058,18 @@ body.is-moving-key .photo-hover {
 
 @media (orientation: landscape) and (pointer: coarse) and (max-width: 1180px) {
   .backup-main-panel {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 125px minmax(0, 1fr);
     gap: 6px;
     min-width: 0;
+  }
+
+  .backup-info-panel {
+    min-width: 0;
+  }
+
+  .backup-panel-subtitle {
+    font-size: 10px;
+    line-height: 1.15;
   }
 
   .backup-actions {
@@ -4081,7 +4090,7 @@ body.is-moving-key .photo-hover {
     min-height: 52px;
     padding: 4px 2px;
     gap: 2px;
-    font-size: 10px;
+    font-size: 9.5px;
     line-height: 1.1;
     text-align: center;
   }
@@ -4099,6 +4108,16 @@ body.is-moving-key .photo-hover {
     flex: none;
     width: 14px;
     height: 14px;
+  }
+}
+
+@media (orientation: landscape) and (pointer: coarse) and (max-width: 720px) {
+  .backup-main-panel {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+
+  .backup-actions > .icon-button {
+    font-size: 9px;
   }
 }
 

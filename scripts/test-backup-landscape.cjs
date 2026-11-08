@@ -33,10 +33,16 @@ async function main() {
       const layout = await page.evaluate(() => {
         const buttons = [...document.querySelectorAll('.backup-actions > .icon-button')];
         const main = document.querySelector('.backup-main-panel').getBoundingClientRect();
+        const info = document.querySelector('.backup-info-panel').getBoundingClientRect();
+        const actions = document.querySelector('.backup-actions').getBoundingClientRect();
         const settings = document.querySelector('.settings-data-button').getBoundingClientRect();
         return {
           coarseLandscape: matchMedia('(orientation: landscape) and (pointer: coarse)').matches,
           widths: buttons.map((button) => button.getBoundingClientRect().width),
+          fontSize: getComputedStyle(buttons[0]).fontSize,
+          infoRight: info.right,
+          actionsLeft: actions.left,
+          sameRow: Math.abs(info.top - actions.top) < 20,
           overflow: buttons.map((button) => button.scrollWidth - button.clientWidth),
           lines: buttons.map((button) => {
             const label = button.querySelector('.backup-action-label');
@@ -55,9 +61,12 @@ async function main() {
       assert.ok(Math.max(...layout.widths) - Math.min(...layout.widths) < 1, `${width}: unequal buttons ${layout.widths}`);
       assert.ok(layout.overflow.every((value) => value <= 1), `${width}: button overflow ${layout.overflow}`);
       assert.ok(layout.lines.every((line) => line.first === 1 && line.second === 1 && line.separated),
-        `${width}: labels are not on two lines ${JSON.stringify(layout.lines)}`);
+        `${width}: labels are not on two lines ${JSON.stringify(layout)}`);
+      assert.ok(layout.infoRight <= layout.actionsLeft && layout.sameRow, `${width}: info not beside buttons ${JSON.stringify(layout)}`);
       assert.equal(layout.settingsSeparate, true, `${width}: settings overlap`);
-      if (width === 960) await page.locator('.backup-panel-row').screenshot({ path: path.join(root, 'output', 'backup-landscape-960-20261108.png') });
+      if (width === 960 || width === 667) {
+        await page.locator('.backup-panel-row').screenshot({ path: path.join(root, 'output', `backup-landscape-${width}-20261108.png`) });
+      }
       await context.close();
     }
   } finally {
