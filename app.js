@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-9";
+const appBuildVersion = "20261115-10";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8613,6 +8613,9 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
     row.append(element("span", "receipt-label", label), element("strong", "", String(value || "").trim() || "—"));
     parent.append(row);
   };
+  const addOptionalDetail = (parent, label, value) => {
+    if (String(value || "").trim()) addDetail(parent, label, value);
+  };
   const toolbar = element("div", "receipt-toolbar");
   const printButton = element("button", "", "Imprimer");
   printButton.type = "button";
@@ -8630,7 +8633,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(logo, agency, element("h1", "", hasReturn ? "Reçu de sortie et de retour des clés" : "Reçu de mouvement des clés"));
+  header.append(logo, agency, element("h1", "", "Reçu de clés"));
   page.append(header);
 
   const property = element("section", "receipt-section receipt-property");
@@ -8638,11 +8641,11 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
   const propertyDetails = element("div", "receipt-details");
   addDetail(propertyDetails, "Fiche et jeu", `${keyLabel(key)} · ${set.label}`);
   addDetail(propertyDetails, "Registre", activeRegistry === "transaction" ? "Transaction" : "Location");
-  addDetail(propertyDetails, "Adresse", key.property);
-  addDetail(propertyDetails, "Code postal", key.postalCode);
-  addDetail(propertyDetails, "Ville", key.city);
-  if (key.owner || key.ownerFirstName) addDetail(propertyDetails, "Propriétaire", [key.ownerFirstName, key.owner].filter(Boolean).join(" "));
-  if (key.notes) addDetail(propertyDetails, "Notes", key.notes);
+  addOptionalDetail(propertyDetails, "Adresse", key.property);
+  addOptionalDetail(propertyDetails, "Code postal", key.postalCode);
+  addOptionalDetail(propertyDetails, "Ville", key.city);
+  addOptionalDetail(propertyDetails, "Propriétaire", [key.ownerFirstName, key.owner].filter(Boolean).join(" "));
+  addOptionalDetail(propertyDetails, "Notes", key.notes);
   property.append(propertyDetails);
   page.append(property);
 
@@ -8654,10 +8657,10 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
     const details = element("div", "receipt-details");
     addDetail(details, movement.signature ? "Signé le" : "Enregistré le", movement.date);
     addDetail(details, "Intervenant", movement.person);
-    if (movement.company) addDetail(details, "Société", movement.company);
-    addDetail(details, "Téléphone", movement.phone);
-    if (movement.reservationDate) addDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
-    if (movement.note) addDetail(details, "Commentaire", movement.note.replace(/^Commentaire\s*:\s*/i, ""));
+    addOptionalDetail(details, "Société", movement.company);
+    addOptionalDetail(details, "Téléphone", movement.phone);
+    addOptionalDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
+    addOptionalDetail(details, "Commentaire", movement.note?.replace(/^Commentaire\s*:\s*/i, ""));
     section.append(details);
     const evidence = element("div", "receipt-evidence");
     [["Photo", movement.movementPhoto], ["Signature", movement.signature]].forEach(([label, source]) => {

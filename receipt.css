@@ -10,19 +10,19 @@
 body {
   margin: 0;
   color: #20302b;
-  background: #e3e9e5;
-  font: 12px/1.35 Arial, sans-serif;
+  background: #e9edeb;
+  font: 11px/1.3 Arial, sans-serif;
 }
 
 .receipt-toolbar {
   display: flex;
   justify-content: flex-end;
-  max-width: 210mm;
-  margin: 16px auto 8px;
+  max-width: 190mm;
+  margin: 12px auto 6px;
 }
 
 .receipt-toolbar button {
-  padding: 9px 20px;
+  padding: 8px 16px;
   border: 0;
   border-radius: 5px;
   color: white;
@@ -33,12 +33,12 @@ body {
 }
 
 .receipt-page {
-  width: 210mm;
-  min-height: 297mm;
-  margin: 0 auto 24px;
-  padding: 10mm;
+  width: 190mm;
+  margin: 0 auto 18px;
+  padding: 7mm;
+  border: 1px solid #d4ddd6;
   background: #fff;
-  box-shadow: 0 3px 20px #15382833;
+  box-shadow: 0 2px 12px #1538281a;
 }
 
 .receipt-header {
@@ -47,64 +47,69 @@ body {
 
 .receipt-logo {
   display: block;
-  width: 84mm;
-  height: 38mm;
-  margin: 0 auto 4mm;
+  width: 62mm;
+  height: 26mm;
+  margin: 0 auto 2mm;
   object-fit: cover;
   object-position: center;
 }
 
 .has-return .receipt-logo {
-  width: 78mm;
-  height: 32mm;
+  width: 62mm;
+  height: 26mm;
 }
 
 .receipt-agency {
   margin: 0;
   color: #164e38;
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 h1 {
-  margin: 2mm 0 5mm;
-  font-size: 18px;
+  margin: 1mm 0 3mm;
+  font-size: 15px;
 }
 
 .receipt-section {
-  margin: 0 0 4mm;
+  margin: 0 0 2.5mm;
   overflow: hidden;
-  border: 1px solid #c5d4c8;
-  border-radius: 5px;
+  border: 1px solid #d5dfd8;
+  border-radius: 3px;
   break-inside: avoid;
 }
 
 .receipt-section h2 {
   margin: 0;
-  padding: 2mm 4mm;
-  color: #fff;
-  background: #18513a;
-  font-size: 13px;
+  padding: 1.5mm 3mm;
+  border-left: 3px solid #18513a;
+  color: #18513a;
+  background: #f5f8f6;
+  font-size: 11.5px;
 }
 
 .receipt-out h2 {
-  background: #a6423d;
+  border-left-color: #a6423d;
+  color: #973c37;
 }
 
 .receipt-in h2 {
-  background: #27714c;
+  border-left-color: #27714c;
+  color: #216742;
 }
 
 .receipt-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5mm 5mm;
-  padding: 3mm 4mm;
+  gap: 1mm 4mm;
+  padding: 2mm 3mm;
 }
 
 .receipt-detail {
   display: grid;
-  gap: 1px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 3px;
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -112,40 +117,40 @@ h1 {
 
 .receipt-label {
   color: #596d63;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .receipt-detail strong {
-  font-size: 11.5px;
+  font-size: 10px;
 }
 
 .receipt-evidence {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4mm;
-  padding: 0 4mm 3mm;
+  gap: 3mm;
+  padding: 0 3mm 2mm;
 }
 
 .receipt-evidence-frame h3 {
-  margin: 0 0 1mm;
-  font-size: 11px;
+  margin: 0 0 0.8mm;
+  font-size: 10px;
 }
 
 .receipt-evidence-visual {
   display: grid;
   place-items: center;
-  height: 38mm;
+  height: 28mm;
   overflow: hidden;
-  border: 1px solid #ccd7d0;
-  border-radius: 4px;
-  background: #f7faf8;
+  border: 1px solid #d6dfd9;
+  border-radius: 3px;
+  background: #fafbfa;
   color: #6a7770;
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .has-return .receipt-evidence-visual {
-  height: 33mm;
+  height: 26mm;
 }
 
 .receipt-evidence-visual img {
@@ -156,10 +161,10 @@ h1 {
 }
 
 .receipt-footer {
-  padding-top: 2mm;
-  border-top: 1px solid #c5d4c8;
+  padding-top: 1mm;
+  border-top: 1px solid #d5dfd8;
   color: #66766c;
-  font-size: 9px;
+  font-size: 8px;
   text-align: center;
 }
 
@@ -170,13 +175,25 @@ h1 {
 
   .receipt-page {
     width: 100%;
-    min-height: 0;
-    padding: 16px;
+    padding: 14px;
   }
 
   .receipt-logo,
   .has-return .receipt-logo {
     max-width: 100%;
+  }
+
+  .receipt-section h2 {
+    font-size: 12px;
+  }
+
+  .receipt-label,
+  .receipt-evidence-frame h3 {
+    font-size: 10px;
+  }
+
+  .receipt-detail strong {
+    font-size: 11px;
   }
 }
 
@@ -193,9 +210,9 @@ h1 {
 
   .receipt-page {
     width: auto;
-    min-height: 0;
     margin: 0;
     padding: 0;
+    border: 0;
     box-shadow: none;
   }
 }

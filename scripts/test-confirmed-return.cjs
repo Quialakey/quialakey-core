@@ -163,6 +163,7 @@ async function main() {
     assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des clés/);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
+    assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Code postal/);
     assert.equal(await checkoutReceipt.locator(".receipt-movement img").count(), 2);
     assert.equal(await checkoutReceipt.locator(".receipt-logo").getAttribute("src"),
       `http://127.0.0.1:${server.address().port}/quialakey-opening-banner-20261025.webp`);
@@ -191,6 +192,11 @@ async function main() {
       document.querySelector(".receipt-logo")?.naturalWidth > 0);
     assert.equal(await returnReceipt.evaluate(() =>
       document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    const compactSize = await returnReceipt.evaluate(() => ({
+      page: document.querySelector(".receipt-page").getBoundingClientRect().height,
+      evidence: document.querySelector(".receipt-evidence-visual").getBoundingClientRect().height,
+    }));
+    assert.ok(compactSize.page < 800 && compactSize.evidence < 110);
     assert.deepEqual(await page.evaluate(() => {
       const history = [
         { id: "out-1", type: "out", date: "01/11/2026 10:00" },
