@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261108-2";
+const appBuildVersion = "20261115-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -769,6 +769,8 @@ const keyDetailsHeading = document.querySelector("#keyDetailsHeading");
 const keyDetailsToggleBtn = document.querySelector("#keyDetailsToggleBtn");
 const keyDetailsContent = document.querySelector("#keyDetailsContent");
 const keySetPhotoList = document.querySelector("#keySetPhotoList");
+const multiSetSelectionLabel = document.querySelector("#multiSetSelectionLabel");
+const multiSetSelectionInput = document.querySelector("#multiSetSelectionInput");
 const keySetSelect = document.querySelector("#keySetSelect");
 const activeMovementPanel = document.querySelector("#activeMovementPanel");
 const activeReservationPanel = document.querySelector("#activeReservationPanel");
@@ -883,6 +885,8 @@ let archives = loadArchives();
 let contacts = loadContacts();
 let selectedId = null;
 let selectedSetId = "main";
+let multiSelectionKey = "";
+let multiSelectedSetIds = new Set();
 let unlockedAccessLockVersion = null;
 let selectedArchiveRecord = null;
 let draggedKeyId = null;
@@ -3713,10 +3717,101 @@ function getUndoCheckout(snapshot) {
   return { registry, key: currentKey, set: currentSet, previousSet, checkout, isLastAction };
 }
 
+function getUndoCheckoutGroup(snapshot) {
+  const tracked = snapshot.checkoutGroup;
+  if (!tracked) return null;
+  const storageKey = registryConfig[tracked.registry].keysStorageKey;
+  const previousKeys = parseStorageValue(snapshot.storage[storageKey]);
+  if (!Array.isArray(previousKeys)) return { isLastAction: false };
+  const previousKey = previousKeys.find((key) => key.id === tracked.keyId);
+  const currentKey = loadKeysForRegistry(tracked.registry).find((key) => key.id === tracked.keyId);
+  if (!previousKey || !currentKey) return { isLastAction: false };
+
+  const movements = tracked.movements.map(({ setId, movementId }) => {
+    const set = currentKey.sets.find((item) => item.id === setId);
+    const previousSet = previousKey.sets.find((item) => item.id === setId);
+    const checkout = set?.history.find((entry) => entry.type === "out" && entry.id === movementId);
+    return { set, previousSet, checkout };
+  });
+  if (movements.some(({ set, previousSet, checkout }) => !set || !previousSet || !checkout || previousSet.status === "out")) {
+    return { isLastAction: false };
+  }
+  const previousById = new Map(movements.map(({ set, previousSet }) => [set.id, previousSet]));
+  const restoredKey = {
+    ...currentKey,
+    sets: currentKey.sets.map((set) => {
+      const previousSet = previousById.get(set.id);
+      return previousSet ? {
+        ...set,
+        status: previousSet.status,
+        needsCheckIn: previousSet.needsCheckIn,
+        needsCheckInReason: previousSet.needsCheckInReason,
+        holder: previousSet.holder,
+        holderCompany: previousSet.holderCompany,
+        holderPhone: previousSet.holderPhone,
+        holderReservationId: previousSet.holderReservationId,
+        history: set.history.slice(1),
+      } : set;
+    }),
+  };
+  const isLastAction = movements.every(({ set, checkout }) =>
+    set.status === "out" && set.history[0]?.id === checkout.id) &&
+    getComparableKeySlotValue(restoredKey) === getComparableKeySlotValue(previousKey);
+  return { registry: tracked.registry, key: currentKey, movements, isLastAction };
+}
+
 async function undoPreviousStep() {
   if (!undoSnapshot || isUndoingCheckout || isConfirmingReturn || activeKeyControlAction) return;
 
   const snapshot = undoSnapshot;
+  const checkoutGroup = getUndoCheckoutGroup(snapshot);
+  if (checkoutGroup) {
+    if (!checkoutGroup.isLastAction) {
+      undoSnapshot = null;
+      updateUndoButton();
+      alert("La fiche a changé depuis cette sortie. Actualisez le tableau avant de faire un nouveau mouvement.");
+      return;
+    }
+    const { registry, key, movements: checkedOutSets } = checkoutGroup;
+    const movements = checkedOutSets.map(({ set, previousSet, checkout }) => ({
+      set,
+      entry: {
+        id: createHistoryId(), type: "in", person: checkout.person || set.holder || "",
+        company: checkout.company || set.holderCompany || "", phone: checkout.phone || set.holderPhone || "",
+        returnReason: "undo-checkout", undoOfMovementId: checkout.id, date: getMovementDateText(),
+      },
+      changes: {
+        status: previousSet.status, needsCheckIn: previousSet.needsCheckIn,
+        needsCheckInReason: previousSet.needsCheckInReason, holder: previousSet.holder || "",
+        holderCompany: previousSet.holderCompany || "", holderPhone: previousSet.holderPhone || "",
+        holderReservationId: previousSet.holderReservationId || "",
+      },
+    }));
+    isUndoingCheckout = true;
+    updateUndoButton();
+    try {
+      await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
+        movements, registry,
+        failureMessage: "L'annulation de la sortie n'a pas pu être confirmée. Réessayez dans un instant.",
+        conflictMessage: "La fiche a changé sur un autre appareil. Elle vient d'être actualisée : vérifiez-la avant de réessayer.",
+        onConflict: () => { undoSnapshot = null; },
+        onConfirmed: () => {
+          undoSnapshot = null;
+          const switchedRegistry = activeRegistry !== registry;
+          activeRegistry = registry;
+          saveActiveRegistry();
+          if (switchedRegistry) keys = loadKeys();
+          selectedId = snapshot.selectedId;
+          selectedSetId = snapshot.selectedSetId || "main";
+          updateRegistryHeader();
+        },
+      });
+    } finally {
+      isUndoingCheckout = false;
+      updateUndoButton();
+    }
+    return;
+  }
   const checkout = getUndoCheckout(snapshot);
   if (checkout) {
     if (!checkout.isLastAction) {
@@ -4678,6 +4773,22 @@ function commitPendingNewKeyDraft() {
 function getSelectedSet(key = getSelectedKey()) {
   if (!key) return null;
   return key.sets.find((set) => set.id === selectedSetId) || key.sets[0];
+}
+
+function resetMultiSetSelection() {
+  multiSelectionKey = "";
+  multiSelectedSetIds.clear();
+  multiSetSelectionInput.checked = false;
+}
+
+function isMultiSelectingSets(key = getSelectedKey()) {
+  return Boolean(key && multiSelectionKey === `${activeRegistry}:${key.id}` && multiSelectedSetIds.size);
+}
+
+function getSelectedCheckoutSets(key) {
+  return isMultiSelectingSets(key)
+    ? key.sets.filter((set) => multiSelectedSetIds.has(set.id))
+    : [getSelectedSet(key)];
 }
 
 function getSelectedHistoryExpansionId(key = getSelectedKey()) {
@@ -8513,6 +8624,8 @@ function isSelectedCompromiseEditable() {
 function renderKeySetPhotos(key) {
   keySetPhotoList.innerHTML = "";
   keySetPhotoList.classList.toggle("is-multi-set", key.sets.length > 1);
+  const isMultiSelection = isMultiSelectingSets(key);
+  keySetPhotoList.classList.toggle("is-multi-selection", isMultiSelection);
   keySetPhotoList.classList.toggle("is-three-set", key.sets.length === 3);
   keySetPhotoList.classList.toggle("is-four-set", key.sets.length === 4);
   const isArchiveView = Boolean(selectedArchiveRecord);
@@ -8533,23 +8646,44 @@ function renderKeySetPhotos(key) {
 
     const displayStatus = isSelectedCompromiseEditable() ? getSetDisplayStatus(set)
       : isArchiveView ? "archived" : isFilled ? getSetDisplayStatus(set) : "empty";
-    item.className = `key-set-photo-card ${displayStatus}${set.id === selectedSetId ? " is-selected" : ""}`;
+    const isSelected = isMultiSelection ? multiSelectedSetIds.has(set.id) : set.id === selectedSetId;
+    item.className = `key-set-photo-card ${displayStatus}${isSelected ? " is-selected" : ""}`;
     title.type = "button";
     title.className = "photo-set-select";
     title.textContent = set.label;
-    title.setAttribute("aria-label", `S\u00e9lectionner ${set.label} pour les mouvements`);
-    title.title = `S\u00e9lectionner ${set.label} pour les mouvements`;
-    const pointerIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    const pointerTail = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const pointerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    pointerIcon.classList.add("photo-set-pointer-icon");
-    pointerIcon.setAttribute("viewBox", "0 0 24 24");
-    pointerIcon.setAttribute("aria-hidden", "true");
-    pointerTail.setAttribute("d", "M12.586 12.586 19 19");
-    pointerPath.setAttribute("d", "M3.688 3.037a.497.497 0 0 0-.651.651l6.5 15.999a.501.501 0 0 0 .947-.062l1.569-6.083a2 2 0 0 1 1.448-1.479l6.124-1.579a.5.5 0 0 0 .063-.947z");
-    pointerIcon.append(pointerTail, pointerPath);
-    title.append(pointerIcon);
+    if (isMultiSelection) {
+      title.setAttribute("aria-pressed", String(isSelected));
+      title.setAttribute("aria-label", `${isSelected ? "Désélectionner" : "Sélectionner"} ${set.label} pour la sortie groupée`);
+      title.title = title.getAttribute("aria-label");
+      title.disabled = set.status === "out" || set.needsCheckIn || Boolean(activeKeyControlAction) || isConfirmingReturn;
+      const checkIcon = document.createElement("span");
+      checkIcon.className = "photo-set-check-icon";
+      checkIcon.setAttribute("aria-hidden", "true");
+      checkIcon.textContent = isSelected ? "✓" : "";
+      title.append(checkIcon);
+    } else {
+      title.setAttribute("aria-label", `S\u00e9lectionner ${set.label} pour les mouvements`);
+      title.title = title.getAttribute("aria-label");
+      const pointerIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const pointerTail = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const pointerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pointerIcon.classList.add("photo-set-pointer-icon");
+      pointerIcon.setAttribute("viewBox", "0 0 24 24");
+      pointerIcon.setAttribute("aria-hidden", "true");
+      pointerTail.setAttribute("d", "M12.586 12.586 19 19");
+      pointerPath.setAttribute("d", "M3.688 3.037a.497.497 0 0 0-.651.651l6.5 15.999a.501.501 0 0 0 .947-.062l1.569-6.083a2 2 0 0 1 1.448-1.479l6.124-1.579a.5.5 0 0 0 .063-.947z");
+      pointerIcon.append(pointerTail, pointerPath);
+      title.append(pointerIcon);
+    }
     title.addEventListener("click", () => {
+      if (isMultiSelection) {
+        if (isSelected && multiSelectedSetIds.size === 1) return;
+        if (isSelected) multiSelectedSetIds.delete(set.id);
+        else multiSelectedSetIds.add(set.id);
+        selectedSetId = isSelected ? [...multiSelectedSetIds][0] : set.id;
+        renderPanel();
+        return;
+      }
       if (set.id === selectedSetId) return;
       keySetSelect.value = set.id;
       keySetSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -8669,9 +8803,20 @@ function renderPanel() {
   closePanelBtn.disabled = Boolean(activeKeyControlAction && !activeKeyControlAction.pending) || isConfirmingReturn;
   const key = getSelectedKey();
   if (!key) {
+    resetMultiSetSelection();
     detailPanel.hidden = true;
     form.hidden = true;
     return;
+  }
+
+  if (multiSelectionKey && (multiSelectionKey !== `${activeRegistry}:${key.id}` || selectedArchiveRecord)) {
+    resetMultiSetSelection();
+  }
+  if (isMultiSelectingSets(key)) {
+    const eligibleIds = new Set(key.sets.filter((set) => set.status !== "out" && !set.needsCheckIn).map((set) => set.id));
+    for (const id of multiSelectedSetIds) if (!eligibleIds.has(id)) multiSelectedSetIds.delete(id);
+    if (!multiSelectedSetIds.size) resetMultiSetSelection();
+    else if (!multiSelectedSetIds.has(selectedSetId)) selectedSetId = [...multiSelectedSetIds][0];
   }
 
   const selectedSet = getSelectedSet(key);
@@ -8699,6 +8844,8 @@ function renderPanel() {
   keySetCountUnlockBtn.textContent = keySetCountSelect.selectedOptions[0]?.textContent || `${key.sets.length} jeux`;
   renderKeySetSelect(key);
   renderKeySetPhotos(key);
+  multiSetSelectionLabel.hidden = isArchiveView || isNewKeyDraft || key.sets.length < 2 || !isKeyFilled(key);
+  multiSetSelectionInput.checked = isMultiSelectingSets(key);
   if (!isSavingKeyInfoDraft && !isProtectedKeyInfoInputActive()) {
     propertyInput.value = key.property;
     postalCodeInput.value = key.postalCode || "";
@@ -8735,6 +8882,7 @@ function renderPanel() {
   const needsSelectedSetCheckIn = Boolean(selectedSet.needsCheckIn);
   const needsSelectedSetCheckInReason = selectedSet.needsCheckInReason || "";
   const hasAddedSetDraft = isPendingAddedKeySetDraft(key.id);
+  multiSetSelectionInput.disabled = hasAddedSetDraft || Boolean(activeKeyControlAction) || isConfirmingReturn;
   const showOnlyEntryAction = isNewKeyDraft || hasAddedSetDraft;
   const isMainMovementLocked = isReadOnlyArchive || isSelectedSetOutForReservation;
   const canCheckInSelectedKey = canMoveSelectedKey && (isNewKeyDraft || isSelectedSetOut || needsSelectedSetCheckIn) &&
@@ -8755,11 +8903,12 @@ function renderPanel() {
   reservedBtn.hidden = showOnlyEntryAction;
   checkoutBtn.hidden = showOnlyEntryAction;
   archiveActions.hidden = showOnlyEntryAction;
-  checkoutBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || isSelectedSetOut || needsSelectedSetCheckIn;
+  checkoutBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey ||
+    getSelectedCheckoutSets(key).some((set) => set.status === "out" || set.needsCheckIn);
   checkinBtn.disabled = !canCheckInSelectedKey;
-  reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || needsSelectedSetCheckIn;
-  rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
-  removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn);
+  reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || needsSelectedSetCheckIn || isMultiSelectingSets(key);
+  rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || isMultiSelectingSets(key);
+  removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || isMultiSelectingSets(key);
   const savingControlAction = activeKeyControlAction &&
     activeKeyControlAction.keyId === key.id && activeKeyControlAction.registry === activeRegistry;
   for (const button of [checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn]) {
@@ -9508,9 +9657,14 @@ function setKeySetCount(count, options = {}) {
 }
 
 async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
+  return confirmKeySetMovements(key, [{ set, changes, entry }], registry);
+}
+
+async function confirmKeySetMovements(key, movements, registry) {
   if (!supabaseClient || !hasCompletedInitialCloudLoad || isCloudSleeping || isAppInBackground()) {
     throw new Error("Tableau indisponible");
   }
+  if (!movements.length) throw new Error("Aucun jeu sélectionné");
   const storageKey = registryConfig[registry].keysStorageKey;
   const cloudKey = getKeySlotCloudKey(storageKey, key.id);
   if (hasPendingCloudRowChange(cloudKey)) {
@@ -9530,36 +9684,46 @@ async function confirmReturnedSetMovement(key, set, changes, entry, registry) {
       .select("key,value,updated_at").eq("key", cloudKey).maybeSingle();
     if (readError || !remoteRow) throw readError || new Error("Fiche introuvable");
     const remoteKey = normalizeCloudSlotKey(remoteRow);
-    const remoteSet = remoteKey.sets.find((savedSet) => savedSet.id === set.id);
-    if (remoteSet?.history.some((movement) => movement.id === entry.id)) return remoteRow;
-    if (remoteKey.owner !== key.owner || remoteKey.property !== key.property ||
-      remoteSet?.status !== set.status || remoteSet.holder !== set.holder ||
-      remoteSet.history[0]?.id !== set.history[0]?.id) {
+    const isRecorded = ({ set, entry }) => remoteKey.sets.find((savedSet) => savedSet.id === set.id)
+      ?.history.some((movement) => movement.id === entry.id);
+    if (movements.every(isRecorded)) return remoteRow;
+    if (movements.some(isRecorded) || remoteKey.owner !== key.owner || remoteKey.property !== key.property ||
+      movements.some(({ set }) => {
+        const remoteSet = remoteKey.sets.find((savedSet) => savedSet.id === set.id);
+        return !remoteSet || remoteSet.status !== set.status || remoteSet.holder !== set.holder ||
+          remoteSet.holderReservationId !== set.holderReservationId ||
+          remoteSet.history[0]?.id !== set.history[0]?.id;
+      })) {
       const conflict = new Error("Fiche modifi\u00e9e sur un autre appareil");
       conflict.latestRow = remoteRow;
       throw conflict;
     }
 
+    const movementBySetId = new Map(movements.map((movement) => [movement.set.id, movement]));
     const nextKey = normalizeKey({
       ...remoteKey,
-      sets: remoteKey.sets.map((savedSet) => savedSet.id === set.id
-        ? { ...savedSet, ...changes, history: [entry, ...savedSet.history] }
-        : savedSet),
+      sets: remoteKey.sets.map((savedSet) => {
+        const movement = movementBySetId.get(savedSet.id);
+        return movement
+          ? { ...savedSet, ...movement.changes, history: [movement.entry, ...savedSet.history] }
+          : savedSet;
+      }),
     });
     const updatedAt = new Date().toISOString();
     const payload = getCloudWritePayload(cloudKey, nextKey, updatedAt, remoteRow.updated_at);
     const { data: writtenRow, error: writeError } = await supabaseClient.from("app_state")
       .update(payload).eq("key", cloudKey).eq("updated_at", remoteRow.updated_at).maybeSingle();
-    if (!writeError && writtenRow?.value &&
+    if (!writeError && writtenRow?.value && movements.every(({ set, entry }) =>
       normalizeCloudSlotKey(writtenRow).sets.find((savedSet) => savedSet.id === set.id)
-        ?.history.some((movement) => movement.id === entry.id)) {
+        ?.history.some((movement) => movement.id === entry.id))) {
       return writtenRow;
     }
     if (writeError && !isStaleCloudWriteError(writeError)) {
       const { data: savedRow } = await supabaseClient.from("app_state")
         .select("key,value,updated_at").eq("key", cloudKey).maybeSingle();
-      if (savedRow?.value && normalizeCloudSlotKey(savedRow).sets.find((savedSet) => savedSet.id === set.id)
-        ?.history.some((movement) => movement.id === entry.id)) return savedRow;
+      if (savedRow?.value && movements.every(({ set, entry }) =>
+        normalizeCloudSlotKey(savedRow).sets.find((savedSet) => savedSet.id === set.id)
+          ?.history.some((movement) => movement.id === entry.id))) return savedRow;
       throw writeError;
     }
     if (attempt < 2) await waitForKeySlotRetry(attempt);
@@ -9604,12 +9768,15 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
 
   let didConfirm = false;
   try {
-    const confirmedRow = await confirmReturnedSetMovement(key, set, changes, entry, registry);
+    const confirmedMovements = options.movements || [{ set, changes, entry }];
+    const confirmedRow = await confirmKeySetMovements(key, confirmedMovements, registry);
     applyReturnSlotRow(confirmedRow, registry);
-    logActivity(getMovementActionLabel(entry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`,
-      [entry.person || entry.company, entry.phone, entry.note].filter(Boolean).join(" | "), {
-        keyId: key.id, setId: set.id, movementId: entry.id, registry,
-      });
+    confirmedMovements.forEach(({ set: movedSet, entry: movedEntry }) => {
+      logActivity(getMovementActionLabel(movedEntry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${movedSet.label}`,
+        [movedEntry.person || movedEntry.company, movedEntry.phone, movedEntry.note].filter(Boolean).join(" | "), {
+          keyId: key.id, setId: movedSet.id, movementId: movedEntry.id, registry,
+        });
+    });
     options.onConfirmed?.();
     scheduleCloudSyncHeartbeat(0);
     didConfirm = true;
@@ -9661,6 +9828,8 @@ async function addMovement(type, options = {}) {
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
+  const checkoutSets = type === "out" ? getSelectedCheckoutSets(key) : [selectedSet];
+  const checkoutSetIds = checkoutSets.map((set) => set.id);
   if (isPendingAddedKeySetDraft(key.id) && (type !== "in" || selectedSet.needsCheckInReason !== "added")) return;
   const sourceRegistry = activeRegistry;
   const sourceArchiveId = selectedArchiveRecord?.id || "";
@@ -9677,7 +9846,7 @@ async function addMovement(type, options = {}) {
   const forcedPhone = type === "in" && selectedSet.status === "out" ? selectedSet.holderPhone : "";
   const forcedCompany = type === "in" && selectedSet.status === "out" ? selectedSet.holderCompany : "";
   const isReturningAfterCheckout = type === "in" && selectedSet.status === "out";
-  if (type === "out" && selectedSet.needsCheckIn) return;
+  if (type === "out" && checkoutSets.some((set) => set.status === "out" || set.needsCheckIn)) return;
   if (!ensureMovementActor(type === "out" ? "Sorti" : "Entr\u00e9", { person: forcedPerson, company: forcedCompany })) return;
   if (type === "in" && selectedSet.needsCheckInReason === "added" && !getPhoneDigitCount(movementPhoneInput.value)) {
     alert("Renseigne le numéro de téléphone de l'intervenant avant de cliquer sur Entré.");
@@ -9685,11 +9854,12 @@ async function addMovement(type, options = {}) {
   }
   if (type === "out" && !ensureTypedMovementPhone("Sorti")) return;
   if (type !== "out" && !isReturningAfterCheckout && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
-  if (type === "out") showCheckoutReservationWarning(selectedSet);
+  if (type === "out") checkoutSets.forEach((set) => showCheckoutReservationWarning(set));
   const signature = await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9");
   if (signature === null) return;
   if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
-    getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id) return;
+    getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id ||
+    (type === "out" && getSelectedCheckoutSets(getSelectedKey()).map((set) => set.id).join() !== checkoutSetIds.join())) return;
 
   const entry = {
     id: createHistoryId(),
@@ -9720,6 +9890,38 @@ async function addMovement(type, options = {}) {
         : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
   };
+  if (type === "out" && checkoutSets.length > 1 && !selectedArchiveRecord) {
+    const snapshot = createUndoSnapshot();
+    const movements = checkoutSets.map((set, index) => {
+      const setEntry = index ? { ...entry, id: createHistoryId() } : entry;
+      return {
+        set,
+        entry: setEntry,
+        changes: {
+          ...changes,
+          holder: setEntry.person || set.holder,
+          holderCompany: setEntry.company || set.holderCompany,
+          holderPhone: setEntry.phone || set.holderPhone,
+          reservations: set.reservations || [],
+        },
+      };
+    });
+    await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
+      movements,
+      button: checkoutBtn,
+      buttonIdleLabel: "Sorti",
+      closePanel: true,
+      failureMessage: "La sortie n'a pas pu être confirmée. Réessayez dans un instant.",
+      onConfirmed: () => {
+        snapshot.checkoutGroup = { registry: sourceRegistry, keyId: key.id,
+          movements: movements.map(({ set, entry: movedEntry }) => ({ setId: set.id, movementId: movedEntry.id })) };
+        undoSnapshot = snapshot;
+        updateUndoButton();
+        resetMultiSetSelection();
+      },
+    });
+    return;
+  }
   if (isReturningAfterCheckout && !selectedArchiveRecord) {
     const returned = await runConfirmedReturn(key, selectedSet, changes, entry, { closePanel: true });
     if (returned && options.checkoutCommentKey) checkoutCommentDrafts.delete(options.checkoutCommentKey);
@@ -9735,6 +9937,7 @@ async function addMovement(type, options = {}) {
         snapshot.checkout = { registry: sourceRegistry, keyId: key.id, setId: selectedSet.id, movementId: entry.id };
         undoSnapshot = snapshot;
         updateUndoButton();
+        if (isMultiSelectingSets(key)) resetMultiSetSelection();
         movementPersonInput.value = "";
         movementNameInput.value = "";
         movementCompanyInput.value = "";
@@ -10811,6 +11014,22 @@ keySetSelect.addEventListener("change", () => {
   selectedSetId = keySetSelect.value;
   clearSignature();
   render();
+});
+multiSetSelectionInput.addEventListener("change", () => {
+  const key = getSelectedKey();
+  if (!multiSetSelectionInput.checked || !key || selectedArchiveRecord) {
+    resetMultiSetSelection();
+  } else {
+    const eligibleSets = key.sets.filter((set) => set.status !== "out" && !set.needsCheckIn);
+    const initialSet = eligibleSets.find((set) => set.id === selectedSetId) || eligibleSets[0];
+    if (!initialSet) resetMultiSetSelection();
+    else {
+      multiSelectionKey = `${activeRegistry}:${key.id}`;
+      multiSelectedSetIds = new Set([initialSet.id]);
+      selectedSetId = initialSet.id;
+    }
+  }
+  renderPanel();
 });
 checkoutBtn.addEventListener("click", () => addMovement("out"));
 checkinBtn.addEventListener("click", () => addMovement("in"));

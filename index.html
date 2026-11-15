@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261108-2" />
-    <link rel="stylesheet" href="styles.css?v=20261108-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261115-1" />
+    <link rel="stylesheet" href="styles.css?v=20261115-1" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -300,6 +300,10 @@
           <section class="photo-box">
             <h3>Photos des jeux</h3>
             <div id="keySetPhotoList" class="key-set-photo-list"></div>
+            <label id="multiSetSelectionLabel" class="multi-set-selection-label" hidden>
+              <input id="multiSetSelectionInput" type="checkbox" />
+              Sélectionner plusieurs jeux
+            </label>
           </section>
 
           <fieldset class="movement-box">
@@ -600,10 +604,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261108-2"></script>
+    <script src="agency-config.js?v=20261115-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261108-2";
+        const fallbackVersion = "20261115-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

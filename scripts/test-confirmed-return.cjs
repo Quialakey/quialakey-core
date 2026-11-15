@@ -26,8 +26,9 @@ async function main() {
     if (!file.startsWith(root + path.sep)) return response.writeHead(403).end();
     try {
       const type = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".json": "application/json" }[path.extname(file)];
+      const contents = await fs.readFile(file);
       response.writeHead(200, { "Content-Type": type || "application/octet-stream" });
-      response.end(await fs.readFile(file));
+      response.end(contents);
     } catch {
       response.writeHead(404).end();
     }
@@ -214,6 +215,110 @@ async function main() {
     assert.equal(await page.evaluate(() => selectedId), "Maison-4");
     assert.equal(await page.evaluate(() => getUndoCheckout(undoSnapshot)?.isLastAction), true);
     assert.equal(await page.evaluate(() => movementPersonInput.value), "");
+
+    await page.evaluate(() => {
+      window.__resetReturn();
+      keys[0].sets[0] = { ...makeKeySet("main"), history: [] };
+      keys[0].sets.push(makeKeySet("double"));
+      window.__remoteRow.value = structuredClone(keys[0]);
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      selectedSetId = "main";
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+      window.__signatureCount = 0;
+      promptMovementSignature = async () => { window.__signatureCount += 1; return "signature-group"; };
+      window.__resolveWrite = null;
+      renderPanel();
+    });
+    assert.equal(await page.locator("#multiSetSelectionLabel").isVisible(), true);
+    await page.locator("#multiSetSelectionInput").check();
+    assert.equal(await page.locator(".photo-set-select").first().getAttribute("aria-pressed"), "true");
+    await page.locator(".photo-set-select").nth(1).click();
+    assert.equal(await page.locator(".key-set-photo-card.is-selected").count(), 2);
+    assert.equal(await page.locator(".photo-set-check-icon").count(), 2);
+    assert.equal(await page.locator("#reservedBtn").isDisabled(), true);
+    if (process.env.MULTI_SET_SCREENSHOT) {
+      await page.locator(".photo-box").screenshot({ path: process.env.MULTI_SET_SCREENSHOT });
+    }
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    const pendingGroup = await page.evaluate(() => ({
+      localStatuses: keys[0].sets.map((set) => set.status),
+      remoteStatuses: window.__remoteRow.value.sets.map((set) => set.status),
+      pendingStatuses: window.__returnPayload.value.sets.map((set) => set.status),
+      signatures: window.__returnPayload.value.sets.map((set) => set.history[0].signature),
+      movementIds: window.__returnPayload.value.sets.map((set) => set.history[0].id),
+      signatureCount: window.__signatureCount,
+      busy: checkoutBtn.getAttribute("aria-busy"),
+    }));
+    assert.deepEqual(pendingGroup.localStatuses, ["available", "available"]);
+    assert.deepEqual(pendingGroup.remoteStatuses, ["available", "available"]);
+    assert.deepEqual(pendingGroup.pendingStatuses, ["out", "out"]);
+    assert.deepEqual(pendingGroup.signatures, ["signature-group", "signature-group"]);
+    assert.notEqual(pendingGroup.movementIds[0], pendingGroup.movementIds[1]);
+    assert.equal(pendingGroup.signatureCount, 1);
+    assert.equal(pendingGroup.busy, "true");
+    await page.evaluate(() => window.__resolveWrite("failure"));
+    await page.waitForFunction(() => !isConfirmingReturn);
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status)), ["available", "available"]);
+    assert.equal(await page.locator(".key-set-photo-card.is-selected").count(), 2);
+    await page.evaluate(() => { window.__resolveWrite = null; });
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function");
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets.every((set) => set.status === "out") && !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => selectedId), null);
+    await page.evaluate(() => { selectedId = "Maison-4"; renderPanel(); });
+    assert.equal(await page.locator("#activeCheckoutPanel li").count(), 2);
+    assert.equal(await page.locator("#multiSetSelectionInput").isChecked(), false);
+    assert.equal(await page.evaluate(() => getUndoCheckoutGroup(undoSnapshot)?.isLastAction), true);
+    assert.equal(await page.evaluate(() => window.__returnLogs.length), 2);
+    assert.equal(await page.evaluate(() => getRegistryHistoryEntries("transaction")
+      .filter((item) => item.keyId === "Maison-4" && item.action === "Sorti").length), 2);
+    await page.evaluate(() => {
+      window.__resolveWrite = null;
+      window.__undoGroupPromise = undoPreviousStep();
+    });
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isUndoingCheckout);
+    assert.deepEqual(await page.evaluate(() => window.__returnPayload.value.sets.map((set) => set.history[0].returnReason)),
+      ["undo-checkout", "undo-checkout"]);
+    await page.evaluate(async () => {
+      window.__resolveWrite("success");
+      await window.__undoGroupPromise;
+    });
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status)), ["available", "available"]);
+    assert.equal(await page.evaluate(() => undoSnapshot), null);
+    await page.locator("#multiSetSelectionInput").check();
+    await page.locator('.photo-set-select[aria-pressed="false"]').click();
+    assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 2);
+    await page.evaluate(() => {
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+      window.__resolveWrite = null;
+    });
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets.every((set) => set.status === "out") && !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => selectedId), null);
+    await page.evaluate(() => { selectedId = "Maison-4"; renderPanel(); });
+    await page.evaluate(() => { window.__resolveWrite = null; });
+    await page.locator("#activeCheckoutPanel li").nth(1).locator("button").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn, null, { timeout: 5000 })
+      .catch(async () => {
+        throw new Error(JSON.stringify(await page.evaluate(() => ({
+          selectedId, selectedSetId, isConfirmingReturn, isUndoingCheckout, alert: window.__returnAlert,
+          statuses: keys[0].sets.map((set) => set.status), resolver: typeof window.__resolveWrite,
+          buttonLabels: [...document.querySelectorAll("#activeCheckoutPanel li button")].map((button) => button.textContent),
+        }))));
+      });
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets.filter((set) => set.status === "out").length === 1 && !isConfirmingReturn);
+    await page.evaluate(() => { selectedId = "Maison-4"; renderPanel(); });
+    assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status).sort()), ["available", "out"]);
 
     for (const mode of ["success", "failure", "uncertain"]) {
       await page.evaluate(() => {
