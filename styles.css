@@ -3291,6 +3291,40 @@ body.is-moving-key .photo-hover {
   background: #d8dcd8;
 }
 
+#historyList > li.has-history-print {
+  position: relative;
+}
+
+#historyList > li.has-history-print > strong:first-child {
+  padding-right: 32px;
+}
+
+.history-print-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #74847c;
+  border-radius: 6px;
+  color: var(--ink);
+  background: #edf1ee;
+  cursor: pointer;
+}
+
+.history-print-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .history-list li[data-history-action="in"] {
   border-color: #55aa73;
   background: #caebd5;

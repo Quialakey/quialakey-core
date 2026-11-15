@@ -1,16 +1,18 @@
 const workerUrl = new URL(self.location.href);
 const agencyCacheId = String(workerUrl.searchParams.get("agency") || "default-agency").replace(/[^a-z0-9-]/gi, "-");
-const appVersion = "20261115-8";
+const appVersion = "20261115-9";
 const runtimeCachePrefix = `quialakey-runtime-${agencyCacheId}-`;
 const runtimeCacheName = `${runtimeCachePrefix}${appVersion}`;
 const workerBaseUrl = new URL("./", self.location.href);
 const networkTimeoutMs = 3500;
 const coreAssetPaths = [
   "./",
+  `receipt.html?v=${appVersion}`,
   "vendor/exceljs-4.4.0.min.js",
   `vendor/supabase-2.110.8.min.js?v=${appVersion}`,
   `app.js?v=${appVersion}`,
   `styles.css?v=${appVersion}`,
+  `receipt.css?v=${appVersion}`,
   `agency-config.js?v=${appVersion}`,
   `manifest.webmanifest?v=${appVersion}`,
   "quialakey-opening-banner-20261025.webp",

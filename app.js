@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-8";
+const appBuildVersion = "20261115-9";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8571,6 +8571,129 @@ function createReservationEditButton(reservationId, setId) {
   return button;
 }
 
+function getReceiptMovements(history, entry) {
+  if (entry.type !== "in" || !isReturnMovement(entry, history)) return [entry];
+  const chronological = [...history].sort((first, second) =>
+    parseHistoryTimestamp(first.date) - parseHistoryTimestamp(second.date) ||
+    (Number(String(first.id || "").match(/^history-(\d+)-/)?.[1]) || 0) -
+      (Number(String(second.id || "").match(/^history-(\d+)-/)?.[1]) || 0));
+  let checkout = null;
+  for (const movement of chronological) {
+    if (movement.type === "out") checkout = movement;
+    if (movement.type !== "in") continue;
+    if (movement.id === entry.id) {
+      return checkout && (!movement.reservationId || !checkout.reservationId ||
+        movement.reservationId === checkout.reservationId) ? [checkout, entry] : [entry];
+    }
+    checkout = null;
+  }
+  return [entry];
+}
+
+function openMovementReceipt(key, set, entry) {
+  const receiptWindow = window.open(new URL(`receipt.html?v=${appBuildVersion}`, location.href).href, "_blank");
+  if (!receiptWindow) {
+    alert("Autorisez l'ouverture d'une nouvelle page pour afficher le reçu.");
+    return;
+  }
+  receiptWindow.addEventListener("load", () => renderMovementReceipt(receiptWindow, key, set, entry), { once: true });
+}
+
+function renderMovementReceipt(receiptWindow, key, set, entry) {
+  const receipt = receiptWindow.document;
+
+  const element = (tag, className, value) => {
+    const node = receipt.createElement(tag);
+    if (className) node.className = className;
+    if (value !== undefined) node.textContent = value;
+    return node;
+  };
+  const addDetail = (parent, label, value) => {
+    const row = element("div", "receipt-detail");
+    row.append(element("span", "receipt-label", label), element("strong", "", String(value || "").trim() || "—"));
+    parent.append(row);
+  };
+  const toolbar = element("div", "receipt-toolbar");
+  const printButton = element("button", "", "Imprimer");
+  printButton.type = "button";
+  printButton.addEventListener("click", async () => {
+    await Promise.all([...receipt.images].map((image) => image.decode().catch(() => {})));
+    receiptWindow.print();
+  });
+  toolbar.append(printButton);
+  const page = element("main", "receipt-page");
+  const header = element("header", "receipt-header");
+  const logo = element("img", "receipt-logo");
+  logo.src = new URL("quialakey-opening-banner-20261025.webp", location.href).href;
+  logo.alt = "Quialakey";
+  const agency = element("p", "receipt-agency", tableSettings?.agencyName || configuredAgencyName);
+  const movements = getReceiptMovements(set.history || [], entry);
+  const hasReturn = movements.length === 2;
+  if (hasReturn) page.classList.add("has-return");
+  header.append(logo, agency, element("h1", "", hasReturn ? "Reçu de sortie et de retour des clés" : "Reçu de mouvement des clés"));
+  page.append(header);
+
+  const property = element("section", "receipt-section receipt-property");
+  property.append(element("h2", "", "Bien concerné"));
+  const propertyDetails = element("div", "receipt-details");
+  addDetail(propertyDetails, "Fiche et jeu", `${keyLabel(key)} · ${set.label}`);
+  addDetail(propertyDetails, "Registre", activeRegistry === "transaction" ? "Transaction" : "Location");
+  addDetail(propertyDetails, "Adresse", key.property);
+  addDetail(propertyDetails, "Code postal", key.postalCode);
+  addDetail(propertyDetails, "Ville", key.city);
+  if (key.owner || key.ownerFirstName) addDetail(propertyDetails, "Propriétaire", [key.ownerFirstName, key.owner].filter(Boolean).join(" "));
+  if (key.notes) addDetail(propertyDetails, "Notes", key.notes);
+  property.append(propertyDetails);
+  page.append(property);
+
+  movements.forEach((movement) => {
+    const action = getMovementActionLabel(movement, set.history || []);
+    const section = element("section", `receipt-section receipt-movement receipt-${movement.type}`);
+    section.append(element("h2", "", movement.type === "out" ? "Sortie des clés" :
+      movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour des clés" : action));
+    const details = element("div", "receipt-details");
+    addDetail(details, movement.signature ? "Signé le" : "Enregistré le", movement.date);
+    addDetail(details, "Intervenant", movement.person);
+    if (movement.company) addDetail(details, "Société", movement.company);
+    addDetail(details, "Téléphone", movement.phone);
+    if (movement.reservationDate) addDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
+    if (movement.note) addDetail(details, "Commentaire", movement.note.replace(/^Commentaire\s*:\s*/i, ""));
+    section.append(details);
+    const evidence = element("div", "receipt-evidence");
+    [["Photo", movement.movementPhoto], ["Signature", movement.signature]].forEach(([label, source]) => {
+      const frame = element("div", "receipt-evidence-frame");
+      frame.append(element("h3", "", label));
+      const visual = element("div", "receipt-evidence-visual");
+      if (source && /^data:image\//.test(source)) {
+        const image = element("img");
+        image.src = source;
+        image.alt = `${label} - ${action}`;
+        visual.append(image);
+      } else {
+        visual.append(element("span", "", label === "Photo" ? "Aucune photo enregistrée" : "Aucune signature enregistrée"));
+      }
+      frame.append(visual);
+      evidence.append(frame);
+    });
+    section.append(evidence);
+    page.append(section);
+  });
+  page.append(element("footer", "receipt-footer", "Quialakey · Reçu établi à partir de l'historique du tableau"));
+  receipt.body.append(toolbar, page);
+  receiptWindow.focus();
+}
+
+function createHistoryPrintButton(key, set, entry) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "history-print-button";
+  button.title = "Ouvrir le reçu imprimable";
+  button.setAttribute("aria-label", button.title);
+  button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg>';
+  button.addEventListener("click", () => openMovementReceipt(key, set, entry));
+  return button;
+}
+
 function compressPhotoFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -9510,6 +9633,8 @@ function renderPanel() {
     item.append(date);
     if (historySummary) {
       historySummary.append(date.cloneNode(true));
+      historySummary.classList.add("has-history-print");
+      historySummary.append(createHistoryPrintButton(key, selectedSet, entry));
       title.textContent = `${selectedSet.label} - ${title.textContent}`;
       activeReservationItems.push({
         item,
@@ -9518,6 +9643,8 @@ function renderPanel() {
       });
       if (shouldShowHistoryEntry) historyList.append(historySummary);
     } else if (shouldShowHistoryEntry) {
+      item.classList.add("has-history-print");
+      item.append(createHistoryPrintButton(key, selectedSet, entry));
       historyList.append(item);
     }
   });

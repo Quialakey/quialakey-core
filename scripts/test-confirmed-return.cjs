@@ -156,6 +156,57 @@ async function main() {
     assert.equal(await page.locator(".photo-viewer img").getAttribute("src"),
       await page.evaluate(() => window.__photoEvidence.movementPhoto));
     await page.locator(".photo-viewer-close").click();
+    const checkoutReceiptPromise = page.waitForEvent("popup");
+    await page.locator("#historyList .history-print-button").click();
+    const checkoutReceipt = await checkoutReceiptPromise;
+    await checkoutReceipt.locator(".receipt-page").waitFor();
+    assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
+    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des clés/);
+    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
+    assert.equal(await checkoutReceipt.locator(".receipt-movement img").count(), 2);
+    assert.equal(await checkoutReceipt.locator(".receipt-logo").getAttribute("src"),
+      `http://127.0.0.1:${server.address().port}/quialakey-opening-banner-20261025.webp`);
+    await checkoutReceipt.close();
+    await page.evaluate(() => {
+      const set = keys[0].sets[0];
+      set.status = "available";
+      set.history.unshift({ id: "history-1794754800000-return", type: "in", returnReason: "returned",
+        person: "Autre intervenant", phone: "0601020304", date: "15/11/2026 15:00",
+        ...window.__photoEvidence });
+      renderPanel();
+    });
+    assert.ok(await page.locator("#historyList .history-print-button").count() > 0);
+    const [returnReceipt] = await Promise.all([
+      page.waitForEvent("popup"), page.locator("#historyList .history-print-button").first().click(),
+    ]);
+    await returnReceipt.locator(".receipt-page").waitFor();
+    assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
+      ["Sortie des clés", "Retour des clés"]);
+    assert.equal(await returnReceipt.locator(".receipt-movement img").count(), 4);
+    assert.match(await returnReceipt.locator(".receipt-page").innerText(), /Autre intervenant/);
+    assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 14:00/);
+    assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 15:00/);
+    await returnReceipt.waitForFunction(() =>
+      getComputedStyle(document.querySelector(".receipt-page")).backgroundColor === "rgb(255, 255, 255)" &&
+      document.querySelector(".receipt-logo")?.naturalWidth > 0);
+    assert.equal(await returnReceipt.evaluate(() =>
+      document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    assert.deepEqual(await page.evaluate(() => {
+      const history = [
+        { id: "out-1", type: "out", date: "01/11/2026 10:00" },
+        { id: "in-1", type: "in", returnReason: "returned", date: "01/11/2026 11:00" },
+        { id: "out-2", type: "out", date: "02/11/2026 10:00" },
+        { id: "in-2", type: "in", returnReason: "returned", date: "02/11/2026 11:00" },
+      ];
+      return getReceiptMovements(history, history[3]).map((movement) => movement.id);
+    }), ["out-2", "in-2"]);
+    if (process.env.MOVEMENT_RECEIPT_SCREENSHOT) {
+      await returnReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_SCREENSHOT, fullPage: true });
+    }
+    if (process.env.MOVEMENT_RECEIPT_PDF) {
+      await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_PDF, format: "A4", printBackground: true });
+    }
+    await returnReceipt.close();
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
       assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
