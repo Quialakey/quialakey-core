@@ -33,7 +33,26 @@ async function main() {
   assert.deepEqual(requestedUrls, [futureRequest.url]);
   assert.equal(await (await cache.match(futureRequest)).text(), "new stylesheet");
   assert.equal(await (await cache.match(currentRequest)).text(), "old stylesheet");
-  console.log("Versioned assets bypass stale service-worker CSS.");
+
+  const rootRequest = new Request(base);
+  cacheEntries.set(rootRequest.url, new Response("<main>tableau</main>", { status: 200 }));
+  context.fetch = async () => new Response("<main>attestation</main>", { status: 200 });
+  const receiptRequest = new Request(`${base}receipt.html?v=${version}`);
+  const receipt = await context.serveNavigation(receiptRequest, new URL(receiptRequest.url), { waitUntil() {} });
+  assert.equal(await receipt.text(), "<main>attestation</main>");
+  assert.equal(await (await cache.match(rootRequest)).text(), "<main>tableau</main>");
+  assert.equal(await (await cache.match(receiptRequest)).text(), "<main>attestation</main>");
+
+  context.fetch = async () => { throw new Error("offline"); };
+  const uncachedReceipt = new Request(`${base}receipt.html?v=uncached`);
+  await assert.rejects(context.serveNavigation(uncachedReceipt, new URL(uncachedReceipt.url), { waitUntil() {} }),
+    /Page indisponible/);
+
+  context.fetch = async () => new Response("<main>nouveau tableau</main>", { status: 200 });
+  const indexRequest = new Request(`${base}index.html?v=${version}`);
+  await context.serveNavigation(indexRequest, new URL(indexRequest.url), { waitUntil() {} });
+  assert.equal(await (await cache.match(rootRequest)).text(), "<main>nouveau tableau</main>");
+  console.log("Versioned assets and receipt navigation keep the table cache intact.");
 }
 
 main().catch((error) => {

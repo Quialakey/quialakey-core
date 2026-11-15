@@ -1,6 +1,6 @@
 const workerUrl = new URL(self.location.href);
 const agencyCacheId = String(workerUrl.searchParams.get("agency") || "default-agency").replace(/[^a-z0-9-]/gi, "-");
-const appVersion = "20261115-20";
+const appVersion = "20261115-21";
 const runtimeCachePrefix = `quialakey-runtime-${agencyCacheId}-`;
 const runtimeCacheName = `${runtimeCachePrefix}${appVersion}`;
 const workerBaseUrl = new URL("./", self.location.href);
@@ -108,11 +108,14 @@ async function serveCoreAsset(request, url, event) {
 async function serveNavigation(request, url, event) {
   const cache = await caches.open(runtimeCacheName);
   const rootRequest = new Request(getScopedUrl("./"));
-  const cached = (await cache.match(request)) || (await cache.match(rootRequest));
+  const isRootPage = url.pathname === workerBaseUrl.pathname ||
+    url.pathname === new URL("index.html", workerBaseUrl).pathname;
+  const cached = (await cache.match(request)) || (isRootPage ? await cache.match(rootRequest) : null);
   const refresh = fetchWithTimeout(request)
     .then(async (response) => {
       if (response?.ok) {
-        await Promise.all([cache.put(request, response.clone()), cache.put(rootRequest, response.clone())]);
+        await cache.put(request, response.clone());
+        if (isRootPage) await cache.put(rootRequest, response.clone());
       }
       return response;
     })
