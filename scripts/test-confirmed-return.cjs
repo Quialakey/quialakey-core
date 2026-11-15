@@ -175,7 +175,7 @@ async function main() {
     const checkoutReceipt = await checkoutReceiptPromise;
     await checkoutReceipt.locator(".receipt-page").waitFor();
     assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
-    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des clés/);
+    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des jeux de clés/);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Code postal/);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Registre|Propriétaire/);
@@ -201,8 +201,9 @@ async function main() {
       page.waitForEvent("popup"), page.locator("#historyList .history-print-button").first().click(),
     ]);
     await returnReceipt.locator(".receipt-page").waitFor();
+    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "Reçu de jeux de clés");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
-      ["Sortie des clés", "Retour des clés"]);
+      ["Sortie des jeux de clés", "Retour des jeux de clés"]);
     assert.equal(await returnReceipt.locator(".receipt-movement img").count(), 4);
     await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => image.decode());
     assert.equal(await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => {
@@ -217,6 +218,8 @@ async function main() {
     assert.match(await returnReceipt.locator(".receipt-footer").innerText(),
       /Quialakey - Outils de gestion des clés immobilières\s+www\.quialakey\.com/);
     assert.equal(await returnReceipt.locator(".receipt-footer a").evaluate((link) => link.href), "https://www.quialakey.com/");
+    assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
+      getComputedStyle(footer).whiteSpace), "nowrap");
     await returnReceipt.waitForFunction(() =>
       getComputedStyle(document.querySelector(".receipt-page")).backgroundColor === "rgb(255, 255, 255)" &&
       document.querySelector(".receipt-logo")?.naturalWidth > 0);
@@ -229,7 +232,9 @@ async function main() {
     assert.ok(compactSize.page < 950 && compactSize.evidence >= 140);
     assert.deepEqual(await returnReceipt.evaluate(() => [".receipt-property", ".receipt-out", ".receipt-in"]
       .map((selector) => getComputedStyle(document.querySelector(selector)).backgroundColor)),
-      ["rgb(229, 231, 230)", "rgb(242, 206, 200)", "rgb(202, 235, 213)"]);
+      ["rgba(216, 220, 216, 0.35)", "rgba(242, 206, 200, 0.35)", "rgba(202, 235, 213, 0.35)"]);
+    assert.equal(await page.locator("#historyList .history-print-button").first().evaluate((button) =>
+      getComputedStyle(button).backgroundColor), "rgba(255, 255, 255, 0.28)");
     assert.deepEqual(await page.evaluate(() => {
       const history = [
         { id: "out-1", type: "out", date: "01/11/2026 10:00" },
@@ -244,6 +249,10 @@ async function main() {
     }
     if (process.env.MOVEMENT_RECEIPT_DESKTOP_SCREENSHOT) {
       await returnReceipt.setViewportSize({ width: 1280, height: 900 });
+      assert.equal(await returnReceipt.locator(".receipt-page").evaluate((pageElement) => {
+        const pageBounds = pageElement.getBoundingClientRect();
+        return Math.abs(pageBounds.width / pageBounds.height - 210 / 297) < 0.01;
+      }), true);
       await returnReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_DESKTOP_SCREENSHOT, fullPage: true });
     }
     if (process.env.MOVEMENT_RECEIPT_PDF) {

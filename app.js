@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-13";
+const appBuildVersion = "20261115-14";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8662,7 +8662,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(logo, agency, element("h1", "", "Reçu de clés"));
+  header.append(logo, agency, element("h1", "", "Reçu de jeux de clés"));
   page.append(header);
 
   const property = element("section", "receipt-section receipt-property");
@@ -8679,8 +8679,8 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   movements.forEach((movement) => {
     const action = getMovementActionLabel(movement, set.history || []);
     const section = element("section", `receipt-section receipt-movement receipt-${movement.type}`);
-    section.append(element("h2", "", movement.type === "out" ? "Sortie des clés" :
-      movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour des clés" : action));
+    section.append(element("h2", "", movement.type === "out" ? "Sortie des jeux de clés" :
+      movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour des jeux de clés" : action));
     const details = element("div", "receipt-details");
     addDetail(details, movement.signature ? "Signé le" : "Enregistré le", movement.date);
     addDetail(details, "Intervenant", movement.person);

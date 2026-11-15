@@ -21,7 +21,7 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  max-width: 190mm;
+  max-width: 210mm;
   margin: 0 auto 6px;
   padding: 6px 0;
   background: #e9edeb;
@@ -52,9 +52,12 @@ body {
 }
 
 .receipt-page {
-  width: 190mm;
+  display: flex;
+  flex-direction: column;
+  width: 210mm;
+  min-height: 297mm;
   margin: 0 auto 18px;
-  padding: 7mm;
+  padding: 10mm;
   border: 1px solid #d4ddd6;
   background: #fff;
   box-shadow: 0 2px 12px #1538281a;
@@ -107,7 +110,7 @@ h1 {
 
 .receipt-property {
   border-color: #b9c1bc;
-  background: #e5e7e6;
+  background: rgba(216, 220, 216, 0.35);
 }
 
 .receipt-property h2 {
@@ -118,7 +121,7 @@ h1 {
 
 .receipt-out {
   border-color: #ce6a60;
-  background: #f2cec8;
+  background: rgba(242, 206, 200, 0.35);
 }
 
 .receipt-out h2 {
@@ -129,7 +132,7 @@ h1 {
 
 .receipt-in {
   border-color: #55aa73;
-  background: #caebd5;
+  background: rgba(202, 235, 213, 0.35);
 }
 
 .receipt-in h2 {
@@ -205,13 +208,17 @@ h1 {
 }
 
 .receipt-footer {
-  display: grid;
-  gap: 1mm;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2mm;
+  margin-top: auto;
   padding-top: 1mm;
   border-top: 1px solid #d5dfd8;
   color: #42564b;
   font-size: 9px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .receipt-footer a {
@@ -226,6 +233,7 @@ h1 {
 
   .receipt-page {
     width: 100%;
+    min-height: 0;
     padding: 14px;
   }
 
@@ -279,6 +287,7 @@ h1 {
 
   .receipt-page {
     width: auto;
+    min-height: 274mm;
     margin: 0;
     padding: 0;
     border: 0;

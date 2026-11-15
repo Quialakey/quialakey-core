@@ -3311,7 +3311,7 @@ body.is-moving-key .photo-hover {
   border: 1px solid #74847c;
   border-radius: 6px;
   color: var(--ink);
-  background: #edf1ee;
+  background: rgba(255, 255, 255, 0.28);
   cursor: pointer;
 }
 
