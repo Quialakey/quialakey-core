@@ -256,7 +256,13 @@ async function main() {
     assert.match(await returnReceipt.locator(".receipt-footer").innerText(),
       /Quialakey - Outils de gestion des clés immobilières\s+-\s+www\.quialakey\.com/);
     assert.equal(await returnReceipt.locator(".receipt-section h2").evaluateAll((titles) =>
-      titles.every((title) => getComputedStyle(title).textAlign === "center")), true);
+      titles.every((title) => getComputedStyle(title).textAlign === "left")), true);
+    await returnReceipt.locator(".receipt-logo").evaluate((logo) => logo.decode());
+    assert.equal(await returnReceipt.locator(".receipt-logo").evaluate((logo) => {
+      const image = logo.getBoundingClientRect();
+      const masthead = logo.parentElement.getBoundingClientRect();
+      return Math.abs(image.top + image.height / 2 - masthead.top - masthead.height / 2) < 1;
+    }), true);
     assert.equal(await returnReceipt.locator(".receipt-footer a").evaluate((link) => link.href), "https://www.quialakey.com/");
     assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
       getComputedStyle(footer).whiteSpace), "nowrap");
@@ -304,8 +310,7 @@ async function main() {
     if (process.env.MOVEMENT_RECEIPT_PDF) {
       await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_PDF, format: "A4", printBackground: true });
     }
-    const mobilePrintMarkup = process.env.MOVEMENT_RECEIPT_MOBILE_PDF
-      ? await returnReceipt.locator("body").innerHTML() : null;
+    let mobilePrintMarkup = null;
     const receiptClosed = returnReceipt.waitForEvent("close");
     await returnReceipt.locator(".receipt-close-button").click();
     await receiptClosed;
@@ -317,6 +322,16 @@ async function main() {
     await page.locator("#historyList .history-print-button").first().click();
     const mobileReceipt = page.frameLocator(".receipt-preview-dialog iframe");
     await mobileReceipt.locator(".receipt-page").waitFor();
+    if (process.env.MOVEMENT_RECEIPT_MOBILE_PDF) {
+      mobilePrintMarkup = await mobileReceipt.locator("body").innerHTML();
+    }
+    assert.equal(await mobileReceipt.locator(".receipt-page").evaluate((receiptPage) => {
+      const stage = receiptPage.parentElement.getBoundingClientRect();
+      const page = receiptPage.getBoundingClientRect();
+      return receiptPage.offsetWidth >= 790 && page.width <= window.innerWidth &&
+        Math.abs(stage.width - page.width) < 2 &&
+        Math.abs(receiptPage.offsetWidth / receiptPage.offsetHeight - 210 / 297) < 0.01;
+    }), true);
     if (process.env.MOVEMENT_RECEIPT_IN_APP_SCREENSHOT) {
       await page.screenshot({ path: process.env.MOVEMENT_RECEIPT_IN_APP_SCREENSHOT });
     }
@@ -372,6 +387,16 @@ async function main() {
     const closeBounds = await touchPage.locator(".receipt-preview-back-button").boundingBox();
     assert.ok(printBounds.y >= 48 && printBounds.height >= 44);
     assert.ok(closeBounds.y >= 48 && closeBounds.width >= 44 && closeBounds.height >= 44);
+    assert.equal(await touchPage.locator(".receipt-preview-back-button").evaluate((button) =>
+      getComputedStyle(button).webkitTapHighlightColor), "rgba(0, 0, 0, 0)");
+    await touchPage.locator(".receipt-preview-zoom-button").tap();
+    assert.equal(await touchPage.locator(".receipt-preview-zoom-button").getAttribute("aria-label"),
+      "Afficher la page entière");
+    assert.ok(await touchReceipt.locator(".receipt-preview-stage").evaluate((stage) =>
+      stage.getBoundingClientRect().width >= 790));
+    await touchPage.locator(".receipt-preview-zoom-button").tap();
+    assert.ok(await touchReceipt.locator(".receipt-preview-stage").evaluate((stage) =>
+      stage.getBoundingClientRect().width <= window.innerWidth));
     assert.equal(await touchPage.evaluate(() => {
       enterCloudSleep();
       return isCloudSleeping || !isReceiptPreviewOpen();
@@ -386,6 +411,13 @@ async function main() {
     await touchPage.setViewportSize({ width: 320, height: 568 });
     await touchPage.locator("#historyList .history-print-button").tap();
     await touchPage.frameLocator(".receipt-preview-dialog iframe").locator(".receipt-page").waitFor();
+    assert.equal(await touchPage.frameLocator(".receipt-preview-dialog iframe").locator(".receipt-page")
+      .evaluate((receiptPage) => {
+        const page = receiptPage.getBoundingClientRect();
+        const stage = receiptPage.parentElement.getBoundingClientRect();
+        return receiptPage.offsetWidth >= 790 && page.width <= window.innerWidth &&
+          Math.abs(stage.width - page.width) < 2;
+      }), true);
     assert.equal(await touchPage.frameLocator(".receipt-preview-dialog iframe").locator("body")
       .evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
     assert.ok((await touchPage.locator(".receipt-preview-back-button").boundingBox()).width >= 44);
@@ -405,7 +437,10 @@ async function main() {
     if (mobilePrintMarkup) {
       const mobilePrintPage = await touchContext.newPage();
       await mobilePrintPage.goto(`http://127.0.0.1:${server.address().port}/receipt.html`);
-      await mobilePrintPage.locator("body").evaluate((body, markup) => { body.innerHTML = markup; }, mobilePrintMarkup);
+      await mobilePrintPage.locator("body").evaluate((body, markup) => {
+        body.classList.add("receipt-in-app");
+        body.innerHTML = markup;
+      }, mobilePrintMarkup);
       await mobilePrintPage.locator(".receipt-logo").evaluate((logo) => logo.decode());
       await mobilePrintPage.pdf({ path: process.env.MOVEMENT_RECEIPT_MOBILE_PDF,
         format: "A4", printBackground: true });

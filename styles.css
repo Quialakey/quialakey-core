@@ -3361,7 +3361,26 @@ body.is-moving-key .photo-hover {
   color: #24352c;
   background: #f5f7f5;
   font: 700 13px Arial, sans-serif;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
   cursor: pointer;
+}
+
+.receipt-preview-controls button:focus {
+  outline: none;
+}
+
+.receipt-preview-controls button:focus-visible {
+  outline: 2px solid #3f3f3f;
+  outline-offset: 2px;
+}
+
+.receipt-preview-controls .receipt-preview-zoom-button {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .receipt-preview-controls .receipt-preview-print-button {

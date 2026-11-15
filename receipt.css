@@ -55,6 +55,16 @@ body {
   display: none;
 }
 
+.receipt-in-app .receipt-preview-stage {
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.receipt-in-app .receipt-page {
+  margin: 0;
+  transform-origin: top left;
+}
+
 .receipt-page {
   display: flex;
   flex-direction: column;
@@ -92,6 +102,7 @@ body {
 
 .receipt-logo {
   display: block;
+  align-self: center;
   width: 50mm;
   height: auto;
   margin: 0;
@@ -148,7 +159,7 @@ h1 {
   color: #18513a;
   background: #f5f8f6;
   font-size: 13px;
-  text-align: center;
+  text-align: left;
 }
 
 .receipt-property {
@@ -280,55 +291,55 @@ h1 {
     padding: 6px 12px;
   }
 
-  .receipt-page {
+  body:not(.receipt-in-app) .receipt-page {
     width: 100%;
     min-height: 0;
     padding: 14px;
   }
 
-  .receipt-header,
-  .receipt-property,
-  .has-return .receipt-out {
+  body:not(.receipt-in-app) .receipt-header,
+  body:not(.receipt-in-app) .receipt-property,
+  body:not(.receipt-in-app) .has-return .receipt-out {
     margin-bottom: 6mm;
   }
 
-  .receipt-masthead {
+  body:not(.receipt-in-app) .receipt-masthead {
     grid-template-columns: minmax(0, 42mm) minmax(0, 1fr);
     gap: 4mm;
   }
 
-  .receipt-logo,
-  .has-return .receipt-logo {
+  body:not(.receipt-in-app) .receipt-logo,
+  body:not(.receipt-in-app) .has-return .receipt-logo {
     width: 42mm;
     max-width: 100%;
   }
 
-  .receipt-section h2 {
+  body:not(.receipt-in-app) .receipt-section h2 {
     font-size: 13px;
   }
 
-  .receipt-label,
-  .receipt-evidence-frame h3 {
+  body:not(.receipt-in-app) .receipt-label,
+  body:not(.receipt-in-app) .receipt-evidence-frame h3 {
     font-size: 11px;
   }
 
-  .receipt-detail strong {
+  body:not(.receipt-in-app) .receipt-detail strong {
     font-size: 12px;
   }
 
-  .receipt-detail.has-company {
+  body:not(.receipt-in-app) .receipt-detail.has-company {
     grid-column: 1 / -1;
   }
 
 }
 
 @media screen and (max-width: 360px) {
-  .receipt-masthead {
+  body:not(.receipt-in-app) .receipt-masthead {
     grid-template-columns: minmax(0, 35mm) minmax(0, 1fr);
   }
 
-  .receipt-logo,
-  .has-return .receipt-logo {
+  body:not(.receipt-in-app) .receipt-logo,
+  body:not(.receipt-in-app) .has-return .receipt-logo {
     width: 35mm;
   }
 }
@@ -368,7 +379,15 @@ h1 {
     display: none;
   }
 
-  .receipt-page {
+  .receipt-in-app .receipt-preview-stage {
+    width: 190mm !important;
+    height: auto !important;
+    margin: 0;
+    overflow: visible;
+  }
+
+  .receipt-page,
+  .receipt-in-app .receipt-page {
     width: 190mm;
     min-width: 190mm;
     min-height: 274mm;
@@ -376,6 +395,7 @@ h1 {
     padding: 0;
     border: 0;
     box-shadow: none;
+    transform: none !important;
   }
 
   .receipt-masthead,

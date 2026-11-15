@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-21";
+const appBuildVersion = "20261115-23";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8614,6 +8614,7 @@ function openMovementReceipt(key, set, entry) {
     const frame = document.createElement("iframe");
     const controls = document.createElement("div");
     const backButton = document.createElement("button");
+    const zoomButton = document.createElement("button");
     const printButton = document.createElement("button");
     const returnFocus = document.activeElement;
     dialog.className = "receipt-preview-dialog";
@@ -8623,6 +8624,20 @@ function openMovementReceipt(key, set, entry) {
     backButton.type = "button";
     backButton.textContent = "Retour au tableau";
     backButton.addEventListener("click", () => dialog.close());
+    zoomButton.className = "receipt-preview-zoom-button";
+    zoomButton.type = "button";
+    zoomButton.textContent = "+";
+    zoomButton.title = "Agrandir l'attestation";
+    zoomButton.setAttribute("aria-label", zoomButton.title);
+    zoomButton.addEventListener("click", () => {
+      const stage = frame.contentDocument.querySelector(".receipt-preview-stage");
+      if (!stage) return;
+      const zoomed = stage.classList.toggle("is-zoomed");
+      zoomButton.textContent = zoomed ? "−" : "+";
+      zoomButton.title = zoomed ? "Afficher la page entière" : "Agrandir l'attestation";
+      zoomButton.setAttribute("aria-label", zoomButton.title);
+      frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("resize"));
+    });
     printButton.className = "receipt-preview-print-button";
     printButton.type = "button";
     printButton.textContent = "Imprimer";
@@ -8631,7 +8646,7 @@ function openMovementReceipt(key, set, entry) {
       await Promise.all([...frame.contentDocument.images].map((image) => image.decode().catch(() => {})));
       frame.contentWindow.print();
     });
-    controls.append(backButton, printButton);
+    controls.append(backButton, zoomButton, printButton);
     frame.title = "Attestation de remise de clés imprimable";
     frame.src = receiptUrl;
     frame.addEventListener("load", () => {
@@ -8771,7 +8786,21 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   footer.append(element("strong", "", "Quialakey - Outils de gestion des clés immobilières"),
     element("span", "", "-"), website);
   page.append(footer);
-  receipt.body.append(toolbar, page);
+  if (embedded) {
+    const stage = element("div", "receipt-preview-stage");
+    stage.append(page);
+    receipt.body.append(toolbar, stage);
+    const fitPage = () => {
+      const scale = stage.classList.contains("is-zoomed") ? 1 :
+        Math.min(1, (receipt.documentElement.clientWidth - 12) / page.offsetWidth);
+      stage.style.width = `${Math.ceil(page.offsetWidth * scale)}px`;
+      stage.style.height = `${Math.ceil(page.offsetHeight * scale)}px`;
+      page.style.transform = `scale(${scale})`;
+    };
+    receiptWindow.addEventListener("resize", fitPage);
+    if (receiptWindow.ResizeObserver) new receiptWindow.ResizeObserver(fitPage).observe(page);
+    fitPage();
+  } else receipt.body.append(toolbar, page);
   if (!embedded) receiptWindow.focus();
 }
 
