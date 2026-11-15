@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-3";
+const appBuildVersion = "20261115-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9395,13 +9395,30 @@ function renderPanel() {
       note.textContent = `Commentaire : ${formatSentenceStart(normalizedComment)}`;
       item.append(note);
     }
+    let signature = null;
     if (entry.signature) {
-      const signature = document.createElement("img");
+      signature = document.createElement("img");
       signature.className = "history-signature";
       signature.src = entry.signature;
       signature.alt = `Signature ${entry.type === "out" ? "Sorti" : "Entr\u00e9"}`;
-      item.append(signature);
     }
+    if (entry.movementPhoto) {
+      const evidence = document.createElement("div");
+      const photoButton = document.createElement("button");
+      const photo = document.createElement("img");
+      evidence.className = `history-evidence${signature ? " has-signature" : ""}`;
+      photoButton.type = "button";
+      photoButton.className = "history-movement-photo";
+      photoButton.title = "Afficher la photo du mouvement";
+      photoButton.setAttribute("aria-label", photoButton.title);
+      photo.src = entry.movementPhoto;
+      photo.alt = `Photo du mouvement du ${selectedSet.label}`;
+      photoButton.append(photo);
+      photoButton.addEventListener("click", () => openPhotoViewer(entry.movementPhoto, `${selectedSet.label} - ${keyLabel(key)}`));
+      evidence.append(photoButton);
+      if (signature) evidence.append(signature);
+      item.append(evidence);
+    } else if (signature) item.append(signature);
     let historySummary = null;
     if (activeReservation) {
       historySummary = item.cloneNode(true);
@@ -9946,8 +9963,9 @@ async function addMovement(type, options = {}) {
   if (type === "out" && !ensureTypedMovementPhone("Sorti")) return;
   if (type !== "out" && !isReturningAfterCheckout && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
   if (type === "out") checkoutSets.forEach((set) => showCheckoutReservationWarning(set));
-  const signature = await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9");
-  if (signature === null) return;
+  const evidence = normalizeMovementSignatureResult(
+    await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9"));
+  if (!evidence) return;
   if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
     getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id ||
     (type === "out" && getSelectedMovementSets(getSelectedKey()).map((set) => set.id).join() !== checkoutSetIds.join())) return;
@@ -9959,7 +9977,8 @@ async function addMovement(type, options = {}) {
     company: forcedCompany || formatCompanyName(movementCompanyInput.value).trim(),
     phone: formatPhoneNumber(forcedPhone || movementPhoneInput.value),
     note: formatSentenceStart(options.note ?? movementNoteInput.value).trim(),
-    signature,
+    signature: evidence.signature,
+    movementPhoto: evidence.movementPhoto,
     returnReason: type === "in" && isReturningAfterCheckout ? "returned" : "created",
     date: new Intl.DateTimeFormat("fr-FR", {
       dateStyle: "short",
@@ -10170,6 +10189,10 @@ function canvasHasInk(canvas) {
 function promptMovementSignature(actionLabel) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
+    const photoField = document.createElement("div");
+    const photoButton = document.createElement("button");
+    const photoInput = document.createElement("input");
+    const photoPreview = document.createElement("img");
     const title = document.createElement("h3");
     const field = document.createElement("div");
     const label = document.createElement("div");
@@ -10178,10 +10201,68 @@ function promptMovementSignature(actionLabel) {
     const actions = document.createElement("div");
     const cancelButton = document.createElement("button");
     const validateButton = document.createElement("button");
+    let movementPhoto = "";
+    let photoImportActive = false;
+    const canPhotographMovement = ["Sorti", "Entr\u00e9", "Rentr\u00e9"].includes(actionLabel);
 
     dialog.className = "movement-signature-dialog";
     dialog.addEventListener("pointerdown", (event) => event.stopPropagation());
     dialog.addEventListener("click", (event) => event.stopPropagation());
+    if (canPhotographMovement) {
+      photoField.className = "movement-photo-field";
+      photoButton.type = "button";
+      photoButton.className = "movement-photo-button";
+      photoButton.textContent = "Prendre une photo";
+      photoInput.type = "file";
+      photoInput.className = "movement-photo-input";
+      photoInput.accept = "image/*";
+      photoInput.setAttribute("capture", "environment");
+      photoInput.hidden = true;
+      photoPreview.className = "movement-photo-preview";
+      photoPreview.alt = "Photo prise pour ce mouvement";
+      photoPreview.hidden = true;
+      photoButton.addEventListener("click", () => photoInput.click());
+      photoInput.addEventListener("click", (event) => {
+        photoImportActive = true;
+        beginPhotoImport(event);
+      });
+      photoInput.addEventListener("cancel", () => {
+        if (photoImportActive) {
+          photoImportActive = false;
+          finishPhotoImport();
+        }
+      });
+      photoInput.addEventListener("change", async () => {
+        const file = photoInput.files?.[0];
+        if (!file) {
+          if (photoImportActive) {
+            photoImportActive = false;
+            finishPhotoImport();
+          }
+          return;
+        }
+        validateButton.disabled = true;
+        photoButton.disabled = true;
+        try {
+          const photo = await compressPhotoFile(file);
+          if (!dialog.open) return;
+          movementPhoto = photo;
+          photoPreview.src = photo;
+          photoPreview.hidden = false;
+          photoButton.textContent = "Reprendre une photo";
+        } catch {
+          alert("La photo n'a pas pu \u00eatre import\u00e9e. R\u00e9essayez.");
+        } finally {
+          validateButton.disabled = false;
+          photoButton.disabled = false;
+          if (photoImportActive) {
+            photoImportActive = false;
+            finishPhotoImport();
+          }
+        }
+      });
+      photoField.append(photoButton, photoPreview, photoInput);
+    }
     title.textContent = `Signature - ${actionLabel}`;
     field.className = "movement-signature-field";
     label.className = "movement-signature-label";
@@ -10206,13 +10287,14 @@ function promptMovementSignature(actionLabel) {
     validateButton.addEventListener("click", () => {
       const signature = canvasHasInk(canvas) ? canvas.toDataURL("image/png") : "";
       dialog.close("validate");
-      resolve(signature);
+      resolve({ signature, movementPhoto });
     });
 
     label.append(clearButton);
     field.append(label, canvas);
     actions.className = "movement-signature-actions";
     actions.append(cancelButton, validateButton);
+    if (canPhotographMovement) dialog.append(photoField);
     dialog.append(title, field, actions);
     document.body.append(dialog);
     setupInlineSignatureCanvas(canvas);
@@ -10220,12 +10302,23 @@ function promptMovementSignature(actionLabel) {
       "close",
       () => {
         if (dialog.returnValue !== "validate") resolve(null);
+        if (photoImportActive) {
+          photoImportActive = false;
+          finishPhotoImport();
+        }
         dialog.remove();
       },
       { once: true },
     );
     dialog.showModal();
   });
+}
+
+function normalizeMovementSignatureResult(result) {
+  if (result === null) return null;
+  return typeof result === "string"
+    ? { signature: result, movementPhoto: "" }
+    : { signature: result.signature || "", movementPhoto: result.movementPhoto || "" };
 }
 
 async function toggleReservationMovement(reservationId, movementButton = null) {
@@ -10243,8 +10336,8 @@ async function toggleReservationMovement(reservationId, movementButton = null) {
 
   const isReservationOut = selectedSet.status === "out" && selectedSet.holderReservationId === reservationId;
   if (!isReservationOut) showCheckoutReservationWarning(selectedSet, reservationId);
-  const signature = await promptMovementSignature(isReservationOut ? "Rentr\u00e9" : "Sorti");
-  if (signature === null) return;
+  const evidence = normalizeMovementSignatureResult(await promptMovementSignature(isReservationOut ? "Rentr\u00e9" : "Sorti"));
+  if (!evidence) return;
   if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
     getSelectedKey()?.id !== key.id ||
     getSetForReservation(getSelectedKey(), reservationId)?.id !== selectedSet.id) return;
@@ -10260,7 +10353,8 @@ async function toggleReservationMovement(reservationId, movementButton = null) {
     phone: formatPhoneNumber(reservation.phone || ""),
     reservationMovement,
     note: inlineComment ? `Commentaire : ${inlineComment}` : "",
-    signature,
+    signature: evidence.signature,
+    movementPhoto: evidence.movementPhoto,
     returnReason: isReservationOut ? "returned" : "",
     date: getMovementDateText(),
     reservationId,
@@ -10444,8 +10538,8 @@ async function archiveReservationKey(reservationId) {
     : getTypedMovementActor();
   const confirmed = confirm(`Archiver ${keyLabel(key)} et lib\u00e9rer la case ?`);
   if (!confirmed) return;
-  const signature = await promptMovementSignature(actionLabel);
-  if (signature === null) return;
+  const evidence = normalizeMovementSignatureResult(await promptMovementSignature(actionLabel));
+  if (!evidence) return;
   rememberUndoStep();
 
   const archivedAt = new Date().toISOString();
@@ -10457,7 +10551,7 @@ async function archiveReservationKey(reservationId) {
     company: archiveActor.company,
     phone: archiveActor.phone,
     note: formatSentenceStart(getInlineReservationComment(reservationId)).trim(),
-    signature,
+    signature: evidence.signature,
     date: getMovementDateText(),
     reservationId,
   };
@@ -10876,8 +10970,8 @@ async function archiveSelectedKey(reason) {
 
   const confirmed = confirm(`${actionLabel} ${keyLabel(key)} et libérer la case ?`);
   if (!confirmed) return;
-  const signature = await promptMovementSignature(actionLabel);
-  if (signature === null) return;
+  const evidence = normalizeMovementSignatureResult(await promptMovementSignature(actionLabel));
+  if (!evidence) return;
   if (!beginKeyControlAction(reason === "rented" || reason === "sold" ? rentedBtn : removedBtn)) return;
   try {
     rememberUndoStep();
@@ -10894,7 +10988,7 @@ async function archiveSelectedKey(reason) {
             company: archiveActor.company || "",
             phone: formatPhoneNumber(archiveActor.phone || ""),
             note: formatSentenceStart(movementNoteInput.value).trim(),
-            signature,
+            signature: evidence.signature,
             date: new Intl.DateTimeFormat("fr-FR", {
               dateStyle: "short",
               timeStyle: "short",

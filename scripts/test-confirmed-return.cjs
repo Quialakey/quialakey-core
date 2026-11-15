@@ -54,6 +54,84 @@ async function main() {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => typeof confirmReturnedSetMovement === "function" &&
       hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
+    await page.evaluate(() => { window.__photoPrompt = promptMovementSignature("Sorti"); });
+    assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
+    const makePhotoBuffer = async (color) => Buffer.from(await page.evaluate((fill) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 120;
+      canvas.height = 90;
+      const context = canvas.getContext("2d");
+      context.fillStyle = fill;
+      context.fillRect(0, 0, 120, 90);
+      return canvas.toDataURL("image/png").split(",")[1];
+    }, color), "base64");
+    const capturePhoto = async (color) => {
+      const chooserPromise = page.waitForEvent("filechooser");
+      await page.locator(".movement-photo-button").click();
+      await (await chooserPromise).setFiles({ name: "cles.png", mimeType: "image/png", buffer: await makePhotoBuffer(color) });
+      await page.waitForFunction(() => document.querySelector(".movement-photo-button")?.textContent === "Reprendre une photo" &&
+        !isPhotoImporting);
+    };
+    await capturePhoto("#cc4455");
+    const firstPhoto = await page.locator(".movement-photo-preview").getAttribute("src");
+    assert.match(firstPhoto, /^data:image\/jpeg;base64,/);
+    await capturePhoto("#336699");
+    assert.notEqual(await page.locator(".movement-photo-preview").getAttribute("src"), firstPhoto);
+    await page.locator(".movement-signature-canvas").evaluate((canvas) => {
+      const context = canvas.getContext("2d");
+      context.beginPath();
+      context.moveTo(10, 10);
+      context.lineTo(100, 60);
+      context.stroke();
+    });
+    if (process.env.MOVEMENT_PHOTO_DIALOG_SCREENSHOT) {
+      await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MOVEMENT_PHOTO_DIALOG_SCREENSHOT });
+    }
+    await page.locator(".movement-signature-validate").click();
+    const photoEvidence = await page.evaluate(async () => {
+      window.__photoEvidence = await window.__photoPrompt;
+      return { signature: window.__photoEvidence.signature.slice(0, 22),
+        movementPhoto: window.__photoEvidence.movementPhoto.slice(0, 23) };
+    });
+    assert.match(photoEvidence.signature, /^data:image\/png;base64/);
+    assert.match(photoEvidence.movementPhoto, /^data:image\/jpeg;base64/);
+    await page.evaluate(() => {
+      const key = normalizeKey({ id: "T2-1", category: "T2", number: 1, owner: "TEST", property: "1 rue Test",
+        sets: [{ ...makeKeySet("main"), status: "out", holder: "Test",
+          history: [{ id: "photo-movement", type: "out", person: "Test", date: "15/11/2026 14:00",
+            ...window.__photoEvidence }] }] });
+      keys = [key];
+      selectedId = key.id;
+      selectedSetId = "main";
+      renderPanel();
+    });
+    await page.locator("#keyHistoryToggleBtn").click();
+    const evidenceSizes = await page.locator("#historyList .history-evidence").evaluate((row) => ({
+      photo: row.querySelector(".history-movement-photo").getBoundingClientRect().height,
+      signature: row.querySelector(".history-signature").getBoundingClientRect().height,
+    }));
+    assert.equal(evidenceSizes.photo, evidenceSizes.signature);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const desktopEvidenceSizes = await page.locator("#historyList .history-evidence").evaluate((row) => ({
+      photo: row.querySelector(".history-movement-photo").getBoundingClientRect().height,
+      signature: row.querySelector(".history-signature").getBoundingClientRect().height,
+    }));
+    assert.equal(desktopEvidenceSizes.photo, desktopEvidenceSizes.signature);
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (process.env.MOVEMENT_PHOTO_HISTORY_SCREENSHOT) {
+      await page.locator("#historyList .history-evidence").screenshot({ path: process.env.MOVEMENT_PHOTO_HISTORY_SCREENSHOT });
+    }
+    await page.locator("#historyList .history-movement-photo").click();
+    assert.equal(await page.locator(".photo-viewer").isVisible(), true);
+    assert.equal(await page.locator(".photo-viewer img").getAttribute("src"),
+      await page.evaluate(() => window.__photoEvidence.movementPhoto));
+    await page.locator(".photo-viewer-close").click();
+    for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
+      await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
+      assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
+      await page.locator(".movement-signature-cancel").click();
+      assert.equal(await page.evaluate(() => window.__photoPrompt), null);
+    }
     const sameSlotWithReorderedFields = await page.evaluate(() => {
       const local = normalizeKey({
         id: "T2-6", category: "T2", number: 6,
@@ -227,7 +305,10 @@ async function main() {
       movementNameInput.value = "PEROZO";
       movementPhoneInput.value = "0700000000";
       window.__signatureCount = 0;
-      promptMovementSignature = async () => { window.__signatureCount += 1; return "signature-group"; };
+      promptMovementSignature = async () => {
+        window.__signatureCount += 1;
+        return { signature: "signature-group", movementPhoto: "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" };
+      };
       window.__resolveWrite = null;
       renderPanel();
     });
@@ -260,6 +341,7 @@ async function main() {
       remoteStatuses: window.__remoteRow.value.sets.map((set) => set.status),
       pendingStatuses: window.__returnPayload.value.sets.map((set) => set.status),
       signatures: window.__returnPayload.value.sets.map((set) => set.history[0].signature),
+      photos: window.__returnPayload.value.sets.map((set) => set.history[0].movementPhoto),
       movementIds: window.__returnPayload.value.sets.map((set) => set.history[0].id),
       signatureCount: window.__signatureCount,
       busy: checkoutBtn.getAttribute("aria-busy"),
@@ -268,6 +350,8 @@ async function main() {
     assert.deepEqual(pendingGroup.remoteStatuses, ["available", "available"]);
     assert.deepEqual(pendingGroup.pendingStatuses, ["out", "out"]);
     assert.deepEqual(pendingGroup.signatures, ["signature-group", "signature-group"]);
+    assert.equal(pendingGroup.photos[0], pendingGroup.photos[1]);
+    assert.match(pendingGroup.photos[0], /^data:image\/gif;base64,/);
     assert.notEqual(pendingGroup.movementIds[0], pendingGroup.movementIds[1]);
     assert.equal(pendingGroup.signatureCount, 1);
     assert.equal(pendingGroup.busy, "true");
@@ -475,6 +559,8 @@ async function main() {
       assert.equal(finished.local, mode === "failure" ? "out" : "available");
       assert.equal(finished.remote, mode === "failure" ? "out" : "available");
       assert.equal(finished.localReturns, mode === "failure" ? 0 : 1);
+      if (mode !== "failure") assert.match(await page.evaluate(() => keys[0].sets[0].history[0].movementPhoto),
+        /^data:image\/gif;base64,/);
       assert.equal(finished.logs, mode === "failure" ? 0 : 1);
       assert.equal(finished.busy, false);
       assert.equal(Boolean(finished.alert), mode === "failure");
@@ -623,6 +709,7 @@ async function main() {
     assert.equal(await page.evaluate(() => keys[0].sets[0].status), "available");
     await page.evaluate(() => window.__resolveWrite("success"));
     await page.waitForFunction(() => keys[0].sets[0].status === "out");
+    assert.match(await page.evaluate(() => keys[0].sets[0].history[0].movementPhoto), /^data:image\/gif;base64,/);
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "out");
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 0);
     assert.equal(await activeReservationCard.evaluate((item) => getComputedStyle(item).backgroundColor), "rgb(242, 206, 200)");
@@ -900,7 +987,7 @@ async function main() {
       waiting: { confirmed: false, label: "En attente", panelOpen: true, busy: "false" },
       closedAfterSync: true,
     });
-    console.log("Confirmed movements, grouped reservations, and control-button loading states passed");
+    console.log("Confirmed movements, grouped reservations, and movement photos passed");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
