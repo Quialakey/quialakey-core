@@ -3350,6 +3350,16 @@ body.is-moving-key .photo-hover {
   border: 0;
 }
 
+@media (max-width: 820px), (pointer: coarse) {
+  .receipt-preview-dialog {
+    box-sizing: border-box;
+    padding-top: max(48px, env(safe-area-inset-top, 0px));
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 .history-list li[data-history-action="in"] {
   border-color: #55aa73;
   background: #caebd5;

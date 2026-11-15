@@ -248,6 +248,24 @@ h1 {
   }
 }
 
+@media screen and (max-width: 820px), screen and (pointer: coarse) {
+  .receipt-toolbar {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .receipt-toolbar button {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .receipt-toolbar .receipt-close-button {
+    width: 44px;
+    height: 44px;
+    font-size: 28px;
+  }
+}
+
 @media print {
   body {
     background: #fff;

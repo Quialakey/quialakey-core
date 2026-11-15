@@ -269,12 +269,55 @@ async function main() {
       window.print = () => { window.__receiptPrinted = true; };
     });
     await mobileReceipt.locator(".receipt-print-button").click();
-    assert.equal(await mobileReceipt.locator("body").evaluate(() => window.__receiptPrinted), true);
+    await page.waitForFunction(() =>
+      document.querySelector(".receipt-preview-dialog iframe")?.contentWindow?.__receiptPrinted === true);
     await mobileReceipt.locator(".receipt-close-button").click();
     assert.equal(await page.locator(".receipt-preview-dialog").count(), 0);
     assert.equal(await page.evaluate(() => selectedId), "T2-1");
     assert.equal(await page.locator("#historyList .history-print-button").count() > 0, true);
     await page.evaluate(() => { window.matchMedia = window.__originalMatchMedia; });
+    const touchContext = await browser.newContext({
+      viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block",
+    });
+    const touchPage = await touchContext.newPage();
+    await touchPage.route("**/agency-config.js*", (route) => route.fulfill({
+      status: 200, contentType: "text/javascript",
+      body: 'window.QUIALAKEY_CONFIG = Object.freeze({ agencyId: "receipt-touch-test", agencyName: "Test", supabaseUrl: "https://mock.supabase.co", supabasePublishableKey: "test", migrateLegacyStorage: true });',
+    }));
+    await touchPage.route("**/mock.supabase.co/**", (route) => {
+      const rows = new URL(route.request().url()).searchParams.get("key")?.includes("cles-table-settings-v1")
+        ? [{ key: "cles-table-settings-v1", value: { accessLockEnabled: false }, updated_at: "2026-10-07T10:00:00Z" }]
+        : [];
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+    });
+    await touchPage.goto(`http://127.0.0.1:${server.address().port}/`);
+    await touchPage.waitForFunction(() => typeof renderPanel === "function" && hasCompletedInitialCloudLoad &&
+      hasStartedCloudInactivityTracking && !isCloudCheckRunning);
+    assert.equal(await touchPage.evaluate(() => matchMedia("(pointer: coarse)").matches), true);
+    await touchPage.evaluate(() => {
+      keys = [normalizeKey({ id: "T2-1", category: "T2", number: 1, property: "1 rue Test",
+        sets: [{ ...makeKeySet("main"), status: "out", history: [
+          { id: "touch-out", type: "out", person: "Test", date: "15/11/2026 14:00" },
+        ] }] })];
+      selectedId = "T2-1";
+      selectedSetId = "main";
+      renderPanel();
+    });
+    await touchPage.locator("#historyList .history-print-button").tap();
+    const touchReceipt = touchPage.frameLocator(".receipt-preview-dialog iframe");
+    await touchReceipt.locator(".receipt-page").waitFor();
+    const printBounds = await touchReceipt.locator(".receipt-print-button").boundingBox();
+    const closeBounds = await touchReceipt.locator(".receipt-close-button").boundingBox();
+    assert.ok(printBounds.y >= 48 && printBounds.height >= 44);
+    assert.ok(closeBounds.y >= 48 && closeBounds.width >= 44 && closeBounds.height >= 44);
+    if (process.env.MOVEMENT_RECEIPT_TOUCH_SCREENSHOT) {
+      await touchPage.screenshot({ path: process.env.MOVEMENT_RECEIPT_TOUCH_SCREENSHOT });
+    }
+    await touchReceipt.locator(".receipt-close-button").tap();
+    await touchPage.locator(".receipt-preview-dialog").waitFor({ state: "detached" });
+    assert.equal(await touchPage.locator(".receipt-preview-dialog").count(), 0);
+    assert.equal(await touchPage.evaluate(() => selectedId), "T2-1");
+    await touchContext.close();
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
       assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
