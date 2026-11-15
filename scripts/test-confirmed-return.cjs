@@ -215,6 +215,10 @@ async function main() {
       const stamp = group.querySelector(".receipt-stamp").getBoundingClientRect();
       return label.bottom < stamp.top && Math.abs(label.left - stamp.left) < 1;
     }), true);
+    assert.equal(await returnReceipt.locator(".receipt-stamp").evaluate((stamp) => {
+      const bounds = stamp.getBoundingClientRect();
+      return bounds.width >= 180 && bounds.height >= 100;
+    }), true);
     const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
       .evaluateAll((items) => {
         const bounds = items.map((item) => item.getBoundingClientRect());
@@ -225,12 +229,17 @@ async function main() {
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
-    assert.equal(await returnReceipt.locator(".receipt-company").textContent(), "Société : Entreprise Test");
-    assert.equal(await returnReceipt.locator(".receipt-company").evaluate((company) =>
-      getComputedStyle(company).display), "block");
+    assert.equal(await returnReceipt.locator(".receipt-company").textContent(), "Entreprise Test");
+    assert.equal(await returnReceipt.locator(".receipt-detail.has-company .receipt-label").last().textContent(), "Société :");
     assert.equal(await returnReceipt.locator(".receipt-detail.has-company").count(), 1);
-    assert.ok(await returnReceipt.locator(".receipt-company").evaluate((company) =>
-      company.getBoundingClientRect().height < 20));
+    assert.equal(await returnReceipt.locator(".receipt-detail.has-company").evaluate((actor) => {
+      const [personLabel, companyLabel] = actor.querySelectorAll(".receipt-label");
+      const [personValue, companyValue] = actor.querySelectorAll("strong");
+      return companyLabel.getBoundingClientRect().top > personLabel.getBoundingClientRect().top &&
+        Math.abs(companyLabel.getBoundingClientRect().left - personLabel.getBoundingClientRect().left) < 1 &&
+        Math.abs(companyValue.getBoundingClientRect().left - personValue.getBoundingClientRect().left) < 1 &&
+        getComputedStyle(companyValue).fontSize === getComputedStyle(personValue).fontSize;
+    }), true);
     assert.equal(await returnReceipt.locator(".receipt-movement img").count(), 4);
     await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => image.decode());
     assert.equal(await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => {

@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-16";
+const appBuildVersion = "20261115-17";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8709,7 +8709,8 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
     const actor = addDetail(details, "Intervenant", person);
     if (company) {
       actor.classList.add("has-company");
-      actor.querySelector("strong").append(element("span", "receipt-company", `Société : ${company}`));
+      actor.append(element("span", "receipt-label", "Société :"),
+        element("strong", "receipt-company", company));
     }
     addOptionalDetail(details, "Téléphone", movement.phone);
     addOptionalDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
