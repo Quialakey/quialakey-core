@@ -55,7 +55,7 @@ async function main() {
     await page.waitForFunction(() => typeof confirmReturnedSetMovement === "function" &&
       hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
     assert.deepEqual(await page.evaluate(() => smoothSignaturePoint({ x: 0, y: 0 }, { x: 100, y: 50 })),
-      { x: 80, y: 40 });
+      { x: 65, y: 32.5 });
     await page.evaluate(() => { window.__photoPrompt = promptMovementSignature("Sorti"); });
     assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
       ["Photo - Sorti", "Signature - Sorti"]);
