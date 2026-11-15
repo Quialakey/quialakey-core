@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-2";
+const appBuildVersion = "20261115-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -3760,10 +3760,87 @@ function getUndoCheckoutGroup(snapshot) {
   return { registry: tracked.registry, key: currentKey, movements, isLastAction };
 }
 
+function getUndoReservationGroup(snapshot) {
+  const tracked = snapshot.reservationGroup;
+  if (!tracked) return null;
+  const storageKey = registryConfig[tracked.registry].keysStorageKey;
+  const previousKeys = parseStorageValue(snapshot.storage[storageKey]);
+  if (!Array.isArray(previousKeys)) return { isLastAction: false };
+  const previousKey = previousKeys.find((key) => key.id === tracked.keyId);
+  const currentKey = loadKeysForRegistry(tracked.registry).find((key) => key.id === tracked.keyId);
+  if (!previousKey || !currentKey) return { isLastAction: false };
+
+  const movements = tracked.movements.map(({ setId, movementId, reservationId }) => {
+    const set = currentKey.sets.find((item) => item.id === setId);
+    const entry = set?.history.find((item) => item.type === "reserved" && item.id === movementId);
+    const reservation = set?.reservations.find((item) => item.id === reservationId);
+    return { set, entry, reservation };
+  });
+  if (movements.some(({ set, entry, reservation }) => !set || !entry || !reservation ||
+    set.history[0]?.id !== entry.id || set.holderReservationId === reservation.id)) return { isLastAction: false };
+  const reservationBySetId = new Map(movements.map((movement) => [movement.set.id, movement.reservation.id]));
+  const restoredKey = {
+    ...currentKey,
+    sets: currentKey.sets.map((set) => {
+      const reservationId = reservationBySetId.get(set.id);
+      return reservationId ? {
+        ...set,
+        reservations: set.reservations.filter((item) => item.id !== reservationId),
+        history: set.history.slice(1),
+      } : set;
+    }),
+  };
+  const isLastAction = getComparableKeySlotValue(restoredKey) === getComparableKeySlotValue(previousKey);
+  return { registry: tracked.registry, key: currentKey, movements, isLastAction };
+}
+
 async function undoPreviousStep() {
   if (!undoSnapshot || isUndoingCheckout || isConfirmingReturn || activeKeyControlAction) return;
 
   const snapshot = undoSnapshot;
+  const reservationGroup = getUndoReservationGroup(snapshot);
+  if (reservationGroup) {
+    if (!reservationGroup.isLastAction) {
+      undoSnapshot = null;
+      updateUndoButton();
+      alert("La fiche a chang\u00e9 depuis cette r\u00e9servation. Actualisez le tableau avant de faire un nouveau mouvement.");
+      return;
+    }
+    const { registry, key, movements: reservedSets } = reservationGroup;
+    const movements = reservedSets.map(({ set, reservation }) => ({
+      set,
+      entry: {
+        id: createHistoryId(), type: "cancel-reservation", person: reservation.person || "",
+        company: reservation.company || "", phone: reservation.phone || "",
+        note: `Annulation r\u00e9servation du ${reservation.reservationDate || ""}`.trim(),
+        reservationId: reservation.id, date: getMovementDateText(),
+      },
+      changes: { reservations: set.reservations.filter((item) => item.id !== reservation.id) },
+    }));
+    isUndoingCheckout = true;
+    updateUndoButton();
+    try {
+      await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
+        movements, registry,
+        failureMessage: "L'annulation des r\u00e9servations n'a pas pu \u00eatre confirm\u00e9e. R\u00e9essayez dans un instant.",
+        onConflict: () => { undoSnapshot = null; },
+        onConfirmed: () => {
+          undoSnapshot = null;
+          const switchedRegistry = activeRegistry !== registry;
+          activeRegistry = registry;
+          saveActiveRegistry();
+          if (switchedRegistry) keys = loadKeys();
+          selectedId = snapshot.selectedId;
+          selectedSetId = snapshot.selectedSetId || "main";
+          updateRegistryHeader();
+        },
+      });
+    } finally {
+      isUndoingCheckout = false;
+      updateUndoButton();
+    }
+    return;
+  }
   const checkoutGroup = getUndoCheckoutGroup(snapshot);
   if (checkoutGroup) {
     if (!checkoutGroup.isLastAction) {
@@ -4785,7 +4862,7 @@ function isMultiSelectingSets(key = getSelectedKey()) {
   return Boolean(key && multiSelectionKey === `${activeRegistry}:${key.id}`);
 }
 
-function getSelectedCheckoutSets(key) {
+function getSelectedMovementSets(key) {
   return isMultiSelectingSets(key)
     ? key.sets.filter((set) => multiSelectedSetIds.has(set.id))
     : [getSelectedSet(key)];
@@ -8677,10 +8754,8 @@ function renderKeySetPhotos(key) {
     }
     title.addEventListener("click", () => {
       if (isMultiSelection) {
-        if (set.status === "out" || set.needsCheckIn) {
-          alert(set.status === "out"
-            ? `${set.label} est déjà sorti. Renseignez d'abord son retour avant de le sortir à nouveau.`
-            : `Validez d'abord l'entrée du ${set.label} avec le bouton Entré avant de le sortir.`);
+        if (set.needsCheckIn) {
+          alert(`Validez d'abord l'entrée du ${set.label} avec le bouton Entré avant de le sélectionner.`);
           return;
         }
         if (isSelected) multiSelectedSetIds.delete(set.id);
@@ -8818,7 +8893,7 @@ function renderPanel() {
     resetMultiSetSelection();
   }
   if (isMultiSelectingSets(key)) {
-    const eligibleIds = new Set(key.sets.filter((set) => set.status !== "out" && !set.needsCheckIn).map((set) => set.id));
+    const eligibleIds = new Set(key.sets.filter((set) => !set.needsCheckIn).map((set) => set.id));
     for (const id of multiSelectedSetIds) if (!eligibleIds.has(id)) multiSelectedSetIds.delete(id);
     if (multiSelectedSetIds.size && !multiSelectedSetIds.has(selectedSetId)) selectedSetId = [...multiSelectedSetIds][0];
   }
@@ -8894,12 +8969,14 @@ function renderPanel() {
   const isThisMovementSaving = isConfirmingReturn && selectedId === confirmingReturnKeyId && activeRegistry === confirmingReturnRegistry;
   const isThisReturnSaving = isThisMovementSaving && confirmingMovementType === "in";
   const isThisCheckoutSaving = isThisMovementSaving && confirmingMovementType === "out" && !confirmingReturnReservationId;
+  const isThisReservationSaving = isThisMovementSaving && confirmingMovementType === "reserved";
   const isThisReservationMovementSaving = isThisMovementSaving && Boolean(confirmingReturnReservationId);
   checkinBtn.hidden = !canCheckInSelectedKey || (isSelectedSetOut && !isSelectedSetOutForReservation);
   checkinBtn.textContent = isThisReturnSaving ? "Enregistrement..." : selectedSet.status === "out" ? "Rentr\u00e9" : "Entr\u00e9";
   checkinBtn.classList.toggle("is-confirming-return", isThisReturnSaving);
   checkinBtn.setAttribute("aria-busy", String(isThisReturnSaving));
-  reservedBtn.textContent = "R\u00e9serv\u00e9";
+  reservedBtn.textContent = isThisReservationSaving ? "En cours..." : "R\u00e9serv\u00e9";
+  reservedBtn.classList.toggle("is-confirming-return", isThisReservationSaving);
   checkoutBtn.textContent = isThisCheckoutSaving ? "En cours..." : "Sorti";
   checkoutBtn.classList.toggle("is-confirming-return", isThisCheckoutSaving);
   rentedBtn.textContent = getPrimaryArchiveActionLabel();
@@ -8908,10 +8985,11 @@ function renderPanel() {
   checkoutBtn.hidden = showOnlyEntryAction;
   archiveActions.hidden = showOnlyEntryAction;
   checkoutBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey ||
-    !getSelectedCheckoutSets(key).length ||
-    getSelectedCheckoutSets(key).some((set) => set.status === "out" || set.needsCheckIn);
+    !getSelectedMovementSets(key).length ||
+    getSelectedMovementSets(key).some((set) => set.status === "out" || set.needsCheckIn);
   checkinBtn.disabled = !canCheckInSelectedKey;
-  reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || needsSelectedSetCheckIn || isMultiSelectingSets(key);
+  reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey ||
+    !getSelectedMovementSets(key).length || getSelectedMovementSets(key).some((set) => set.needsCheckIn);
   rentedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || isMultiSelectingSets(key);
   removedBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || isMultiSelectingSets(key);
   const savingControlAction = activeKeyControlAction &&
@@ -8922,7 +9000,8 @@ function renderPanel() {
     button.classList.toggle("is-action-pending", Boolean(isActive && activeKeyControlAction.pending));
     if (isActive) button.textContent = activeKeyControlAction.pending ? "En attente" : "En cours...";
     button.setAttribute("aria-busy", String(Boolean(isActive && !activeKeyControlAction.pending) ||
-      (button === checkinBtn && isThisReturnSaving) || (button === checkoutBtn && isThisCheckoutSaving)));
+      (button === checkinBtn && isThisReturnSaving) || (button === checkoutBtn && isThisCheckoutSaving) ||
+      (button === reservedBtn && isThisReservationSaving)));
     button.disabled = button.disabled || Boolean(activeKeyControlAction) || isConfirmingReturn;
   }
   duplicateKeyBtn.disabled = isNewKeyDraft || isArchiveView || key.archived || key.sets.some((set) => set.needsCheckIn) || Boolean(activeKeyControlAction) || isConfirmingReturn;
@@ -9753,8 +9832,8 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   const registry = options.registry || activeRegistry;
   const button = options.button || null;
   const adjacentButtons = button?.isConnected
-    ? (button === checkoutBtn
-      ? [checkinBtn, reservedBtn, rentedBtn, removedBtn, closePanelBtn]
+    ? ([checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn].includes(button)
+      ? [checkinBtn, reservedBtn, checkoutBtn, rentedBtn, removedBtn, closePanelBtn].filter((other) => other !== button)
       : [...(button.closest("li")?.querySelectorAll("button") || [])].filter((other) => other !== button))
       .map((other) => ({ button: other, wasDisabled: other.disabled }))
     : [];
@@ -9777,8 +9856,14 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     const confirmedRow = await confirmKeySetMovements(key, confirmedMovements, registry);
     applyReturnSlotRow(confirmedRow, registry);
     confirmedMovements.forEach(({ set: movedSet, entry: movedEntry }) => {
+      const activityDetails = movedEntry.type === "reserved"
+        ? [movedEntry.person ? `Intervenant : ${movedEntry.person}` : "",
+          movedEntry.phone ? `T\u00e9l\u00e9phone : ${movedEntry.phone}` : "",
+          movedEntry.company ? `Soci\u00e9t\u00e9 : ${movedEntry.company}` : "",
+          `Pour le ${movedEntry.reservationDate}`, movedEntry.note]
+        : [movedEntry.person || movedEntry.company, movedEntry.phone, movedEntry.note];
       logActivity(getMovementActionLabel(movedEntry), `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${movedSet.label}`,
-        [movedEntry.person || movedEntry.company, movedEntry.phone, movedEntry.note].filter(Boolean).join(" | "), {
+        activityDetails.filter(Boolean).join(" | "), {
           keyId: key.id, setId: movedSet.id, movementId: movedEntry.id, registry,
         });
     });
@@ -9822,7 +9907,7 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
     adjacentButtons.forEach(({ button: other, wasDisabled }) => {
       if (other.isConnected) other.disabled = wasDisabled;
     });
-    if (button === checkoutBtn || (activeRegistry === registry && selectedId === key.id &&
+    if ([checkoutBtn, reservedBtn].includes(button) || (activeRegistry === registry && selectedId === key.id &&
       (didConfirm || !button?.isConnected))) renderPanel();
   }
 }
@@ -9833,7 +9918,7 @@ async function addMovement(type, options = {}) {
   const key = getSelectedKey();
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
-  const checkoutSets = type === "out" ? getSelectedCheckoutSets(key) : [selectedSet];
+  const checkoutSets = type === "out" ? getSelectedMovementSets(key) : [selectedSet];
   if (type === "out" && !checkoutSets.length) return;
   const checkoutSetIds = checkoutSets.map((set) => set.id);
   if (isPendingAddedKeySetDraft(key.id) && (type !== "in" || selectedSet.needsCheckInReason !== "added")) return;
@@ -9865,7 +9950,7 @@ async function addMovement(type, options = {}) {
   if (signature === null) return;
   if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
     getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id ||
-    (type === "out" && getSelectedCheckoutSets(getSelectedKey()).map((set) => set.id).join() !== checkoutSetIds.join())) return;
+    (type === "out" && getSelectedMovementSets(getSelectedKey()).map((set) => set.id).join() !== checkoutSetIds.join())) return;
 
   const entry = {
     id: createHistoryId(),
@@ -10540,9 +10625,12 @@ async function reserveSelectedSet() {
   if (activeKeyControlAction || isConfirmingReturn) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
   const key = getSelectedKey();
-  const selectedSet = getSelectedSet(key);
-  if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
-  if (selectedSet.needsCheckIn) return;
+  if (!key || (key.archived && !selectedArchiveRecord)) return;
+  const sourceRegistry = activeRegistry;
+  const sourceArchiveId = selectedArchiveRecord?.id || "";
+  const reservationSets = getSelectedMovementSets(key);
+  const reservationSetIds = reservationSets.map((set) => set.id);
+  if (!reservationSets.length || reservationSets.some((set) => set.needsCheckIn)) return;
   clearTimeout(detailCloseTimer);
 
   const contact = contacts.find((savedContact) => savedContact.id === contactSelect.value);
@@ -10559,8 +10647,11 @@ async function reserveSelectedSet() {
   clearTimeout(detailCloseTimer);
 
   const currentKey = getSelectedKey();
-  const currentSet = getSelectedSet(currentKey);
-  if (!currentKey || currentKey.id !== key.id || !currentSet || currentSet.id !== selectedSet.id) return;
+  const currentSets = currentKey ? getSelectedMovementSets(currentKey) : [];
+  if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
+    !currentKey || currentKey.id !== key.id ||
+    currentSets.map((set) => set.id).join() !== reservationSetIds.join()) return;
+  const currentSet = currentSets[0];
 
   const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
@@ -10583,6 +10674,49 @@ async function reserveSelectedSet() {
     returnsToAgency,
   };
 
+  if (currentSets.length > 1) {
+    const snapshot = createUndoSnapshot();
+    const movements = currentSets.map((set, index) => {
+      const setEntry = index ? {
+        ...entry,
+        id: createHistoryId(),
+        reservationId: `reservation-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      } : entry;
+      return {
+        set,
+        entry: setEntry,
+        changes: {
+          reservations: [{
+            id: setEntry.reservationId,
+            person,
+            company: setEntry.company || "",
+            phone: setEntry.phone || "",
+            note: setEntry.note || "",
+            createdAt,
+            reservationDate: formattedDate,
+            returnsToAgency,
+          }, ...(set.reservations || [])],
+        },
+      };
+    });
+    await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
+      movements,
+      button: reservedBtn,
+      buttonIdleLabel: "R\u00e9serv\u00e9",
+      closePanel: true,
+      failureMessage: "La r\u00e9servation n'a pas pu \u00eatre confirm\u00e9e. R\u00e9essayez dans un instant.",
+      onConfirmed: () => {
+        snapshot.reservationGroup = { registry: sourceRegistry, keyId: key.id,
+          movements: movements.map(({ set, entry: reservedEntry }) => ({ setId: set.id, movementId: reservedEntry.id,
+            reservationId: reservedEntry.reservationId })) };
+        undoSnapshot = snapshot;
+        updateUndoButton();
+        resetMultiSetSelection();
+      },
+    });
+    return;
+  }
+
   if (!beginKeyControlAction(reservedBtn)) return;
   try {
     updateSelectedSet({
@@ -10603,9 +10737,9 @@ async function reserveSelectedSet() {
     });
     logActivity(
       "R\u00e9serv\u00e9",
-      `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${selectedSet.label}`,
+      `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${currentSet.label}`,
       [person ? `Intervenant : ${person}` : "", phone ? `T\u00e9l\u00e9phone : ${phone}` : "", company ? `Soci\u00e9t\u00e9 : ${company}` : "", `Pour le ${formattedDate}`, entry.note].filter(Boolean).join(" | "),
-      { keyId: key.id, setId: selectedSet.id, movementId: entry.id },
+      { keyId: key.id, setId: currentSet.id, movementId: entry.id },
     );
 
     movementPersonInput.value = "";

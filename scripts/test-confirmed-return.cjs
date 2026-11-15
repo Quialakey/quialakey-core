@@ -249,7 +249,7 @@ async function main() {
     assert.equal(await page.locator(".photo-set-check-icon").count(), 2);
     assert.equal(await page.locator(".photo-set-select").first()
       .evaluate((button) => getComputedStyle(button).backgroundColor), originalLabelBackground);
-    assert.equal(await page.locator("#reservedBtn").isDisabled(), true);
+    assert.equal(await page.locator("#reservedBtn").isEnabled(), true);
     if (process.env.MULTI_SET_SCREENSHOT) {
       await page.locator(".photo-box").screenshot({ path: process.env.MULTI_SET_SCREENSHOT });
     }
@@ -332,6 +332,108 @@ async function main() {
     await page.evaluate(() => { selectedId = "Maison-4"; renderPanel(); });
     assert.equal(await page.locator("#activeCheckoutPanel li").count(), 1);
     assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status).sort()), ["available", "out"]);
+
+    await page.evaluate(() => {
+      window.__resetReturn();
+      keys[0].sets = [{ ...makeKeySet("main"), history: [] }, makeKeySet("double")];
+      window.__remoteRow.value = structuredClone(keys[0]);
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      selectedSetId = "main";
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+      window.__reservationDatePrompts = 0;
+      window.__reservationReturnPrompts = 0;
+      promptReservationDateTime = async () => {
+        window.__reservationDatePrompts += 1;
+        return "2026-11-20T15:00";
+      };
+      promptReservationReturn = async () => {
+        window.__reservationReturnPrompts += 1;
+        return true;
+      };
+      window.__resolveWrite = null;
+      renderPanel();
+    });
+    await page.locator("#multiSetSelectionInput").check();
+    assert.equal(await page.locator("#reservedBtn").isDisabled(), true);
+    await page.locator(".photo-set-check-icon").first().click();
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    assert.equal(await page.locator("#reservedBtn").isEnabled(), true);
+    await page.locator("#reservedBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    const pendingReservation = await page.evaluate(() => ({
+      localCounts: keys[0].sets.map((set) => set.reservations.length),
+      pendingCounts: window.__returnPayload.value.sets.map((set) => set.reservations.length),
+      reservationIds: window.__returnPayload.value.sets.map((set) => set.reservations[0].id),
+      movementIds: window.__returnPayload.value.sets.map((set) => set.history[0].id),
+      dates: window.__returnPayload.value.sets.map((set) => set.reservations[0].reservationDate),
+      prompts: [window.__reservationDatePrompts, window.__reservationReturnPrompts],
+      busy: reservedBtn.getAttribute("aria-busy"),
+    }));
+    assert.deepEqual(pendingReservation.localCounts, [0, 0]);
+    assert.deepEqual(pendingReservation.pendingCounts, [1, 1]);
+    assert.notEqual(pendingReservation.reservationIds[0], pendingReservation.reservationIds[1]);
+    assert.notEqual(pendingReservation.movementIds[0], pendingReservation.movementIds[1]);
+    assert.equal(pendingReservation.dates[0], pendingReservation.dates[1]);
+    assert.deepEqual(pendingReservation.prompts, [1, 1]);
+    assert.equal(pendingReservation.busy, "true");
+    await page.evaluate(() => window.__resolveWrite("failure"));
+    await page.waitForFunction(() => !isConfirmingReturn);
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.reservations.length)), [0, 0]);
+    assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 2);
+    await page.evaluate(() => { window.__resolveWrite = null; });
+    await page.locator("#reservedBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets.every((set) => set.reservations.length === 1) && !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => selectedId), null);
+    assert.equal(await page.evaluate(() => window.__returnLogs.length), 2);
+    assert.equal(await page.evaluate(() => getRegistryHistoryEntries("transaction")
+      .filter((item) => item.keyId === "Maison-4" && item.action === "Réservé").length), 2);
+    await page.evaluate(() => { selectedId = "Maison-4"; renderPanel(); });
+    assert.equal(await page.locator("#activeReservationPanel li").count(), 2);
+    assert.equal(await page.evaluate(() => getUndoReservationGroup(undoSnapshot)?.isLastAction), true);
+    await page.evaluate(() => {
+      window.__resolveWrite = null;
+      window.__undoReservationPromise = undoPreviousStep();
+    });
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isUndoingCheckout);
+    assert.deepEqual(await page.evaluate(() => window.__returnPayload.value.sets.map((set) => set.reservations.length)), [0, 0]);
+    assert.deepEqual(await page.evaluate(() => window.__returnPayload.value.sets.map((set) => set.history[0].type)),
+      ["cancel-reservation", "cancel-reservation"]);
+    await page.evaluate(async () => {
+      window.__resolveWrite("success");
+      await window.__undoReservationPromise;
+    });
+    assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.reservations.length)), [0, 0]);
+    assert.equal(await page.evaluate(() => undoSnapshot), null);
+
+    await page.evaluate(() => {
+      keys[0].sets[1].status = "out";
+      keys[0].sets[1].holder = "Raquel PEROZO";
+      keys[0].sets[1].history.unshift({ id: "older-checkout", type: "out", person: "Raquel PEROZO",
+        date: "15/11/2026 10:00" });
+      window.__remoteRow.value = structuredClone(keys[0]);
+      setRuntimeStorageValue(getRegistryConfig().keysStorageKey, JSON.stringify(keys));
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+      window.__resolveWrite = null;
+      renderPanel();
+    });
+    await page.locator("#multiSetSelectionInput").check();
+    await page.locator(".photo-set-check-icon").first().click();
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    assert.equal(await page.locator("#checkoutBtn").isDisabled(), true);
+    assert.equal(await page.locator("#reservedBtn").isEnabled(), true);
+    await page.locator("#reservedBtn").click();
+    await page.waitForFunction(() => typeof window.__resolveWrite === "function" && isConfirmingReturn);
+    assert.deepEqual(await page.evaluate(() => window.__returnPayload.value.sets.map((set) => set.status)),
+      ["available", "out"]);
+    await page.evaluate(() => window.__resolveWrite("success"));
+    await page.waitForFunction(() => keys[0].sets.every((set) => set.reservations.length === 1) && !isConfirmingReturn);
+    assert.equal(await page.evaluate(() => keys[0].sets[1].status), "out");
 
     for (const mode of ["success", "failure", "uncertain"]) {
       await page.evaluate(() => {
@@ -798,7 +900,7 @@ async function main() {
       waiting: { confirmed: false, label: "En attente", panelOpen: true, busy: "false" },
       closedAfterSync: true,
     });
-    console.log("Confirmed return and five control-button loading states passed");
+    console.log("Confirmed movements, grouped reservations, and control-button loading states passed");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
