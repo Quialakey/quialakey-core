@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-1";
+const appBuildVersion = "20261115-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4782,7 +4782,7 @@ function resetMultiSetSelection() {
 }
 
 function isMultiSelectingSets(key = getSelectedKey()) {
-  return Boolean(key && multiSelectionKey === `${activeRegistry}:${key.id}` && multiSelectedSetIds.size);
+  return Boolean(key && multiSelectionKey === `${activeRegistry}:${key.id}`);
 }
 
 function getSelectedCheckoutSets(key) {
@@ -8655,7 +8655,7 @@ function renderKeySetPhotos(key) {
       title.setAttribute("aria-pressed", String(isSelected));
       title.setAttribute("aria-label", `${isSelected ? "Désélectionner" : "Sélectionner"} ${set.label} pour la sortie groupée`);
       title.title = title.getAttribute("aria-label");
-      title.disabled = set.status === "out" || set.needsCheckIn || Boolean(activeKeyControlAction) || isConfirmingReturn;
+      title.disabled = Boolean(activeKeyControlAction) || isConfirmingReturn;
       const checkIcon = document.createElement("span");
       checkIcon.className = "photo-set-check-icon";
       checkIcon.setAttribute("aria-hidden", "true");
@@ -8677,10 +8677,15 @@ function renderKeySetPhotos(key) {
     }
     title.addEventListener("click", () => {
       if (isMultiSelection) {
-        if (isSelected && multiSelectedSetIds.size === 1) return;
+        if (set.status === "out" || set.needsCheckIn) {
+          alert(set.status === "out"
+            ? `${set.label} est déjà sorti. Renseignez d'abord son retour avant de le sortir à nouveau.`
+            : `Validez d'abord l'entrée du ${set.label} avec le bouton Entré avant de le sortir.`);
+          return;
+        }
         if (isSelected) multiSelectedSetIds.delete(set.id);
         else multiSelectedSetIds.add(set.id);
-        selectedSetId = isSelected ? [...multiSelectedSetIds][0] : set.id;
+        selectedSetId = isSelected ? ([...multiSelectedSetIds][0] || set.id) : set.id;
         renderPanel();
         return;
       }
@@ -8815,8 +8820,7 @@ function renderPanel() {
   if (isMultiSelectingSets(key)) {
     const eligibleIds = new Set(key.sets.filter((set) => set.status !== "out" && !set.needsCheckIn).map((set) => set.id));
     for (const id of multiSelectedSetIds) if (!eligibleIds.has(id)) multiSelectedSetIds.delete(id);
-    if (!multiSelectedSetIds.size) resetMultiSetSelection();
-    else if (!multiSelectedSetIds.has(selectedSetId)) selectedSetId = [...multiSelectedSetIds][0];
+    if (multiSelectedSetIds.size && !multiSelectedSetIds.has(selectedSetId)) selectedSetId = [...multiSelectedSetIds][0];
   }
 
   const selectedSet = getSelectedSet(key);
@@ -8904,6 +8908,7 @@ function renderPanel() {
   checkoutBtn.hidden = showOnlyEntryAction;
   archiveActions.hidden = showOnlyEntryAction;
   checkoutBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey ||
+    !getSelectedCheckoutSets(key).length ||
     getSelectedCheckoutSets(key).some((set) => set.status === "out" || set.needsCheckIn);
   checkinBtn.disabled = !canCheckInSelectedKey;
   reservedBtn.disabled = isNewKeyDraft || hasAddedSetDraft || !canMoveSelectedKey || needsSelectedSetCheckIn || isMultiSelectingSets(key);
@@ -9829,6 +9834,7 @@ async function addMovement(type, options = {}) {
   const selectedSet = getSelectedSet(key);
   if (!key || !selectedSet || (key.archived && !selectedArchiveRecord)) return;
   const checkoutSets = type === "out" ? getSelectedCheckoutSets(key) : [selectedSet];
+  if (type === "out" && !checkoutSets.length) return;
   const checkoutSetIds = checkoutSets.map((set) => set.id);
   if (isPendingAddedKeySetDraft(key.id) && (type !== "in" || selectedSet.needsCheckInReason !== "added")) return;
   const sourceRegistry = activeRegistry;
@@ -11020,14 +11026,8 @@ multiSetSelectionInput.addEventListener("change", () => {
   if (!multiSetSelectionInput.checked || !key || selectedArchiveRecord) {
     resetMultiSetSelection();
   } else {
-    const eligibleSets = key.sets.filter((set) => set.status !== "out" && !set.needsCheckIn);
-    const initialSet = eligibleSets.find((set) => set.id === selectedSetId) || eligibleSets[0];
-    if (!initialSet) resetMultiSetSelection();
-    else {
-      multiSelectionKey = `${activeRegistry}:${key.id}`;
-      multiSelectedSetIds = new Set([initialSet.id]);
-      selectedSetId = initialSet.id;
-    }
+    multiSelectionKey = `${activeRegistry}:${key.id}`;
+    multiSelectedSetIds.clear();
   }
   renderPanel();
 });

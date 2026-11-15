@@ -233,10 +233,22 @@ async function main() {
     });
     assert.equal(await page.locator("#multiSetSelectionLabel").isVisible(), true);
     await page.locator("#multiSetSelectionInput").check();
-    assert.equal(await page.locator(".photo-set-select").first().getAttribute("aria-pressed"), "true");
-    await page.locator(".photo-set-select").nth(1).click();
+    assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 0);
+    assert.equal(await page.locator("#checkoutBtn").isDisabled(), true);
+    await page.evaluate(() => { keys[0].sets[1].needsCheckIn = true; renderPanel(); });
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    assert.match(await page.evaluate(() => window.__returnAlert), /Validez d'abord l'entrée du Jeu 2/);
+    assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 0);
+    await page.evaluate(() => { keys[0].sets[1].needsCheckIn = false; renderPanel(); });
+    const originalLabelBackground = await page.locator(".photo-set-select").first()
+      .evaluate((button) => getComputedStyle(button).backgroundColor);
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    assert.equal(await page.locator(".photo-set-select").nth(1).getAttribute("aria-pressed"), "true");
+    await page.locator(".photo-set-check-icon").first().click();
     assert.equal(await page.locator(".key-set-photo-card.is-selected").count(), 2);
     assert.equal(await page.locator(".photo-set-check-icon").count(), 2);
+    assert.equal(await page.locator(".photo-set-select").first()
+      .evaluate((button) => getComputedStyle(button).backgroundColor), originalLabelBackground);
     assert.equal(await page.locator("#reservedBtn").isDisabled(), true);
     if (process.env.MULTI_SET_SCREENSHOT) {
       await page.locator(".photo-box").screenshot({ path: process.env.MULTI_SET_SCREENSHOT });
@@ -290,7 +302,8 @@ async function main() {
     assert.deepEqual(await page.evaluate(() => keys[0].sets.map((set) => set.status)), ["available", "available"]);
     assert.equal(await page.evaluate(() => undoSnapshot), null);
     await page.locator("#multiSetSelectionInput").check();
-    await page.locator('.photo-set-select[aria-pressed="false"]').click();
+    await page.locator(".photo-set-check-icon").first().click();
+    await page.locator(".photo-set-check-icon").nth(1).click();
     assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 2);
     await page.evaluate(() => {
       movementPersonInput.value = "Raquel";

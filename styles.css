@@ -2658,10 +2658,6 @@ body.is-moving-key .photo-hover {
   outline: 3px solid var(--c21-charcoal);
 }
 
-.key-set-photo-list.is-multi-selection .photo-set-select[aria-pressed="true"] {
-  background: #caebd5;
-}
-
 .photo-set-check-icon {
   display: inline-grid;
   place-items: center;
