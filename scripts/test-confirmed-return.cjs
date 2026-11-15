@@ -54,6 +54,8 @@ async function main() {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => typeof confirmReturnedSetMovement === "function" &&
       hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
+    assert.deepEqual(await page.evaluate(() => smoothSignaturePoint({ x: 0, y: 0 }, { x: 100, y: 50 })),
+      { x: 80, y: 40 });
     await page.evaluate(() => { window.__photoPrompt = promptMovementSignature("Sorti"); });
     assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
       ["Photo - Sorti", "Signature - Sorti"]);
@@ -98,13 +100,20 @@ async function main() {
     assert.equal(await page.locator(".movement-photo-field").evaluate((field) => field.getBoundingClientRect().height),
       emptyPhotoHeight);
     await capturePhoto("#336699");
-    await page.locator(".movement-signature-canvas").evaluate((canvas) => {
-      const context = canvas.getContext("2d");
-      context.beginPath();
-      context.moveTo(10, 10);
-      context.lineTo(100, 60);
-      context.stroke();
-    });
+    const signatureBox = await page.locator(".movement-signature-canvas").boundingBox();
+    const signatureEnd = { x: signatureBox.x + signatureBox.width - 30,
+      y: signatureBox.y + signatureBox.height - 30 };
+    await page.mouse.move(signatureBox.x + 20, signatureBox.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(signatureEnd.x, signatureEnd.y);
+    await page.mouse.up();
+    assert.equal(await page.locator(".movement-signature-canvas").evaluate((canvas, end) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.round((end.x - rect.left) / rect.width * canvas.width);
+      const y = Math.round((end.y - rect.top) / rect.height * canvas.height);
+      const pixels = canvas.getContext("2d").getImageData(x - 3, y - 3, 7, 7).data;
+      return Array.from(pixels).some((value, index) => index % 4 === 3 && value > 0);
+    }, signatureEnd), true);
     if (process.env.MOVEMENT_PHOTO_DIALOG_SCREENSHOT) {
       await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MOVEMENT_PHOTO_DIALOG_SCREENSHOT });
     }

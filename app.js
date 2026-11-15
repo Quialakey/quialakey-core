@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-6";
+const appBuildVersion = "20261115-7";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -893,6 +893,7 @@ let draggedKeyId = null;
 let suppressKeyTileClickUntil = 0;
 let activeContactType = "internal";
 let isSigning = false;
+let lastSignaturePoint = null;
 let hasSignature = false;
 let contactsCloseTimer = null;
 let archivesCloseTimer = null;
@@ -10135,8 +10136,19 @@ function clearInlineSignature(canvas) {
   canvas.dataset.signed = "false";
 }
 
+const signatureStreamLineAmount = 0.2;
+
+function smoothSignaturePoint(previous, point) {
+  if (!previous) return point;
+  return {
+    x: previous.x * signatureStreamLineAmount + point.x * (1 - signatureStreamLineAmount),
+    y: previous.y * signatureStreamLineAmount + point.y * (1 - signatureStreamLineAmount),
+  };
+}
+
 function setupInlineSignatureCanvas(canvas) {
   let isDrawing = false;
+  let lastPoint = null;
   const context = canvas.getContext("2d");
   context.lineWidth = 2.4;
   context.lineCap = "round";
@@ -10159,6 +10171,7 @@ function setupInlineSignatureCanvas(canvas) {
     canvas.dataset.signed = "true";
     canvas.setPointerCapture?.(event.pointerId);
     const point = getPoint(event);
+    lastPoint = point;
     context.beginPath();
     context.moveTo(point.x, point.y);
   });
@@ -10166,12 +10179,19 @@ function setupInlineSignatureCanvas(canvas) {
     if (!isDrawing) return;
     event.preventDefault();
     const point = getPoint(event);
-    context.lineTo(point.x, point.y);
+    lastPoint = smoothSignaturePoint(lastPoint, point);
+    context.lineTo(lastPoint.x, lastPoint.y);
     context.stroke();
   });
   const stopDrawing = (event) => {
+    if (isDrawing && event?.type === "pointerup") {
+      const point = getPoint(event);
+      context.lineTo(point.x, point.y);
+      context.stroke();
+    }
     if (event?.pointerId !== undefined) canvas.releasePointerCapture?.(event.pointerId);
     isDrawing = false;
+    lastPoint = null;
   };
   canvas.addEventListener("pointerup", stopDrawing);
   canvas.addEventListener("pointercancel", stopDrawing);
@@ -11130,6 +11150,7 @@ function startSignature(event) {
   hasSignature = true;
   signatureCanvas.setPointerCapture?.(event.pointerId);
   const point = getSignaturePoint(event);
+  lastSignaturePoint = point;
   const context = getSignatureContext();
   context.beginPath();
   context.moveTo(point.x, point.y);
@@ -11139,14 +11160,22 @@ function drawSignature(event) {
   if (!isSigning) return;
   event.preventDefault();
   const point = getSignaturePoint(event);
+  lastSignaturePoint = smoothSignaturePoint(lastSignaturePoint, point);
   const context = getSignatureContext();
-  context.lineTo(point.x, point.y);
+  context.lineTo(lastSignaturePoint.x, lastSignaturePoint.y);
   context.stroke();
 }
 
 function stopSignature(event) {
+  if (isSigning && event?.type === "pointerup") {
+    const point = getSignaturePoint(event);
+    const context = getSignatureContext();
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  }
   if (event?.pointerId !== undefined) signatureCanvas.releasePointerCapture?.(event.pointerId);
   isSigning = false;
+  lastSignaturePoint = null;
 }
 
 function signatureCanvasHasInk() {
