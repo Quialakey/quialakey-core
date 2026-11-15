@@ -148,6 +148,7 @@ h1 {
   color: #18513a;
   background: #f5f8f6;
   font-size: 13px;
+  text-align: center;
 }
 
 .receipt-property {
@@ -351,6 +352,12 @@ h1 {
 }
 
 @media print {
+  html,
+  body {
+    width: 190mm;
+    min-width: 190mm;
+  }
+
   body {
     background: #fff;
     -webkit-print-color-adjust: exact;
@@ -362,11 +369,18 @@ h1 {
   }
 
   .receipt-page {
-    width: auto;
+    width: 190mm;
+    min-width: 190mm;
     min-height: 274mm;
     margin: 0;
     padding: 0;
     border: 0;
     box-shadow: none;
+  }
+
+  .receipt-masthead,
+  .receipt-details,
+  .receipt-evidence {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

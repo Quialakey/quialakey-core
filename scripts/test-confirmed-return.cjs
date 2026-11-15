@@ -254,7 +254,9 @@ async function main() {
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 14:00/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 15:00/);
     assert.match(await returnReceipt.locator(".receipt-footer").innerText(),
-      /Quialakey - Outils de gestion des clés immobilières\s+www\.quialakey\.com/);
+      /Quialakey - Outils de gestion des clés immobilières\s+-\s+www\.quialakey\.com/);
+    assert.equal(await returnReceipt.locator(".receipt-section h2").evaluateAll((titles) =>
+      titles.every((title) => getComputedStyle(title).textAlign === "center")), true);
     assert.equal(await returnReceipt.locator(".receipt-footer a").evaluate((link) => link.href), "https://www.quialakey.com/");
     assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
       getComputedStyle(footer).whiteSpace), "nowrap");
@@ -302,6 +304,8 @@ async function main() {
     if (process.env.MOVEMENT_RECEIPT_PDF) {
       await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_PDF, format: "A4", printBackground: true });
     }
+    const mobilePrintMarkup = process.env.MOVEMENT_RECEIPT_MOBILE_PDF
+      ? await returnReceipt.locator("body").innerHTML() : null;
     const receiptClosed = returnReceipt.waitForEvent("close");
     await returnReceipt.locator(".receipt-close-button").click();
     await receiptClosed;
@@ -385,8 +389,28 @@ async function main() {
     assert.equal(await touchPage.frameLocator(".receipt-preview-dialog iframe").locator("body")
       .evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
     assert.ok((await touchPage.locator(".receipt-preview-back-button").boundingBox()).width >= 44);
+    await touchPage.emulateMedia({ media: "print" });
+    const mobilePrintLayout = await touchPage.frameLocator(".receipt-preview-dialog iframe")
+      .locator(".receipt-page").evaluate((receiptPage) => ({
+        pageWidth: receiptPage.getBoundingClientRect().width,
+        bodyWidth: document.body.getBoundingClientRect().width,
+        columns: getComputedStyle(receiptPage.querySelector(".receipt-details")).gridTemplateColumns.split(" ").length,
+      }));
+    assert.ok(mobilePrintLayout.pageWidth >= 700 && mobilePrintLayout.pageWidth <= 730);
+    assert.ok(Math.abs(mobilePrintLayout.pageWidth - mobilePrintLayout.bodyWidth) < 1);
+    assert.equal(mobilePrintLayout.columns, 2);
+    await touchPage.emulateMedia({ media: "screen" });
     await touchPage.locator(".receipt-preview-back-button").tap();
     await touchPage.locator(".receipt-preview-dialog").waitFor({ state: "detached" });
+    if (mobilePrintMarkup) {
+      const mobilePrintPage = await touchContext.newPage();
+      await mobilePrintPage.goto(`http://127.0.0.1:${server.address().port}/receipt.html`);
+      await mobilePrintPage.locator("body").evaluate((body, markup) => { body.innerHTML = markup; }, mobilePrintMarkup);
+      await mobilePrintPage.locator(".receipt-logo").evaluate((logo) => logo.decode());
+      await mobilePrintPage.pdf({ path: process.env.MOVEMENT_RECEIPT_MOBILE_PDF,
+        format: "A4", printBackground: true });
+      await mobilePrintPage.close();
+    }
     await touchContext.close();
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);

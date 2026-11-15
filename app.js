@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-19";
+const appBuildVersion = "20261115-20";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8768,7 +8768,8 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   const footer = element("footer", "receipt-footer");
   const website = element("a", "", "www.quialakey.com");
   website.href = "https://www.quialakey.com";
-  footer.append(element("strong", "", "Quialakey - Outils de gestion des clés immobilières"), website);
+  footer.append(element("strong", "", "Quialakey - Outils de gestion des clés immobilières"),
+    element("span", "", "-"), website);
   page.append(footer);
   receipt.body.append(toolbar, page);
   if (!embedded) receiptWindow.focus();
