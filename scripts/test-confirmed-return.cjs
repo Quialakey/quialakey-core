@@ -128,7 +128,7 @@ async function main() {
     await page.evaluate(() => {
       const key = normalizeKey({ id: "T2-1", category: "T2", number: 1, owner: "TEST", property: "1 rue Test",
         sets: [{ ...makeKeySet("main"), status: "out", holder: "Test",
-          history: [{ id: "photo-movement", type: "out", person: "Test", date: "15/11/2026 14:00",
+          history: [{ id: "photo-movement", type: "out", person: "Test", company: "  ", date: "15/11/2026 14:00",
             ...window.__photoEvidence }] }] });
       keys = [key];
       selectedId = key.id;
@@ -176,6 +176,7 @@ async function main() {
     const checkoutReceipt = await checkoutReceiptPromise;
     await checkoutReceipt.locator(".receipt-page").waitFor();
     assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
+    assert.equal(await checkoutReceipt.locator(".receipt-company").count(), 0);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie du jeu de clés/);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Code postal/);
@@ -202,11 +203,24 @@ async function main() {
       page.waitForEvent("popup"), page.locator("#historyList .history-print-button").first().click(),
     ]);
     await returnReceipt.locator(".receipt-page").waitFor();
-    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "REÇU DE JEUX DE CLÉS");
+    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "ATTESTATION DE REMISE DE CLÉS");
+    assert.equal(await returnReceipt.title(), "Quialakey - Attestation de remise de clés");
     assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
-    assert.equal(await returnReceipt.locator(".receipt-agency-block .receipt-stamp").textContent(), "Tampon de l'agence");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Tampon de l'agence");
+    assert.equal(await returnReceipt.locator(".receipt-stamp").textContent(), "");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
+      const label = group.querySelector(".receipt-stamp-label").getBoundingClientRect();
+      const stamp = group.querySelector(".receipt-stamp").getBoundingClientRect();
+      return label.bottom < stamp.top && Math.abs(label.left - stamp.left) < 1;
+    }), true);
+    const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
+      .evaluateAll((items) => {
+        const bounds = items.map((item) => item.getBoundingClientRect());
+        return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
+      });
+    assert.ok(sectionGaps.every((gap) => gap >= 30), `Section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>

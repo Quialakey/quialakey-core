@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-15";
+const appBuildVersion = "20261115-16";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8609,8 +8609,8 @@ function openMovementReceipt(key, set, entry) {
     const frame = document.createElement("iframe");
     const returnFocus = document.activeElement;
     dialog.className = "receipt-preview-dialog";
-    dialog.setAttribute("aria-label", "Reçu de clés");
-    frame.title = "Reçu de clés imprimable";
+    dialog.setAttribute("aria-label", "Attestation de remise de clés");
+    frame.title = "Attestation de remise de clés imprimable";
     frame.src = receiptUrl;
     frame.addEventListener("load", () => renderMovementReceipt(frame.contentWindow, key, set, entry,
       () => dialog.close()), { once: true });
@@ -8625,7 +8625,7 @@ function openMovementReceipt(key, set, entry) {
   }
   const receiptWindow = window.open(receiptUrl, "_blank");
   if (!receiptWindow) {
-    alert("Autorisez l'ouverture d'une nouvelle page pour afficher le reçu.");
+    alert("Autorisez l'ouverture d'une nouvelle page pour afficher l'attestation.");
     return;
   }
   receiptWindow.addEventListener("load", () => renderMovementReceipt(receiptWindow, key, set, entry, () => {
@@ -8661,7 +8661,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   });
   const closeButton = element("button", "receipt-close-button", "×");
   closeButton.type = "button";
-  closeButton.title = "Fermer le reçu";
+  closeButton.title = "Fermer l'attestation";
   closeButton.setAttribute("aria-label", closeButton.title);
   closeButton.addEventListener("click", closeReceipt);
   toolbar.append(printButton, closeButton);
@@ -8673,12 +8673,15 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   const agency = element("p", "receipt-agency", tableSettings?.agencyName || configuredAgencyName);
   const masthead = element("div", "receipt-masthead");
   const agencyBlock = element("div", "receipt-agency-block");
-  agencyBlock.append(agency, element("div", "receipt-stamp", "Tampon de l'agence"));
+  const stampGroup = element("div", "receipt-stamp-group");
+  stampGroup.append(element("span", "receipt-stamp-label", "Tampon de l'agence"),
+    element("div", "receipt-stamp"));
+  agencyBlock.append(agency, stampGroup);
   masthead.append(logo, agencyBlock);
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(masthead, element("h1", "", "REÇU DE JEUX DE CLÉS"));
+  header.append(masthead, element("h1", "", "ATTESTATION DE REMISE DE CLÉS"));
   page.append(header);
 
   const property = element("section", "receipt-section receipt-property");
@@ -8700,12 +8703,13 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
       : movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour du jeu de clés" : action));
     const details = element("div", "receipt-details");
     addDetail(details, movement.signature ? "Signé le" : "Enregistré le", movement.date);
-    const person = movement.company && movement.person?.startsWith(`${movement.company} - `)
-      ? movement.person.slice(movement.company.length + 3) : movement.person;
+    const company = String(movement.company || "").trim();
+    const person = company && movement.person?.startsWith(`${company} - `)
+      ? movement.person.slice(company.length + 3) : movement.person;
     const actor = addDetail(details, "Intervenant", person);
-    if (movement.company) {
+    if (company) {
       actor.classList.add("has-company");
-      actor.querySelector("strong").append(element("span", "receipt-company", `Société : ${movement.company}`));
+      actor.querySelector("strong").append(element("span", "receipt-company", `Société : ${company}`));
     }
     addOptionalDetail(details, "Téléphone", movement.phone);
     addOptionalDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
@@ -8743,7 +8747,7 @@ function createHistoryPrintButton(key, set, entry) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "history-print-button";
-  button.title = "Ouvrir le reçu imprimable";
+  button.title = "Ouvrir l'attestation imprimable";
   button.setAttribute("aria-label", button.title);
   button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg>';
   button.addEventListener("click", () => openMovementReceipt(key, set, entry));

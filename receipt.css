@@ -64,6 +64,7 @@ body {
 }
 
 .receipt-header {
+  margin-bottom: 18mm;
   text-align: left;
 }
 
@@ -79,6 +80,10 @@ body {
   justify-items: end;
   gap: 2mm;
   width: 100%;
+}
+
+.receipt-stamp-group {
+  width: min(46mm, 100%);
 }
 
 .receipt-logo {
@@ -101,18 +106,22 @@ body {
   text-align: right;
 }
 
-.receipt-stamp {
-  display: grid;
-  place-items: center;
-  width: min(46mm, 100%);
-  height: 20mm;
-  border: 1px dashed #a9b4ac;
+.receipt-stamp-label {
+  display: block;
+  margin-bottom: 1mm;
   color: #748179;
   font-size: 9px;
+  text-align: left;
+}
+
+.receipt-stamp {
+  width: 100%;
+  height: 20mm;
+  border: 1px dashed #a9b4ac;
 }
 
 h1 {
-  margin: 4mm 0 5mm;
+  margin: 7mm 0 0;
   padding-bottom: 2mm;
   border-bottom: 1px solid #d5dfd8;
   font-size: 18px;
@@ -138,9 +147,13 @@ h1 {
 }
 
 .receipt-property {
-  margin-bottom: 6mm;
+  margin-bottom: 18mm;
   border-color: #b9c1bc;
   background: rgba(216, 220, 216, 0.35);
+}
+
+.has-return .receipt-out {
+  margin-bottom: 18mm;
 }
 
 .receipt-property h2 {
@@ -272,6 +285,12 @@ h1 {
     width: 100%;
     min-height: 0;
     padding: 14px;
+  }
+
+  .receipt-header,
+  .receipt-property,
+  .has-return .receipt-out {
+    margin-bottom: 12mm;
   }
 
   .receipt-logo,
