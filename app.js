@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-11";
+const appBuildVersion = "20261115-12";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8591,15 +8591,39 @@ function getReceiptMovements(history, entry) {
 }
 
 function openMovementReceipt(key, set, entry) {
-  const receiptWindow = window.open(new URL(`receipt.html?v=${appBuildVersion}`, location.href).href, "_blank");
+  const receiptUrl = new URL(`receipt.html?v=${appBuildVersion}`, location.href).href;
+  if (window.matchMedia("(pointer: coarse)").matches ||
+    window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true) {
+    const dialog = document.createElement("dialog");
+    const frame = document.createElement("iframe");
+    const returnFocus = document.activeElement;
+    dialog.className = "receipt-preview-dialog";
+    dialog.setAttribute("aria-label", "Reçu de clés");
+    frame.title = "Reçu de clés imprimable";
+    frame.src = receiptUrl;
+    frame.addEventListener("load", () => renderMovementReceipt(frame.contentWindow, key, set, entry,
+      () => dialog.close()), { once: true });
+    dialog.append(frame);
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      if (returnFocus?.isConnected) returnFocus.focus();
+    }, { once: true });
+    document.body.append(dialog);
+    dialog.showModal();
+    return;
+  }
+  const receiptWindow = window.open(receiptUrl, "_blank");
   if (!receiptWindow) {
     alert("Autorisez l'ouverture d'une nouvelle page pour afficher le reçu.");
     return;
   }
-  receiptWindow.addEventListener("load", () => renderMovementReceipt(receiptWindow, key, set, entry), { once: true });
+  receiptWindow.addEventListener("load", () => renderMovementReceipt(receiptWindow, key, set, entry, () => {
+    window.focus();
+    receiptWindow.close();
+  }), { once: true });
 }
 
-function renderMovementReceipt(receiptWindow, key, set, entry) {
+function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   const receipt = receiptWindow.document;
 
   const element = (tag, className, value) => {
@@ -8627,7 +8651,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
   closeButton.type = "button";
   closeButton.title = "Fermer le reçu";
   closeButton.setAttribute("aria-label", closeButton.title);
-  closeButton.addEventListener("click", () => receiptWindow.close());
+  closeButton.addEventListener("click", closeReceipt);
   toolbar.append(printButton, closeButton);
   const page = element("main", "receipt-page");
   const header = element("header", "receipt-header");

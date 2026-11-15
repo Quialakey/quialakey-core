@@ -171,7 +171,7 @@ async function main() {
       renderPanel();
     });
     const checkoutReceiptPromise = page.waitForEvent("popup");
-    await page.locator("#historyList .history-print-button").click();
+    await page.locator("#historyList .history-print-button").first().click();
     const checkoutReceipt = await checkoutReceiptPromise;
     await checkoutReceipt.locator(".receipt-page").waitFor();
     assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
@@ -252,6 +252,29 @@ async function main() {
     const receiptClosed = returnReceipt.waitForEvent("close");
     await returnReceipt.locator(".receipt-close-button").click();
     await receiptClosed;
+    await page.evaluate(() => {
+      window.__originalMatchMedia = window.matchMedia;
+      window.matchMedia = (query) => query === "(pointer: coarse)"
+        ? { matches: true } : window.__originalMatchMedia(query);
+    });
+    await page.locator("#historyList .history-print-button").first().click();
+    const mobileReceipt = page.frameLocator(".receipt-preview-dialog iframe");
+    await mobileReceipt.locator(".receipt-page").waitFor();
+    if (process.env.MOVEMENT_RECEIPT_IN_APP_SCREENSHOT) {
+      await page.screenshot({ path: process.env.MOVEMENT_RECEIPT_IN_APP_SCREENSHOT });
+    }
+    assert.equal(page.context().pages().length, 1);
+    assert.equal(await page.evaluate(() => selectedId), "T2-1");
+    await mobileReceipt.locator("body").evaluate(() => {
+      window.print = () => { window.__receiptPrinted = true; };
+    });
+    await mobileReceipt.locator(".receipt-print-button").click();
+    assert.equal(await mobileReceipt.locator("body").evaluate(() => window.__receiptPrinted), true);
+    await mobileReceipt.locator(".receipt-close-button").click();
+    assert.equal(await page.locator(".receipt-preview-dialog").count(), 0);
+    assert.equal(await page.evaluate(() => selectedId), "T2-1");
+    assert.equal(await page.locator("#historyList .history-print-button").count() > 0, true);
+    await page.evaluate(() => { window.matchMedia = window.__originalMatchMedia; });
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
       assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
