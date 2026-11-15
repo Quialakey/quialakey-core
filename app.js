@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-14";
+const appBuildVersion = "20261115-15";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8590,6 +8590,17 @@ function getReceiptMovements(history, entry) {
   return [entry];
 }
 
+function getReceiptCheckoutCount(key, movement) {
+  if (movement.type !== "out") return 1;
+  if (movement.movementSetCount > 1) return movement.movementSetCount;
+  if (!movement.signature && !movement.movementPhoto) return 1;
+  return Math.max(1, (key.sets || []).filter((set) => (set.history || []).some((entry) =>
+    entry.type === "out" && entry.date === movement.date && entry.person === movement.person &&
+    entry.phone === movement.phone &&
+    ((movement.signature && entry.signature === movement.signature) ||
+      (movement.movementPhoto && entry.movementPhoto === movement.movementPhoto)))).length);
+}
+
 function openMovementReceipt(key, set, entry) {
   const receiptUrl = new URL(`receipt.html?v=${appBuildVersion}`, location.href).href;
   if (window.matchMedia("(pointer: coarse)").matches ||
@@ -8634,8 +8645,9 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   };
   const addDetail = (parent, label, value) => {
     const row = element("div", "receipt-detail");
-    row.append(element("span", "receipt-label", label), element("strong", "", String(value || "").trim() || "—"));
+    row.append(element("span", "receipt-label", `${label} :`), element("strong", "", String(value || "").trim() || "—"));
     parent.append(row);
+    return row;
   };
   const addOptionalDetail = (parent, label, value) => {
     if (String(value || "").trim()) addDetail(parent, label, value);
@@ -8659,10 +8671,14 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   logo.src = new URL("quialakey-opening-banner-20261025.webp", location.href).href;
   logo.alt = "Quialakey";
   const agency = element("p", "receipt-agency", tableSettings?.agencyName || configuredAgencyName);
+  const masthead = element("div", "receipt-masthead");
+  const agencyBlock = element("div", "receipt-agency-block");
+  agencyBlock.append(agency, element("div", "receipt-stamp", "Tampon de l'agence"));
+  masthead.append(logo, agencyBlock);
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(logo, agency, element("h1", "", "Reçu de jeux de clés"));
+  header.append(masthead, element("h1", "", "REÇU DE JEUX DE CLÉS"));
   page.append(header);
 
   const property = element("section", "receipt-section receipt-property");
@@ -8679,12 +8695,18 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   movements.forEach((movement) => {
     const action = getMovementActionLabel(movement, set.history || []);
     const section = element("section", `receipt-section receipt-movement receipt-${movement.type}`);
-    section.append(element("h2", "", movement.type === "out" ? "Sortie des jeux de clés" :
-      movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour des jeux de clés" : action));
+    section.append(element("h2", "", movement.type === "out"
+      ? getReceiptCheckoutCount(key, movement) > 1 ? "Sortie des jeux de clés" : "Sortie du jeu de clés"
+      : movement.type === "in" && isReturnMovement(movement, set.history || []) ? "Retour du jeu de clés" : action));
     const details = element("div", "receipt-details");
     addDetail(details, movement.signature ? "Signé le" : "Enregistré le", movement.date);
-    addDetail(details, "Intervenant", movement.person);
-    addOptionalDetail(details, "Société", movement.company);
+    const person = movement.company && movement.person?.startsWith(`${movement.company} - `)
+      ? movement.person.slice(movement.company.length + 3) : movement.person;
+    const actor = addDetail(details, "Intervenant", person);
+    if (movement.company) {
+      actor.classList.add("has-company");
+      actor.querySelector("strong").append(element("span", "receipt-company", `Société : ${movement.company}`));
+    }
     addOptionalDetail(details, "Téléphone", movement.phone);
     addOptionalDetail(details, "Réservation prévue", formatReservationHistoryDate(movement.reservationDate));
     addOptionalDetail(details, "Commentaire", movement.note?.replace(/^Commentaire\s*:\s*/i, ""));
@@ -8692,7 +8714,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
     const evidence = element("div", "receipt-evidence");
     [["Photo", movement.movementPhoto], ["Signature", movement.signature]].forEach(([label, source]) => {
       const frame = element("div", "receipt-evidence-frame");
-      frame.append(element("h3", "", label));
+      frame.append(element("h3", "", `${label} :`));
       const visual = element("div", "receipt-evidence-visual");
       if (source && /^data:image\//.test(source)) {
         const image = element("img");
@@ -10165,7 +10187,7 @@ async function addMovement(type, options = {}) {
   if (type === "out" && checkoutSets.length > 1 && !selectedArchiveRecord) {
     const snapshot = createUndoSnapshot();
     const movements = checkoutSets.map((set, index) => {
-      const setEntry = index ? { ...entry, id: createHistoryId() } : entry;
+      const setEntry = { ...entry, id: index ? createHistoryId() : entry.id, movementSetCount: checkoutSets.length };
       return {
         set,
         entry: setEntry,

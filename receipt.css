@@ -11,7 +11,7 @@ body {
   margin: 0;
   color: #20302b;
   background: #e9edeb;
-  font: 11px/1.3 Arial, sans-serif;
+  font: 12px/1.35 Arial, sans-serif;
 }
 
 .receipt-toolbar {
@@ -64,14 +64,28 @@ body {
 }
 
 .receipt-header {
-  text-align: center;
+  text-align: left;
+}
+
+.receipt-masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 6mm;
+}
+
+.receipt-agency-block {
+  display: grid;
+  justify-items: end;
+  gap: 2mm;
+  width: 100%;
 }
 
 .receipt-logo {
   display: block;
   width: 42mm;
   height: auto;
-  margin: 0 auto 2mm;
+  margin: 0;
   object-fit: contain;
 }
 
@@ -82,17 +96,32 @@ body {
 .receipt-agency {
   margin: 0;
   color: #164e38;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
+  text-align: right;
+}
+
+.receipt-stamp {
+  display: grid;
+  place-items: center;
+  width: min(46mm, 100%);
+  height: 20mm;
+  border: 1px dashed #a9b4ac;
+  color: #748179;
+  font-size: 9px;
 }
 
 h1 {
-  margin: 1mm 0 3mm;
-  font-size: 15px;
+  margin: 4mm 0 5mm;
+  padding-bottom: 2mm;
+  border-bottom: 1px solid #d5dfd8;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .receipt-section {
-  margin: 0 0 2.5mm;
+  margin: 0 0 5mm;
   overflow: hidden;
   border: 1px solid #d5dfd8;
   border-radius: 3px;
@@ -105,10 +134,11 @@ h1 {
   border-left: 3px solid #18513a;
   color: #18513a;
   background: #f5f8f6;
-  font-size: 11.5px;
+  font-size: 13px;
 }
 
 .receipt-property {
+  margin-bottom: 6mm;
   border-color: #b9c1bc;
   background: rgba(216, 220, 216, 0.35);
 }
@@ -144,8 +174,8 @@ h1 {
 .receipt-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1mm 4mm;
-  padding: 2mm 3mm;
+  gap: 1.5mm 4mm;
+  padding: 2.5mm 3mm;
 }
 
 .receipt-detail {
@@ -160,12 +190,20 @@ h1 {
 
 .receipt-label {
   color: #596d63;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 600;
 }
 
 .receipt-detail strong {
-  font-size: 10px;
+  font-size: 11.5px;
+}
+
+.receipt-company {
+  display: block;
+  margin-top: 2px;
+  color: #4b5f53;
+  font-size: 10.5px;
+  font-weight: 500;
 }
 
 .receipt-evidence {
@@ -177,7 +215,7 @@ h1 {
 
 .receipt-evidence-frame h3 {
   margin: 0 0 0.8mm;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .receipt-evidence-visual {
@@ -186,9 +224,8 @@ h1 {
   justify-content: center;
   height: 40mm;
   overflow: hidden;
-  border: 1px solid #d6dfd9;
-  border-radius: 3px;
-  background: #fff;
+  border: 0;
+  background: transparent;
   color: #6a7770;
   font-size: 9px;
 }
@@ -243,15 +280,23 @@ h1 {
   }
 
   .receipt-section h2 {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .receipt-label,
   .receipt-evidence-frame h3 {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .receipt-detail strong {
+    font-size: 12px;
+  }
+
+  .receipt-detail.has-company {
+    grid-column: 1 / -1;
+  }
+
+  .receipt-company {
     font-size: 11px;
   }
 }

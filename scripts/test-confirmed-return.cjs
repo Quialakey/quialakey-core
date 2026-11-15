@@ -157,6 +157,7 @@ async function main() {
       await page.evaluate(() => window.__photoEvidence.movementPhoto));
     await page.locator(".photo-viewer-close").click();
     await page.evaluate(() => {
+      tableSettings.agencyName = "Century 21 Les Minimes";
       const canvas = document.createElement("canvas");
       canvas.width = 100;
       canvas.height = 240;
@@ -175,7 +176,7 @@ async function main() {
     const checkoutReceipt = await checkoutReceiptPromise;
     await checkoutReceipt.locator(".receipt-page").waitFor();
     assert.equal(await checkoutReceipt.locator(".receipt-movement").count(), 1);
-    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des jeux de clés/);
+    assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie du jeu de clés/);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Code postal/);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Registre|Propriétaire/);
@@ -192,7 +193,7 @@ async function main() {
       const set = keys[0].sets[0];
       set.status = "available";
       set.history.unshift({ id: "history-1794754800000-return", type: "in", returnReason: "returned",
-        person: "Autre intervenant", phone: "0601020304", date: "15/11/2026 15:00",
+        person: "Autre intervenant", company: "Entreprise Test", phone: "0601020304", date: "15/11/2026 15:00",
         ...window.__photoEvidence });
       renderPanel();
     });
@@ -201,9 +202,21 @@ async function main() {
       page.waitForEvent("popup"), page.locator("#historyList .history-print-button").first().click(),
     ]);
     await returnReceipt.locator(".receipt-page").waitFor();
-    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "Reçu de jeux de clés");
+    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "REÇU DE JEUX DE CLÉS");
+    assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
-      ["Sortie des jeux de clés", "Retour des jeux de clés"]);
+      ["Sortie du jeu de clés", "Retour du jeu de clés"]);
+    assert.equal(await returnReceipt.locator(".receipt-agency-block .receipt-stamp").textContent(), "Tampon de l'agence");
+    assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
+      labels.every((label) => label.textContent.trim().endsWith(":"))), true);
+    assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
+      labels.every((label) => label.textContent.trim().endsWith(":"))), true);
+    assert.equal(await returnReceipt.locator(".receipt-company").textContent(), "Société : Entreprise Test");
+    assert.equal(await returnReceipt.locator(".receipt-company").evaluate((company) =>
+      getComputedStyle(company).display), "block");
+    assert.equal(await returnReceipt.locator(".receipt-detail.has-company").count(), 1);
+    assert.ok(await returnReceipt.locator(".receipt-company").evaluate((company) =>
+      company.getBoundingClientRect().height < 20));
     assert.equal(await returnReceipt.locator(".receipt-movement img").count(), 4);
     await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => image.decode());
     assert.equal(await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => {
@@ -229,7 +242,13 @@ async function main() {
       page: document.querySelector(".receipt-page").getBoundingClientRect().height,
       evidence: document.querySelector(".receipt-evidence-visual").getBoundingClientRect().height,
     }));
-    assert.ok(compactSize.page < 950 && compactSize.evidence >= 140);
+    assert.ok(compactSize.page < 1100 && compactSize.evidence >= 140);
+    assert.deepEqual(await page.evaluate(() => {
+      const movement = { type: "out", person: "Test", phone: "", date: "15/11/2026 14:00", signature: "signature" };
+      return [getReceiptCheckoutCount({ sets: [{ history: [movement] }, { history: [] }] }, movement),
+        getReceiptCheckoutCount({ sets: [{ history: [movement] }, { history: [{ ...movement }] }] }, movement),
+        getReceiptCheckoutCount({ sets: [] }, { ...movement, movementSetCount: 3 })];
+    }), [1, 2, 3]);
     assert.deepEqual(await returnReceipt.evaluate(() => [".receipt-property", ".receipt-out", ".receipt-in"]
       .map((selector) => getComputedStyle(document.querySelector(selector)).backgroundColor)),
       ["rgba(216, 220, 216, 0.35)", "rgba(242, 206, 200, 0.35)", "rgba(202, 235, 213, 0.35)"]);
@@ -564,6 +583,7 @@ async function main() {
       signatures: window.__returnPayload.value.sets.map((set) => set.history[0].signature),
       photos: window.__returnPayload.value.sets.map((set) => set.history[0].movementPhoto),
       movementIds: window.__returnPayload.value.sets.map((set) => set.history[0].id),
+      movementSetCounts: window.__returnPayload.value.sets.map((set) => set.history[0].movementSetCount),
       signatureCount: window.__signatureCount,
       busy: checkoutBtn.getAttribute("aria-busy"),
     }));
@@ -574,6 +594,7 @@ async function main() {
     assert.equal(pendingGroup.photos[0], pendingGroup.photos[1]);
     assert.match(pendingGroup.photos[0], /^data:image\/gif;base64,/);
     assert.notEqual(pendingGroup.movementIds[0], pendingGroup.movementIds[1]);
+    assert.deepEqual(pendingGroup.movementSetCounts, [2, 2]);
     assert.equal(pendingGroup.signatureCount, 1);
     assert.equal(pendingGroup.busy, "true");
     await page.evaluate(() => window.__resolveWrite("failure"));
