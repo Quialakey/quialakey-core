@@ -75,8 +75,15 @@ async function main() {
     await capturePhoto("#cc4455");
     const firstPhoto = await page.locator(".movement-photo-preview").getAttribute("src");
     assert.match(firstPhoto, /^data:image\/jpeg;base64,/);
+    assert.equal(await page.locator(".movement-photo-delete-button").isVisible(), true);
+    assert.ok(await page.locator(".movement-photo-preview").evaluate((image) => image.getBoundingClientRect().height) >= 120);
     await capturePhoto("#336699");
     assert.notEqual(await page.locator(".movement-photo-preview").getAttribute("src"), firstPhoto);
+    await page.locator(".movement-photo-delete-button").click();
+    assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
+    assert.equal(await page.locator(".movement-photo-preview").isVisible(), false);
+    assert.equal(await page.locator(".movement-photo-delete-button").isVisible(), false);
+    await capturePhoto("#336699");
     await page.locator(".movement-signature-canvas").evaluate((canvas) => {
       const context = canvas.getContext("2d");
       context.beginPath();
@@ -132,6 +139,24 @@ async function main() {
       await page.locator(".movement-signature-cancel").click();
       assert.equal(await page.evaluate(() => window.__photoPrompt), null);
     }
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.evaluate(() => { window.__photoPrompt = promptMovementSignature("Sorti"); });
+    await capturePhoto("#336699");
+    const narrowPhotoLayout = await page.locator(".movement-photo-field").evaluate((field) => {
+      const actions = field.querySelector(".movement-photo-actions");
+      const preview = field.querySelector(".movement-photo-preview-frame");
+      return { noOverflow: actions.getBoundingClientRect().right <= field.getBoundingClientRect().right,
+        previewHeight: preview.getBoundingClientRect().height,
+        buttonHeight: actions.querySelector(".movement-photo-button").getBoundingClientRect().height };
+    });
+    assert.equal(narrowPhotoLayout.noOverflow, true);
+    assert.ok(narrowPhotoLayout.previewHeight >= 120);
+    assert.ok(narrowPhotoLayout.buttonHeight >= 40);
+    if (process.env.MOVEMENT_PHOTO_NARROW_SCREENSHOT) {
+      await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MOVEMENT_PHOTO_NARROW_SCREENSHOT });
+    }
+    await page.locator(".movement-signature-cancel").click();
+    await page.setViewportSize({ width: 390, height: 844 });
     const sameSlotWithReorderedFields = await page.evaluate(() => {
       const local = normalizeKey({
         id: "T2-6", category: "T2", number: 6,

@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-4";
+const appBuildVersion = "20261115-5";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10190,7 +10190,11 @@ function promptMovementSignature(actionLabel) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     const photoField = document.createElement("div");
+    const photoPreviewFrame = document.createElement("div");
+    const photoEmpty = document.createElement("span");
+    const photoActions = document.createElement("div");
     const photoButton = document.createElement("button");
+    const deletePhotoButton = document.createElement("button");
     const photoInput = document.createElement("input");
     const photoPreview = document.createElement("img");
     const title = document.createElement("h3");
@@ -10210,9 +10214,17 @@ function promptMovementSignature(actionLabel) {
     dialog.addEventListener("click", (event) => event.stopPropagation());
     if (canPhotographMovement) {
       photoField.className = "movement-photo-field";
+      photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
+      photoEmpty.textContent = "Aucune photo";
+      photoPreviewFrame.append(photoEmpty, photoPreview);
+      photoActions.className = "photo-actions movement-photo-actions";
       photoButton.type = "button";
-      photoButton.className = "movement-photo-button";
+      photoButton.className = "photo-button movement-photo-button";
       photoButton.textContent = "Prendre une photo";
+      deletePhotoButton.type = "button";
+      deletePhotoButton.className = "photo-delete-button movement-photo-delete-button";
+      deletePhotoButton.textContent = "Supprimer la photo";
+      deletePhotoButton.hidden = true;
       photoInput.type = "file";
       photoInput.className = "movement-photo-input";
       photoInput.accept = "image/*";
@@ -10222,6 +10234,15 @@ function promptMovementSignature(actionLabel) {
       photoPreview.alt = "Photo prise pour ce mouvement";
       photoPreview.hidden = true;
       photoButton.addEventListener("click", () => photoInput.click());
+      deletePhotoButton.addEventListener("click", () => {
+        movementPhoto = "";
+        photoPreview.removeAttribute("src");
+        photoPreview.hidden = true;
+        photoEmpty.hidden = false;
+        photoButton.textContent = "Prendre une photo";
+        deletePhotoButton.hidden = true;
+        photoInput.value = "";
+      });
       photoInput.addEventListener("click", (event) => {
         photoImportActive = true;
         beginPhotoImport(event);
@@ -10249,7 +10270,9 @@ function promptMovementSignature(actionLabel) {
           movementPhoto = photo;
           photoPreview.src = photo;
           photoPreview.hidden = false;
+          photoEmpty.hidden = true;
           photoButton.textContent = "Reprendre une photo";
+          deletePhotoButton.hidden = false;
         } catch {
           alert("La photo n'a pas pu \u00eatre import\u00e9e. R\u00e9essayez.");
         } finally {
@@ -10261,7 +10284,8 @@ function promptMovementSignature(actionLabel) {
           }
         }
       });
-      photoField.append(photoButton, photoPreview, photoInput);
+      photoActions.append(photoButton, deletePhotoButton);
+      photoField.append(photoPreviewFrame, photoActions, photoInput);
     }
     title.textContent = `Signature - ${actionLabel}`;
     field.className = "movement-signature-field";
