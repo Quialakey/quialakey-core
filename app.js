@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-10";
+const appBuildVersion = "20261115-11";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8617,13 +8617,18 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
     if (String(value || "").trim()) addDetail(parent, label, value);
   };
   const toolbar = element("div", "receipt-toolbar");
-  const printButton = element("button", "", "Imprimer");
+  const printButton = element("button", "receipt-print-button", "Imprimer");
   printButton.type = "button";
   printButton.addEventListener("click", async () => {
     await Promise.all([...receipt.images].map((image) => image.decode().catch(() => {})));
     receiptWindow.print();
   });
-  toolbar.append(printButton);
+  const closeButton = element("button", "receipt-close-button", "×");
+  closeButton.type = "button";
+  closeButton.title = "Fermer le reçu";
+  closeButton.setAttribute("aria-label", closeButton.title);
+  closeButton.addEventListener("click", () => receiptWindow.close());
+  toolbar.append(printButton, closeButton);
   const page = element("main", "receipt-page");
   const header = element("header", "receipt-header");
   const logo = element("img", "receipt-logo");
@@ -8640,11 +8645,9 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
   property.append(element("h2", "", "Bien concerné"));
   const propertyDetails = element("div", "receipt-details");
   addDetail(propertyDetails, "Fiche et jeu", `${keyLabel(key)} · ${set.label}`);
-  addDetail(propertyDetails, "Registre", activeRegistry === "transaction" ? "Transaction" : "Location");
   addOptionalDetail(propertyDetails, "Adresse", key.property);
   addOptionalDetail(propertyDetails, "Code postal", key.postalCode);
   addOptionalDetail(propertyDetails, "Ville", key.city);
-  addOptionalDetail(propertyDetails, "Propriétaire", [key.ownerFirstName, key.owner].filter(Boolean).join(" "));
   addOptionalDetail(propertyDetails, "Notes", key.notes);
   property.append(propertyDetails);
   page.append(property);
@@ -8681,7 +8684,11 @@ function renderMovementReceipt(receiptWindow, key, set, entry) {
     section.append(evidence);
     page.append(section);
   });
-  page.append(element("footer", "receipt-footer", "Quialakey · Reçu établi à partir de l'historique du tableau"));
+  const footer = element("footer", "receipt-footer");
+  const website = element("a", "", "www.quialakey.com");
+  website.href = "https://www.quialakey.com";
+  footer.append(element("strong", "", "Quialakey - Outils de gestion des clés immobilières"), website);
+  page.append(footer);
   receipt.body.append(toolbar, page);
   receiptWindow.focus();
 }
@@ -10364,7 +10371,7 @@ function promptMovementSignature(actionLabel) {
     dialog.addEventListener("pointerdown", (event) => event.stopPropagation());
     dialog.addEventListener("click", (event) => event.stopPropagation());
     if (canPhotographMovement) {
-      photoTitle.textContent = `Photo - ${actionLabel === "Sorti" ? "Sorti" : "Entr\u00e9"}`;
+      photoTitle.textContent = `Photo - ${actionLabel}`;
       photoField.className = "movement-photo-field";
       photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
       photoEmpty.textContent = "Aucune photo";

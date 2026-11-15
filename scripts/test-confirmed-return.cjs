@@ -156,6 +156,20 @@ async function main() {
     assert.equal(await page.locator(".photo-viewer img").getAttribute("src"),
       await page.evaluate(() => window.__photoEvidence.movementPhoto));
     await page.locator(".photo-viewer-close").click();
+    await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 100;
+      canvas.height = 240;
+      const context = canvas.getContext("2d");
+      context.fillStyle = "#bb3333";
+      context.fillRect(0, 0, 100, 40);
+      context.fillStyle = "#eeeeee";
+      context.fillRect(0, 40, 100, 160);
+      context.fillStyle = "#3366bb";
+      context.fillRect(0, 200, 100, 40);
+      keys[0].sets[0].history[0].movementPhoto = canvas.toDataURL("image/png");
+      renderPanel();
+    });
     const checkoutReceiptPromise = page.waitForEvent("popup");
     await page.locator("#historyList .history-print-button").click();
     const checkoutReceipt = await checkoutReceiptPromise;
@@ -164,9 +178,15 @@ async function main() {
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /Sortie des clés/);
     assert.match(await checkoutReceipt.locator(".receipt-page").innerText(), /1 rue Test/i);
     assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Code postal/);
+    assert.doesNotMatch(await checkoutReceipt.locator(".receipt-property").innerText(), /Registre|Propriétaire/);
     assert.equal(await checkoutReceipt.locator(".receipt-movement img").count(), 2);
+    await checkoutReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => image.decode());
+    assert.deepEqual(await checkoutReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => ({
+      width: image.naturalWidth, height: image.naturalHeight, fit: getComputedStyle(image).objectFit,
+    })), { width: 100, height: 240, fit: "contain" });
     assert.equal(await checkoutReceipt.locator(".receipt-logo").getAttribute("src"),
       `http://127.0.0.1:${server.address().port}/quialakey-opening-banner-20261025.webp`);
+    assert.equal(await checkoutReceipt.locator(".receipt-logo").evaluate((image) => getComputedStyle(image).objectFit), "contain");
     await checkoutReceipt.close();
     await page.evaluate(() => {
       const set = keys[0].sets[0];
@@ -184,9 +204,19 @@ async function main() {
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie des clés", "Retour des clés"]);
     assert.equal(await returnReceipt.locator(".receipt-movement img").count(), 4);
+    await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => image.decode());
+    assert.equal(await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => {
+      const photo = image.getBoundingClientRect();
+      const frame = image.parentElement.getBoundingClientRect();
+      return photo.width <= frame.width && photo.height <= frame.height &&
+        Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
+    }), true);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /Autre intervenant/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 14:00/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 15:00/);
+    assert.match(await returnReceipt.locator(".receipt-footer").innerText(),
+      /Quialakey - Outils de gestion des clés immobilières\s+www\.quialakey\.com/);
+    assert.equal(await returnReceipt.locator(".receipt-footer a").evaluate((link) => link.href), "https://www.quialakey.com/");
     await returnReceipt.waitForFunction(() =>
       getComputedStyle(document.querySelector(".receipt-page")).backgroundColor === "rgb(255, 255, 255)" &&
       document.querySelector(".receipt-logo")?.naturalWidth > 0);
@@ -196,7 +226,10 @@ async function main() {
       page: document.querySelector(".receipt-page").getBoundingClientRect().height,
       evidence: document.querySelector(".receipt-evidence-visual").getBoundingClientRect().height,
     }));
-    assert.ok(compactSize.page < 800 && compactSize.evidence < 110);
+    assert.ok(compactSize.page < 950 && compactSize.evidence >= 140);
+    assert.deepEqual(await returnReceipt.evaluate(() => [".receipt-property", ".receipt-out", ".receipt-in"]
+      .map((selector) => getComputedStyle(document.querySelector(selector)).backgroundColor)),
+      ["rgb(229, 231, 230)", "rgb(242, 206, 200)", "rgb(202, 235, 213)"]);
     assert.deepEqual(await page.evaluate(() => {
       const history = [
         { id: "out-1", type: "out", date: "01/11/2026 10:00" },
@@ -209,14 +242,20 @@ async function main() {
     if (process.env.MOVEMENT_RECEIPT_SCREENSHOT) {
       await returnReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_SCREENSHOT, fullPage: true });
     }
+    if (process.env.MOVEMENT_RECEIPT_DESKTOP_SCREENSHOT) {
+      await returnReceipt.setViewportSize({ width: 1280, height: 900 });
+      await returnReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_DESKTOP_SCREENSHOT, fullPage: true });
+    }
     if (process.env.MOVEMENT_RECEIPT_PDF) {
       await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_PDF, format: "A4", printBackground: true });
     }
-    await returnReceipt.close();
+    const receiptClosed = returnReceipt.waitForEvent("close");
+    await returnReceipt.locator(".receipt-close-button").click();
+    await receiptClosed;
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
       assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
-        ["Photo - Entr\u00e9", `Signature - ${action}`]);
+        [`Photo - ${action}`, `Signature - ${action}`]);
       assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
       await page.locator(".movement-signature-cancel").click();
       assert.equal(await page.evaluate(() => window.__photoPrompt), null);
