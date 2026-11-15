@@ -55,7 +55,15 @@ async function main() {
     await page.waitForFunction(() => typeof confirmReturnedSetMovement === "function" &&
       hasCompletedInitialCloudLoad && hasStartedCloudInactivityTracking && !isCloudCheckRunning);
     await page.evaluate(() => { window.__photoPrompt = promptMovementSignature("Sorti"); });
+    assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
+      ["Photo - Sorti", "Signature - Sorti"]);
     assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
+    const emptyPhotoHeight = await page.locator(".movement-photo-field")
+      .evaluate((field) => field.getBoundingClientRect().height);
+    assert.ok(emptyPhotoHeight <= 110);
+    if (process.env.MOVEMENT_PHOTO_EMPTY_SCREENSHOT) {
+      await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MOVEMENT_PHOTO_EMPTY_SCREENSHOT });
+    }
     const makePhotoBuffer = async (color) => Buffer.from(await page.evaluate((fill) => {
       const canvas = document.createElement("canvas");
       canvas.width = 120;
@@ -75,6 +83,10 @@ async function main() {
     await capturePhoto("#cc4455");
     const firstPhoto = await page.locator(".movement-photo-preview").getAttribute("src");
     assert.match(firstPhoto, /^data:image\/jpeg;base64,/);
+    const filledPhotoHeight = await page.locator(".movement-photo-field")
+      .evaluate((field) => field.getBoundingClientRect().height);
+    assert.equal(filledPhotoHeight, 154);
+    assert.ok(filledPhotoHeight > emptyPhotoHeight);
     assert.equal(await page.locator(".movement-photo-delete-button").isVisible(), true);
     assert.ok(await page.locator(".movement-photo-preview").evaluate((image) => image.getBoundingClientRect().height) >= 120);
     await capturePhoto("#336699");
@@ -83,6 +95,8 @@ async function main() {
     assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
     assert.equal(await page.locator(".movement-photo-preview").isVisible(), false);
     assert.equal(await page.locator(".movement-photo-delete-button").isVisible(), false);
+    assert.equal(await page.locator(".movement-photo-field").evaluate((field) => field.getBoundingClientRect().height),
+      emptyPhotoHeight);
     await capturePhoto("#336699");
     await page.locator(".movement-signature-canvas").evaluate((canvas) => {
       const context = canvas.getContext("2d");
@@ -135,6 +149,8 @@ async function main() {
     await page.locator(".photo-viewer-close").click();
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);
+      assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
+        ["Photo - Entr\u00e9", `Signature - ${action}`]);
       assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
       await page.locator(".movement-signature-cancel").click();
       assert.equal(await page.evaluate(() => window.__photoPrompt), null);

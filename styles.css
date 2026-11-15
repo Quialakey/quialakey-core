@@ -3506,12 +3506,16 @@ body.is-moving-key .photo-hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
   gap: 6px;
-  height: 154px;
+  height: 104px;
   padding: 8px;
   margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #d8dcd8;
+}
+
+.movement-photo-field.has-photo {
+  height: 154px;
 }
 
 .movement-photo-preview-frame {

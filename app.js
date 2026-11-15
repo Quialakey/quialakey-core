@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-5";
+const appBuildVersion = "20261115-6";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10189,6 +10189,7 @@ function canvasHasInk(canvas) {
 function promptMovementSignature(actionLabel) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
+    const photoTitle = document.createElement("h3");
     const photoField = document.createElement("div");
     const photoPreviewFrame = document.createElement("div");
     const photoEmpty = document.createElement("span");
@@ -10213,6 +10214,7 @@ function promptMovementSignature(actionLabel) {
     dialog.addEventListener("pointerdown", (event) => event.stopPropagation());
     dialog.addEventListener("click", (event) => event.stopPropagation());
     if (canPhotographMovement) {
+      photoTitle.textContent = `Photo - ${actionLabel === "Sorti" ? "Sorti" : "Entr\u00e9"}`;
       photoField.className = "movement-photo-field";
       photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
       photoEmpty.textContent = "Aucune photo";
@@ -10241,6 +10243,7 @@ function promptMovementSignature(actionLabel) {
         photoEmpty.hidden = false;
         photoButton.textContent = "Prendre une photo";
         deletePhotoButton.hidden = true;
+        photoField.classList.remove("has-photo");
         photoInput.value = "";
       });
       photoInput.addEventListener("click", (event) => {
@@ -10273,6 +10276,7 @@ function promptMovementSignature(actionLabel) {
           photoEmpty.hidden = true;
           photoButton.textContent = "Reprendre une photo";
           deletePhotoButton.hidden = false;
+          photoField.classList.add("has-photo");
         } catch {
           alert("La photo n'a pas pu \u00eatre import\u00e9e. R\u00e9essayez.");
         } finally {
@@ -10318,7 +10322,7 @@ function promptMovementSignature(actionLabel) {
     field.append(label, canvas);
     actions.className = "movement-signature-actions";
     actions.append(cancelButton, validateButton);
-    if (canPhotographMovement) dialog.append(photoField);
+    if (canPhotographMovement) dialog.append(photoTitle, photoField);
     dialog.append(title, field, actions);
     document.body.append(dialog);
     setupInlineSignatureCanvas(canvas);
