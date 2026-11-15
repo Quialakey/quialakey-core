@@ -203,8 +203,8 @@ async function main() {
       page.waitForEvent("popup"), page.locator("#historyList .history-print-button").first().click(),
     ]);
     await returnReceipt.locator(".receipt-page").waitFor();
-    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "ATTESTATION DE REMISE DE CLÉS");
-    assert.equal(await returnReceipt.title(), "Quialakey - Attestation de remise de clés");
+    assert.equal(await returnReceipt.locator(".receipt-header h1").textContent(), "ATTESTATION DE REMISE DE JEU DE CLÉS");
+    assert.equal(await returnReceipt.title(), "Quialakey - Attestation de remise de jeu de clés");
     assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
@@ -227,6 +227,9 @@ async function main() {
     assert.ok(sectionGaps.every((gap) => gap >= 20 && gap <= 26), `Section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
+    assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
+      rows.every((row) => getComputedStyle(row.querySelector(".receipt-label")).fontSize ===
+        getComputedStyle(row.querySelector("strong")).fontSize)), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
@@ -383,6 +386,9 @@ async function main() {
     await touchPage.locator("#historyList .history-print-button").tap();
     const touchReceipt = touchPage.frameLocator(".receipt-preview-dialog iframe");
     await touchReceipt.locator(".receipt-page").waitFor();
+    assert.equal(await touchReceipt.locator(".receipt-evidence-visual").first().evaluate((visual) =>
+      getComputedStyle(visual).fontSize ===
+      getComputedStyle(document.querySelector(".receipt-detail strong")).fontSize), true);
     const printBounds = await touchPage.locator(".receipt-preview-print-button").boundingBox();
     const closeBounds = await touchPage.locator(".receipt-preview-back-button").boundingBox();
     assert.ok(printBounds.y >= 48 && printBounds.height >= 44);

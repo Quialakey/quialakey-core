@@ -219,7 +219,7 @@ h1 {
 
 .receipt-label {
   color: #596d63;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 
@@ -250,7 +250,7 @@ h1 {
   border: 0;
   background: transparent;
   color: #6a7770;
-  font-size: 9px;
+  font-size: 11.5px;
 }
 
 .has-return .receipt-evidence-visual {
@@ -319,6 +319,10 @@ h1 {
   }
 
   body:not(.receipt-in-app) .receipt-label,
+  body:not(.receipt-in-app) .receipt-evidence-visual {
+    font-size: 12px;
+  }
+
   body:not(.receipt-in-app) .receipt-evidence-frame h3 {
     font-size: 11px;
   }

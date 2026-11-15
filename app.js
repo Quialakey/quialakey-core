@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-24";
+const appBuildVersion = "20261115-26";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8617,7 +8617,7 @@ function openMovementReceipt(key, set, entry) {
     const printButton = document.createElement("button");
     const returnFocus = document.activeElement;
     dialog.className = "receipt-preview-dialog";
-    dialog.setAttribute("aria-label", "Attestation de remise de clés");
+    dialog.setAttribute("aria-label", "Attestation de remise de jeu de clés");
     controls.className = "receipt-preview-controls";
     backButton.className = "receipt-preview-back-button";
     backButton.type = "button";
@@ -8632,7 +8632,7 @@ function openMovementReceipt(key, set, entry) {
       frame.contentWindow.print();
     });
     controls.append(backButton, printButton);
-    frame.title = "Attestation de remise de clés imprimable";
+    frame.title = "Attestation de remise de jeu de clés imprimable";
     frame.src = receiptUrl;
     frame.addEventListener("load", () => {
       renderMovementReceipt(frame.contentWindow, key, set, entry, () => dialog.close(), true);
@@ -8711,7 +8711,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(masthead, element("h1", "", "ATTESTATION DE REMISE DE CLÉS"));
+  header.append(masthead, element("h1", "", "ATTESTATION DE REMISE DE JEU DE CLÉS"));
   page.append(header);
 
   const property = element("section", "receipt-section receipt-property");
