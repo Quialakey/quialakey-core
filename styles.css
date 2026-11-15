@@ -3375,14 +3375,6 @@ body.is-moving-key .photo-hover {
   outline-offset: 2px;
 }
 
-.receipt-preview-controls .receipt-preview-zoom-button {
-  width: 44px;
-  min-width: 44px;
-  padding: 0;
-  font-size: 22px;
-  line-height: 1;
-}
-
 .receipt-preview-controls .receipt-preview-print-button {
   border-color: #2b6179;
   color: #fff;

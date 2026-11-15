@@ -389,12 +389,7 @@ async function main() {
     assert.ok(closeBounds.y >= 48 && closeBounds.width >= 44 && closeBounds.height >= 44);
     assert.equal(await touchPage.locator(".receipt-preview-back-button").evaluate((button) =>
       getComputedStyle(button).webkitTapHighlightColor), "rgba(0, 0, 0, 0)");
-    await touchPage.locator(".receipt-preview-zoom-button").tap();
-    assert.equal(await touchPage.locator(".receipt-preview-zoom-button").getAttribute("aria-label"),
-      "Afficher la page entière");
-    assert.ok(await touchReceipt.locator(".receipt-preview-stage").evaluate((stage) =>
-      stage.getBoundingClientRect().width >= 790));
-    await touchPage.locator(".receipt-preview-zoom-button").tap();
+    assert.equal(await touchPage.locator(".receipt-preview-zoom-button").count(), 0);
     assert.ok(await touchReceipt.locator(".receipt-preview-stage").evaluate((stage) =>
       stage.getBoundingClientRect().width <= window.innerWidth));
     assert.equal(await touchPage.evaluate(() => {
