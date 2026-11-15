@@ -224,11 +224,13 @@ async function main() {
         const bounds = items.map((item) => item.getBoundingClientRect());
         return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
       });
-    assert.ok(sectionGaps.every((gap) => gap >= 30), `Section gaps: ${sectionGaps}`);
+    assert.ok(sectionGaps.every((gap) => gap >= 20 && gap <= 26), `Section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
+    assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
+      labels.every((label) => getComputedStyle(label).textDecorationLine.includes("underline"))), true);
     assert.equal(await returnReceipt.locator(".receipt-company").textContent(), "Entreprise Test");
     assert.equal(await returnReceipt.locator(".receipt-detail.has-company .receipt-label").last().textContent(), "Société :");
     assert.equal(await returnReceipt.locator(".receipt-detail.has-company").count(), 1);
@@ -316,13 +318,17 @@ async function main() {
     }
     assert.equal(page.context().pages().length, 1);
     assert.equal(await page.evaluate(() => selectedId), "T2-1");
+    assert.equal(await page.evaluate(() => isCloudSleeping), false);
     await mobileReceipt.locator("body").evaluate(() => {
       window.print = () => { window.__receiptPrinted = true; };
     });
-    await mobileReceipt.locator(".receipt-print-button").click();
+    assert.equal(await mobileReceipt.locator(".receipt-toolbar").isVisible(), false);
+    await page.locator(".receipt-preview-print-button").click();
     await page.waitForFunction(() =>
       document.querySelector(".receipt-preview-dialog iframe")?.contentWindow?.__receiptPrinted === true);
-    await mobileReceipt.locator(".receipt-close-button").click();
+    assert.equal(await page.evaluate(() => selectedId), "T2-1", "Selection changed while preview was open");
+    await page.locator(".receipt-preview-back-button").click();
+    await page.locator(".receipt-preview-dialog").waitFor({ state: "detached" });
     assert.equal(await page.locator(".receipt-preview-dialog").count(), 0);
     assert.equal(await page.evaluate(() => selectedId), "T2-1");
     assert.equal(await page.locator("#historyList .history-print-button").count() > 0, true);
@@ -346,6 +352,7 @@ async function main() {
       hasStartedCloudInactivityTracking && !isCloudCheckRunning);
     assert.equal(await touchPage.evaluate(() => matchMedia("(pointer: coarse)").matches), true);
     await touchPage.evaluate(() => {
+      beginKeyWorkProtection();
       keys = [normalizeKey({ id: "T2-1", category: "T2", number: 1, property: "1 rue Test",
         sets: [{ ...makeKeySet("main"), status: "out", history: [
           { id: "touch-out", type: "out", person: "Test", date: "15/11/2026 14:00" },
@@ -357,17 +364,29 @@ async function main() {
     await touchPage.locator("#historyList .history-print-button").tap();
     const touchReceipt = touchPage.frameLocator(".receipt-preview-dialog iframe");
     await touchReceipt.locator(".receipt-page").waitFor();
-    const printBounds = await touchReceipt.locator(".receipt-print-button").boundingBox();
-    const closeBounds = await touchReceipt.locator(".receipt-close-button").boundingBox();
+    const printBounds = await touchPage.locator(".receipt-preview-print-button").boundingBox();
+    const closeBounds = await touchPage.locator(".receipt-preview-back-button").boundingBox();
     assert.ok(printBounds.y >= 48 && printBounds.height >= 44);
     assert.ok(closeBounds.y >= 48 && closeBounds.width >= 44 && closeBounds.height >= 44);
+    assert.equal(await touchPage.evaluate(() => {
+      enterCloudSleep();
+      return isCloudSleeping || !isReceiptPreviewOpen();
+    }), false);
     if (process.env.MOVEMENT_RECEIPT_TOUCH_SCREENSHOT) {
       await touchPage.screenshot({ path: process.env.MOVEMENT_RECEIPT_TOUCH_SCREENSHOT });
     }
-    await touchReceipt.locator(".receipt-close-button").tap();
+    await touchPage.locator(".receipt-preview-back-button").tap();
     await touchPage.locator(".receipt-preview-dialog").waitFor({ state: "detached" });
     assert.equal(await touchPage.locator(".receipt-preview-dialog").count(), 0);
     assert.equal(await touchPage.evaluate(() => selectedId), "T2-1");
+    await touchPage.setViewportSize({ width: 320, height: 568 });
+    await touchPage.locator("#historyList .history-print-button").tap();
+    await touchPage.frameLocator(".receipt-preview-dialog iframe").locator(".receipt-page").waitFor();
+    assert.equal(await touchPage.frameLocator(".receipt-preview-dialog iframe").locator("body")
+      .evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    assert.ok((await touchPage.locator(".receipt-preview-back-button").boundingBox()).width >= 44);
+    await touchPage.locator(".receipt-preview-back-button").tap();
+    await touchPage.locator(".receipt-preview-dialog").waitFor({ state: "detached" });
     await touchContext.close();
     for (const action of ["Entr\u00e9", "Rentr\u00e9"]) {
       await page.evaluate((label) => { window.__photoPrompt = promptMovementSignature(label); }, action);

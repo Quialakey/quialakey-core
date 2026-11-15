@@ -51,6 +51,10 @@ body {
   line-height: 1;
 }
 
+.receipt-in-app .receipt-toolbar {
+  display: none;
+}
+
 .receipt-page {
   display: flex;
   flex-direction: column;
@@ -64,7 +68,7 @@ body {
 }
 
 .receipt-header {
-  margin-bottom: 15mm;
+  margin-bottom: 9mm;
   text-align: left;
 }
 
@@ -88,14 +92,14 @@ body {
 
 .receipt-logo {
   display: block;
-  width: 42mm;
+  width: 50mm;
   height: auto;
   margin: 0;
   object-fit: contain;
 }
 
 .has-return .receipt-logo {
-  width: 42mm;
+  width: 50mm;
 }
 
 .receipt-agency {
@@ -147,13 +151,13 @@ h1 {
 }
 
 .receipt-property {
-  margin-bottom: 15mm;
+  margin-bottom: 9mm;
   border-color: #b9c1bc;
   background: rgba(216, 220, 216, 0.35);
 }
 
 .has-return .receipt-out {
-  margin-bottom: 15mm;
+  margin-bottom: 9mm;
 }
 
 .receipt-property h2 {
@@ -221,6 +225,8 @@ h1 {
 .receipt-evidence-frame h3 {
   margin: 0 0 0.8mm;
   font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .receipt-evidence-visual {
@@ -282,17 +288,17 @@ h1 {
   .receipt-header,
   .receipt-property,
   .has-return .receipt-out {
-    margin-bottom: 10mm;
+    margin-bottom: 6mm;
   }
 
   .receipt-masthead {
-    grid-template-columns: minmax(0, 38mm) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 42mm) minmax(0, 1fr);
     gap: 4mm;
   }
 
   .receipt-logo,
   .has-return .receipt-logo {
-    width: 38mm;
+    width: 42mm;
     max-width: 100%;
   }
 
@@ -313,6 +319,17 @@ h1 {
     grid-column: 1 / -1;
   }
 
+}
+
+@media screen and (max-width: 360px) {
+  .receipt-masthead {
+    grid-template-columns: minmax(0, 35mm) minmax(0, 1fr);
+  }
+
+  .receipt-logo,
+  .has-return .receipt-logo {
+    width: 35mm;
+  }
 }
 
 @media screen and (max-width: 820px), screen and (pointer: coarse) {

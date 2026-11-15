@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-17";
+const appBuildVersion = "20261115-19";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -1055,6 +1055,10 @@ function isAppInBackground() {
   return document.visibilityState === "hidden";
 }
 
+function isReceiptPreviewOpen() {
+  return Boolean(document.querySelector(".receipt-preview-dialog[open]"));
+}
+
 function isPhoneOrTabletDevice() {
   const userAgent = navigator.userAgent || "";
   const platform = navigator.platform || "";
@@ -1123,7 +1127,7 @@ function setCloudSleepOverlayVisible(visible) {
 }
 
 function enterCloudSleep() {
-  if (isPhotoImporting) return;
+  if (isPhotoImporting || isReceiptPreviewOpen()) return;
   stopCloudChangeSubscription();
   if (isCloudSleeping) {
     setCloudSleepOverlayVisible(true);
@@ -1139,7 +1143,7 @@ function enterCloudSleep() {
 
 function scheduleCloudSleep() {
   clearTimeout(cloudInactivityTimer);
-  if (isPhotoImporting) {
+  if (isPhotoImporting || isReceiptPreviewOpen()) {
     cloudInactivityTimer = null;
     return;
   }
@@ -1158,7 +1162,7 @@ function recordCloudActivity() {
 }
 
 function enforceCloudSleepAfterInactivity() {
-  if (isPhotoImporting) return false;
+  if (isPhotoImporting || isReceiptPreviewOpen()) return false;
   if (isCloudSleeping) return true;
   if (Date.now() - lastCloudActivityAt < cloudInactivityTimeoutMs) return false;
   enterCloudSleep();
@@ -1272,6 +1276,7 @@ async function ensureInitialCloudStateLoaded() {
 }
 
 function refreshCloudAfterForeground() {
+  if (isReceiptPreviewOpen()) return;
   if (isPhotoImporting) return;
   if (isCloudSleeping) {
     setCloudSleepOverlayVisible(true);
@@ -8607,20 +8612,44 @@ function openMovementReceipt(key, set, entry) {
     window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true) {
     const dialog = document.createElement("dialog");
     const frame = document.createElement("iframe");
+    const controls = document.createElement("div");
+    const backButton = document.createElement("button");
+    const printButton = document.createElement("button");
     const returnFocus = document.activeElement;
     dialog.className = "receipt-preview-dialog";
     dialog.setAttribute("aria-label", "Attestation de remise de clés");
+    controls.className = "receipt-preview-controls";
+    backButton.className = "receipt-preview-back-button";
+    backButton.type = "button";
+    backButton.textContent = "Retour au tableau";
+    backButton.addEventListener("click", () => dialog.close());
+    printButton.className = "receipt-preview-print-button";
+    printButton.type = "button";
+    printButton.textContent = "Imprimer";
+    printButton.disabled = true;
+    printButton.addEventListener("click", async () => {
+      await Promise.all([...frame.contentDocument.images].map((image) => image.decode().catch(() => {})));
+      frame.contentWindow.print();
+    });
+    controls.append(backButton, printButton);
     frame.title = "Attestation de remise de clés imprimable";
     frame.src = receiptUrl;
-    frame.addEventListener("load", () => renderMovementReceipt(frame.contentWindow, key, set, entry,
-      () => dialog.close()), { once: true });
-    dialog.append(frame);
+    frame.addEventListener("load", () => {
+      renderMovementReceipt(frame.contentWindow, key, set, entry, () => dialog.close(), true);
+      printButton.disabled = false;
+    }, { once: true });
+    dialog.append(controls, frame);
     dialog.addEventListener("close", () => {
+      const wasBackgrounded = dialog.dataset.wasBackgrounded === "true";
       dialog.remove();
+      recordCloudActivity();
+      if (wasBackgrounded && !isAppInBackground()) refreshCloudAfterForeground();
       if (returnFocus?.isConnected) returnFocus.focus();
     }, { once: true });
     document.body.append(dialog);
     dialog.showModal();
+    clearTimeout(cloudInactivityTimer);
+    cloudInactivityTimer = null;
     return;
   }
   const receiptWindow = window.open(receiptUrl, "_blank");
@@ -8634,8 +8663,9 @@ function openMovementReceipt(key, set, entry) {
   }), { once: true });
 }
 
-function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
+function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, embedded = false) {
   const receipt = receiptWindow.document;
+  if (embedded) receipt.body.classList.add("receipt-in-app");
 
   const element = (tag, className, value) => {
     const node = receipt.createElement(tag);
@@ -8741,7 +8771,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt) {
   footer.append(element("strong", "", "Quialakey - Outils de gestion des clés immobilières"), website);
   page.append(footer);
   receipt.body.append(toolbar, page);
-  receiptWindow.focus();
+  if (!embedded) receiptWindow.focus();
 }
 
 function createHistoryPrintButton(key, set, entry) {
@@ -11954,7 +11984,7 @@ document.addEventListener("pointerdown", (event) => {
   if (detailPanel.hidden) return;
   if (detailPanel.contains(event.target)) return;
   if (event.target.closest(".key-tile")) return;
-  if (event.target.closest(".photo-viewer, .date-dialog, .movement-signature-dialog")) return;
+  if (event.target.closest(".photo-viewer, .date-dialog, .movement-signature-dialog, .receipt-preview-dialog")) return;
   if (activeKeyControlAction && !activeKeyControlAction.pending) return;
   if (activeKeyControlAction?.pending) clearKeyControlAction();
 
@@ -12090,12 +12120,16 @@ async function initializeApp() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
-    if (isPhoneOrTabletDevice() && !isPhotoImporting) enterCloudSleep();
+    const receiptPreview = document.querySelector(".receipt-preview-dialog[open]");
+    if (receiptPreview) receiptPreview.dataset.wasBackgrounded = "true";
+    if (isPhoneOrTabletDevice() && !isPhotoImporting && !isReceiptPreviewOpen()) enterCloudSleep();
     else pauseCloudWorkWhileBackgrounded();
   } else refreshCloudAfterForeground();
 });
 window.addEventListener("pagehide", () => {
-  if (isPhoneOrTabletDevice() && !isPhotoImporting) enterCloudSleep();
+  const receiptPreview = document.querySelector(".receipt-preview-dialog[open]");
+  if (receiptPreview) receiptPreview.dataset.wasBackgrounded = "true";
+  if (isPhoneOrTabletDevice() && !isPhotoImporting && !isReceiptPreviewOpen()) enterCloudSleep();
   else pauseCloudWorkWhileBackgrounded();
 });
 window.addEventListener("online", () => {

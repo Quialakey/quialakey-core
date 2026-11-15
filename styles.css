@@ -3343,10 +3343,42 @@ body.is-moving-key .photo-hover {
   background: rgba(26, 31, 29, 0.42);
 }
 
+.receipt-preview-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 52px;
+  padding: 4px 12px;
+  background: #e9edeb;
+}
+
+.receipt-preview-controls button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #bfc7c1;
+  border-radius: 5px;
+  color: #24352c;
+  background: #f5f7f5;
+  font: 700 13px Arial, sans-serif;
+  cursor: pointer;
+}
+
+.receipt-preview-controls .receipt-preview-print-button {
+  border-color: #2b6179;
+  color: #fff;
+  background: #2b6179;
+}
+
+.receipt-preview-controls button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .receipt-preview-dialog iframe {
   display: block;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 52px);
   border: 0;
 }
 
