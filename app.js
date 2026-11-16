@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-3";
+const appBuildVersion = "20261116-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -4864,8 +4864,12 @@ function resetMultiSetSelection() {
   multiSetSelectionInput.checked = false;
 }
 
+function getMultiSetSelectionKey(key) {
+  return `${activeRegistry}:${selectedArchiveRecord ? `archive:${selectedArchiveRecord.id}` : key.id}`;
+}
+
 function isMultiSelectingSets(key = getSelectedKey()) {
-  return Boolean(key && multiSelectionKey === `${activeRegistry}:${key.id}`);
+  return Boolean(key && multiSelectionKey === getMultiSetSelectionKey(key));
 }
 
 function getSelectedMovementSets(key) {
@@ -9118,7 +9122,7 @@ function renderPanel() {
     return;
   }
 
-  if (multiSelectionKey && (multiSelectionKey !== `${activeRegistry}:${key.id}` || selectedArchiveRecord)) {
+  if (multiSelectionKey && multiSelectionKey !== getMultiSetSelectionKey(key)) {
     resetMultiSetSelection();
   }
   if (isMultiSelectingSets(key)) {
@@ -9152,7 +9156,7 @@ function renderPanel() {
   keySetCountUnlockBtn.textContent = keySetCountSelect.selectedOptions[0]?.textContent || `${key.sets.length} jeux`;
   renderKeySetSelect(key);
   renderKeySetPhotos(key);
-  multiSetSelectionLabel.hidden = isArchiveView || isNewKeyDraft || key.sets.length < 2 || !isKeyFilled(key);
+  multiSetSelectionLabel.hidden = isReadOnlyArchive || isNewKeyDraft || key.sets.length < 2 || !isKeyFilled(key);
   multiSetSelectionInput.checked = isMultiSelectingSets(key);
   if (!isSavingKeyInfoDraft && !isProtectedKeyInfoInputActive()) {
     propertyInput.value = key.property;
@@ -10162,6 +10166,38 @@ async function runConfirmedReturn(key, set, changes, entry, options = {}) {
   }
 }
 
+async function commitCompromiseGroupMovements(key, movements, button) {
+  if (!beginKeyControlAction(button)) return;
+  try {
+    const movementBySetId = new Map(movements.map((movement) => [movement.set.id, movement]));
+    updateSelectedKeySets(key.sets.map((set) => {
+      const movement = movementBySetId.get(set.id);
+      return movement ? { ...set, ...movement.changes, history: [movement.entry, ...set.history] } : set;
+    }));
+    movements.forEach(({ set, entry }) => {
+      const details = entry.type === "reserved"
+        ? [entry.person ? `Intervenant : ${entry.person}` : "", entry.phone ? `Téléphone : ${entry.phone}` : "",
+          entry.company ? `Société : ${entry.company}` : "", `Pour le ${entry.reservationDate}`, entry.note]
+        : [entry.person || entry.company, entry.phone, entry.note];
+      logActivity(getMovementActionLabel(entry),
+        `${keyLabel(key)}${key.owner ? ` - ${formatOwner(key.owner)}` : ""} - ${set.label}`,
+        details.filter(Boolean).join(" | "), { keyId: key.id, setId: set.id, movementId: entry.id });
+    });
+    movementPersonInput.value = "";
+    movementNameInput.value = "";
+    movementCompanyInput.value = "";
+    movementPhoneInput.value = "";
+    movementNoteInput.value = "";
+    contactSelect.value = "";
+    clearSignature();
+    resetMultiSetSelection();
+    renderPanel();
+    await finishKeyControlAction(selectedId, { keysChanged: false, archivesChanged: true, waitForConfirmation: true });
+  } finally {
+    if (activeKeyControlAction && !activeKeyControlAction.pending) clearKeyControlAction();
+  }
+}
+
 async function addMovement(type, options = {}) {
   if (isConfirmingReturn || activeKeyControlAction) return;
   if (selectedArchiveRecord && !isSelectedCompromiseEditable()) return;
@@ -10234,8 +10270,7 @@ async function addMovement(type, options = {}) {
         : selectedSet.reservations || [],
     history: [entry, ...selectedSet.history],
   };
-  if (type === "out" && checkoutSets.length > 1 && !selectedArchiveRecord) {
-    const snapshot = createUndoSnapshot();
+  if (type === "out" && checkoutSets.length > 1) {
     const movements = checkoutSets.map((set, index) => {
       const setEntry = { ...entry, id: index ? createHistoryId() : entry.id, movementSetCount: checkoutSets.length,
         movementPhoto: evidence.movementPhotos?.[set.id] ?? evidence.movementPhoto };
@@ -10251,6 +10286,11 @@ async function addMovement(type, options = {}) {
         },
       };
     });
+    if (selectedArchiveRecord) {
+      await commitCompromiseGroupMovements(key, movements, checkoutBtn);
+      return;
+    }
+    const snapshot = createUndoSnapshot();
     await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
       movements,
       button: checkoutBtn,
@@ -11064,7 +11104,6 @@ async function reserveSelectedSet() {
   };
 
   if (currentSets.length > 1) {
-    const snapshot = createUndoSnapshot();
     const movements = currentSets.map((set, index) => {
       const setEntry = index ? {
         ...entry,
@@ -11088,6 +11127,11 @@ async function reserveSelectedSet() {
         },
       };
     });
+    if (selectedArchiveRecord) {
+      await commitCompromiseGroupMovements(key, movements, reservedBtn);
+      return;
+    }
+    const snapshot = createUndoSnapshot();
     await runConfirmedReturn(key, movements[0].set, movements[0].changes, movements[0].entry, {
       movements,
       button: reservedBtn,
@@ -11555,10 +11599,10 @@ keySetSelect.addEventListener("change", () => {
 });
 multiSetSelectionInput.addEventListener("change", () => {
   const key = getSelectedKey();
-  if (!multiSetSelectionInput.checked || !key || selectedArchiveRecord) {
+  if (!multiSetSelectionInput.checked || !key || (selectedArchiveRecord && !isSelectedCompromiseEditable())) {
     resetMultiSetSelection();
   } else {
-    multiSelectionKey = `${activeRegistry}:${key.id}`;
+    multiSelectionKey = getMultiSetSelectionKey(key);
     multiSelectedSetIds.clear();
   }
   renderPanel();

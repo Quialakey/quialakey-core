@@ -196,6 +196,87 @@ async function main() {
         assert.equal(label.aligned, true);
       }
     }
+    await page.evaluate(() => {
+      activeRegistry = "transaction";
+      tableSettings = normalizeTableSettings({ ...tableSettings, keepKeysAfterCompromise: false });
+      const key = normalizeKey({ ...makeEmptyKey({ id: "T2-8", category: "T2", number: 8 }),
+        owner: "COMPROMIS TEST", property: "8 rue Test",
+        sets: [makeKeySet("main"), makeKeySet("double")] });
+      archives = [{ id: "compromise-multi", reason: "rented", archivedAt: "2026-11-16T10:00:00Z", key }];
+      saveArchives = () => { window.__savedArchives = structuredClone(archives); };
+      window.__activity = [];
+      logActivity = (...args) => window.__activity.push(args);
+      window.__finishCalls = [];
+      finishKeyControlAction = async (...args) => { window.__finishCalls.push(args); return true; };
+      ensureMovementActor = () => true;
+      ensureTypedMovementPhone = () => true;
+      promptReservationDateTime = async () => "2026-11-20T15:00";
+      promptReservationReturn = async () => true;
+      window.__signaturePrompts = 0;
+      promptMovementSignature = async () => {
+        window.__signaturePrompts += 1;
+        return { signature: "group-signature", movementPhotos: { main: "photo-jeu-1", double: "photo-jeu-2" } };
+      };
+      alert = () => {};
+      settingsPanel.hidden = true;
+      openArchivedKeyRecord(archives[0]);
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+    });
+    assert.equal(await page.locator("#multiSetSelectionLabel").isVisible(), true);
+    await page.locator("#multiSetSelectionInput").check();
+    await page.locator(".photo-set-check-icon").first().click();
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    assert.equal(await page.locator(".key-set-photo-card.is-selected").count(), 2);
+    assert.equal(await page.locator("#reservedBtn").isEnabled(), true);
+    await page.locator("#reservedBtn").click();
+    await page.waitForFunction(() => archives[0].key.sets.every((set) => set.reservations.length === 1));
+    const reservedCompromise = await page.evaluate(() => ({
+      movementIds: archives[0].key.sets.map((set) => set.history[0].id),
+      reservationIds: archives[0].key.sets.map((set) => set.reservations[0].id),
+      savedCounts: window.__savedArchives[0].key.sets.map((set) => set.reservations.length),
+      activities: window.__activity.map((item) => item[0]),
+      finish: window.__finishCalls[0],
+    }));
+    assert.notEqual(reservedCompromise.movementIds[0], reservedCompromise.movementIds[1]);
+    assert.notEqual(reservedCompromise.reservationIds[0], reservedCompromise.reservationIds[1]);
+    assert.deepEqual(reservedCompromise.savedCounts, [1, 1]);
+    assert.deepEqual(reservedCompromise.activities, ["Réservé", "Réservé"]);
+    assert.equal(reservedCompromise.finish[0], "archive-compromise-multi");
+    assert.deepEqual(reservedCompromise.finish[1],
+      { keysChanged: false, archivesChanged: true, waitForConfirmation: true });
+    assert.equal(await page.locator("#multiSetSelectionInput").isChecked(), false);
+    await page.evaluate(() => {
+      movementPersonInput.value = "Raquel";
+      movementNameInput.value = "PEROZO";
+      movementPhoneInput.value = "0700000000";
+    });
+    await page.locator("#multiSetSelectionInput").check();
+    await page.locator(".photo-set-check-icon").first().click();
+    await page.locator(".photo-set-check-icon").nth(1).click();
+    await page.locator("#checkoutBtn").click();
+    await page.waitForFunction(() => archives[0].key.sets.every((set) => set.status === "out"));
+    const checkedOutCompromise = await page.evaluate(() => ({
+      photos: archives[0].key.sets.map((set) => set.history[0].movementPhoto),
+      signatures: archives[0].key.sets.map((set) => set.history[0].signature),
+      movementIds: archives[0].key.sets.map((set) => set.history[0].id),
+      savedStatuses: window.__savedArchives[0].key.sets.map((set) => set.status),
+      activities: window.__activity.map((item) => item[0]),
+      signaturePrompts: window.__signaturePrompts,
+      checked: multiSetSelectionInput.checked,
+    }));
+    assert.deepEqual(checkedOutCompromise.photos, ["photo-jeu-1", "photo-jeu-2"]);
+    assert.deepEqual(checkedOutCompromise.signatures, ["group-signature", "group-signature"]);
+    assert.notEqual(checkedOutCompromise.movementIds[0], checkedOutCompromise.movementIds[1]);
+    assert.deepEqual(checkedOutCompromise.savedStatuses, ["out", "out"]);
+    assert.deepEqual(checkedOutCompromise.activities, ["Réservé", "Réservé", "Sorti", "Sorti"]);
+    assert.equal(checkedOutCompromise.signaturePrompts, 1);
+    assert.equal(checkedOutCompromise.checked, false);
+    await page.evaluate(() => {
+      openArchivedKeyRecord({ ...archives[0], id: "removed-multi", reason: "removed" });
+    });
+    assert.equal(await page.locator("#multiSetSelectionLabel").isVisible(), false);
     console.log("Sold mode, legacy compromises, and location isolation passed.");
   } finally {
     await browser?.close();

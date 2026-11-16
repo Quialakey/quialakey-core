@@ -729,7 +729,8 @@ async function main() {
     assert.equal(await page.locator("#multiSetSelectionLabel").evaluate((label) => {
       const box = label.querySelector("input").getBoundingClientRect();
       const fontSize = parseFloat(getComputedStyle(label).fontSize);
-      return label.getBoundingClientRect().height >= 44 && box.width === 20 &&
+      return label.getBoundingClientRect().height >= 24 && label.getBoundingClientRect().height <= 30 &&
+        box.width === 20 &&
         fontSize > 12 && fontSize < 15;
     }), true);
     await page.locator("#multiSetSelectionInput").check();
