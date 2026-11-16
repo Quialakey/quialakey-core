@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-7";
+const appBuildVersion = "20261116-8";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8765,8 +8765,8 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
     page.append(section);
   });
   const stampGroup = element("section", "receipt-stamp-group");
-  stampGroup.append(element("strong", "receipt-stamp-label", "Signature :"),
-    element("span", "receipt-stamp-hint", "Tampon de l'agence"), element("div", "receipt-stamp"));
+  stampGroup.append(element("strong", "receipt-stamp-label", "Cachet de l'agence"),
+    element("div", "receipt-stamp"));
   page.append(stampGroup);
   const footer = element("footer", "receipt-footer");
   const website = element("a", "", "www.quialakey.com");
