@@ -357,7 +357,8 @@ async function main() {
         const bounds = items.map((item) => item.getBoundingClientRect());
         return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
       });
-    assert.ok(sectionGaps.every((gap) => gap >= 14 && gap <= 20), `Section gaps: ${sectionGaps}`);
+    assert.ok(Math.max(...sectionGaps) - Math.min(...sectionGaps) <= 1,
+      `Mobile section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
@@ -413,6 +414,13 @@ async function main() {
     }));
     assert.ok(compactSize.page < 1100 && compactSize.evidence >= 140, JSON.stringify(compactSize));
     await returnReceipt.setViewportSize({ width: 1280, height: 900 });
+    const desktopSectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
+      .evaluateAll((items) => {
+        const bounds = items.map((item) => item.getBoundingClientRect());
+        return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
+      });
+    assert.ok(Math.max(...desktopSectionGaps) - Math.min(...desktopSectionGaps) <= 1,
+      `Desktop section gaps: ${desktopSectionGaps}`);
     const mastheadAlignment = await returnReceipt.locator(".receipt-header").evaluate((header) => {
       const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
       const right = header.querySelector(".receipt-agency-block").getBoundingClientRect();
