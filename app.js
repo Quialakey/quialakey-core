@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-6";
+const appBuildVersion = "20261116-7";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8707,17 +8707,9 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   const agency = element("p", "receipt-agency", tableSettings?.agencyName || configuredAgencyName);
   const masthead = element("div", "receipt-masthead");
   const agencyBlock = element("div", "receipt-agency-block");
-  const stampGroup = element("div", "receipt-stamp-group");
-  stampGroup.append(element("span", "receipt-stamp-label", "Tampon de l'agence"),
-    element("div", "receipt-stamp"));
-  agencyBlock.append(agency, stampGroup);
-  masthead.append(logo, agencyBlock);
   const movements = getReceiptMovements(set.history || [], entry);
   const hasReturn = movements.length === 2;
   if (hasReturn) page.classList.add("has-return");
-  header.append(masthead, element("h1", "", "ATTESTATION DE REMISE DE JEU DE CLÉS"));
-  page.append(header);
-
   const property = element("section", "receipt-section receipt-property");
   property.append(element("h2", "", "Bien concerné"));
   const propertyDetails = element("div", "receipt-details");
@@ -8727,7 +8719,10 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   addOptionalDetail(propertyDetails, "Ville", key.city);
   addOptionalDetail(propertyDetails, "Notes", key.notes);
   property.append(propertyDetails);
-  page.append(property);
+  agencyBlock.append(agency, element("h1", "", "ATTESTATION DE REMISE DE JEU DE CLÉS"), property);
+  masthead.append(logo, agencyBlock);
+  header.append(masthead);
+  page.append(header);
 
   movements.forEach((movement) => {
     const action = getMovementActionLabel(movement, set.history || []);
@@ -8769,6 +8764,10 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
     section.append(evidence);
     page.append(section);
   });
+  const stampGroup = element("section", "receipt-stamp-group");
+  stampGroup.append(element("strong", "receipt-stamp-label", "Signature :"),
+    element("span", "receipt-stamp-hint", "Tampon de l'agence"), element("div", "receipt-stamp"));
+  page.append(stampGroup);
   const footer = element("footer", "receipt-footer");
   const website = element("a", "", "www.quialakey.com");
   website.href = "https://www.quialakey.com";

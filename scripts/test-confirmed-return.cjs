@@ -323,23 +323,36 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
-    assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Tampon de l'agence");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Signature :");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-hint").textContent(), "Tampon de l'agence");
     assert.equal(await returnReceipt.locator(".receipt-stamp").textContent(), "");
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
       const label = group.querySelector(".receipt-stamp-label").getBoundingClientRect();
+      const hint = group.querySelector(".receipt-stamp-hint").getBoundingClientRect();
       const stamp = group.querySelector(".receipt-stamp").getBoundingClientRect();
-      return label.bottom < stamp.top && Math.abs(label.left - stamp.left) < 1;
+      return label.bottom < hint.top && hint.bottom < stamp.top && Math.abs(label.left - stamp.left) < 1;
+    }), true);
+    assert.equal(await returnReceipt.locator(".receipt-header").evaluate((header) => {
+      const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
+      const title = header.querySelector("h1").getBoundingClientRect();
+      const property = header.querySelector(".receipt-property").getBoundingClientRect();
+      return title.left >= logo.right && property.left >= logo.right && property.top > title.bottom;
+    }), true);
+    assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
+      const stamp = group.getBoundingClientRect();
+      const lastMovement = [...document.querySelectorAll(".receipt-movement")].at(-1).getBoundingClientRect();
+      return stamp.top > lastMovement.bottom;
     }), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp").evaluate((stamp) => {
       const bounds = stamp.getBoundingClientRect();
       return bounds.width >= 180 && bounds.height >= 100;
     }), true);
-    const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
+    const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-out, .receipt-in")
       .evaluateAll((items) => {
         const bounds = items.map((item) => item.getBoundingClientRect());
         return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
       });
-    assert.ok(sectionGaps.every((gap) => gap >= 20 && gap <= 26), `Section gaps: ${sectionGaps}`);
+    assert.ok(sectionGaps.every((gap) => gap >= 14 && gap <= 18), `Section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
@@ -393,7 +406,7 @@ async function main() {
       page: document.querySelector(".receipt-page").getBoundingClientRect().height,
       evidence: document.querySelector(".receipt-evidence-visual").getBoundingClientRect().height,
     }));
-    assert.ok(compactSize.page < 1100 && compactSize.evidence >= 140);
+    assert.ok(compactSize.page < 1100 && compactSize.evidence >= 140, JSON.stringify(compactSize));
     assert.deepEqual(await page.evaluate(() => {
       const movement = { type: "out", person: "Test", phone: "", date: "15/11/2026 14:00", signature: "signature" };
       return [getReceiptCheckoutCount({ sets: [{ history: [movement] }, { history: [] }] }, movement),
