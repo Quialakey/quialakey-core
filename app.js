@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-8";
+const appBuildVersion = "20261116-9";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8719,10 +8719,10 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
   addOptionalDetail(propertyDetails, "Ville", key.city);
   addOptionalDetail(propertyDetails, "Notes", key.notes);
   property.append(propertyDetails);
-  agencyBlock.append(agency, element("h1", "", "ATTESTATION DE REMISE DE JEU DE CLÉS"), property);
+  agencyBlock.append(agency, element("h1", "", "ATTESTATION DE REMISE DE JEU DE CLÉS"));
   masthead.append(logo, agencyBlock);
   header.append(masthead);
-  page.append(header);
+  page.append(header, property);
 
   movements.forEach((movement) => {
     const action = getMovementActionLabel(movement, set.history || []);
@@ -8765,7 +8765,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
     page.append(section);
   });
   const stampGroup = element("section", "receipt-stamp-group");
-  stampGroup.append(element("strong", "receipt-stamp-label", "Cachet de l'agence"),
+  stampGroup.append(element("strong", "receipt-stamp-label", "Cachet de l'agence :"),
     element("div", "receipt-stamp"));
   page.append(stampGroup);
   const footer = element("footer", "receipt-footer");

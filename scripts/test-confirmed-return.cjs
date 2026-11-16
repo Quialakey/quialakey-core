@@ -325,7 +325,7 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
-    assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Cachet de l'agence");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Cachet de l'agence :");
     assert.equal(await returnReceipt.locator(".receipt-stamp-hint").count(), 0);
     assert.equal(await returnReceipt.locator(".receipt-stamp").textContent(), "");
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
@@ -337,8 +337,10 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-header").evaluate((header) => {
       const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
       const title = header.querySelector("h1").getBoundingClientRect();
-      const property = header.querySelector(".receipt-property").getBoundingClientRect();
-      return title.left >= logo.right && property.left >= logo.right && property.top > title.bottom;
+      const property = document.querySelector(".receipt-property").getBoundingClientRect();
+      const checkout = document.querySelector(".receipt-out").getBoundingClientRect();
+      return title.left >= logo.right && property.top > header.getBoundingClientRect().bottom &&
+        property.bottom < checkout.top && Math.abs(property.left - checkout.left) < 1;
     }), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
       const stamp = group.getBoundingClientRect();
@@ -350,12 +352,12 @@ async function main() {
       const bounds = stamp.getBoundingClientRect();
       return bounds.width >= 180 && bounds.height >= 100;
     }), true);
-    const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-out, .receipt-in")
+    const sectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
       .evaluateAll((items) => {
         const bounds = items.map((item) => item.getBoundingClientRect());
         return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
       });
-    assert.ok(sectionGaps.every((gap) => gap >= 14 && gap <= 18), `Section gaps: ${sectionGaps}`);
+    assert.ok(sectionGaps.every((gap) => gap >= 14 && gap <= 20), `Section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>

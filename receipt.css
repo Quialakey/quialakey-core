@@ -78,7 +78,7 @@ body {
 }
 
 .receipt-header {
-  margin-bottom: 9mm;
+  margin-bottom: 5mm;
   text-align: left;
 }
 
@@ -91,10 +91,14 @@ body {
 
 .receipt-agency-block {
   display: grid;
-  align-content: space-between;
+  grid-template-rows: auto 1fr;
   gap: 1mm;
   width: 100%;
   min-height: 30mm;
+}
+
+.receipt-agency-block h1 {
+  align-self: center;
 }
 
 .receipt-stamp-group {
@@ -164,7 +168,7 @@ h1 {
 }
 
 .receipt-property {
-  margin-bottom: 0;
+  margin-bottom: 5mm;
   border-color: #b9c1bc;
   background: rgba(216, 220, 216, 0.35);
 }
