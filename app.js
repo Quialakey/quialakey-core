@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-2";
+const appBuildVersion = "20261116-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10461,8 +10461,14 @@ function promptMovementSignature(actionLabel, photoSets = []) {
     dialog.addEventListener("click", (event) => event.stopPropagation());
     if (canPhotographMovement) {
       const photoTargets = photoSets.length > 1 ? photoSets : [null];
+      const isMultiPhoto = photoTargets.length > 1;
+      const photoTitle = document.createElement("h3");
+      const photoList = document.createElement("div");
+      photoTitle.textContent = `Photo - ${actionLabel}`;
+      photoList.className = `movement-photo-list${isMultiPhoto ? " is-multi-photo" : ""}`;
+      if (isMultiPhoto) dialog.classList.add("is-multi-photo", photoTargets.length === 3 ? "is-three-photo" :
+        photoTargets.length === 4 ? "is-four-photo" : "is-two-photo");
       photoTargets.forEach((set) => {
-        const photoTitle = document.createElement("h3");
         const photoField = document.createElement("div");
         const photoPreviewFrame = document.createElement("div");
         const photoEmpty = document.createElement("span");
@@ -10479,11 +10485,16 @@ function promptMovementSignature(actionLabel, photoSets = []) {
         };
         photoImportCleanups.push(finishImport);
 
-        photoTitle.textContent = `Photo - ${actionLabel}${set ? ` - ${set.label}` : ""}`;
         photoField.className = "movement-photo-field";
         photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
         photoEmpty.textContent = "Aucune photo";
         photoPreviewFrame.append(photoEmpty, photoPreview);
+        if (set) {
+          const setLabel = document.createElement("span");
+          setLabel.className = "movement-photo-set-label";
+          setLabel.textContent = set.label;
+          photoPreviewFrame.append(setLabel);
+        }
         photoActions.className = "photo-actions movement-photo-actions";
         photoButton.type = "button";
         photoButton.className = "photo-button movement-photo-button";
@@ -10546,8 +10557,9 @@ function promptMovementSignature(actionLabel, photoSets = []) {
         });
         photoActions.append(photoButton, deletePhotoButton);
         photoField.append(photoPreviewFrame, photoActions, photoInput);
-        dialog.append(photoTitle, photoField);
+        photoList.append(photoField);
       });
+      dialog.append(photoTitle, photoList);
     }
     title.textContent = `Signature - ${actionLabel}`;
     field.className = "movement-signature-field";

@@ -60,6 +60,11 @@ async function main() {
     assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
       ["Photo - Sorti", "Signature - Sorti"]);
     assert.equal(await page.locator(".movement-photo-button").textContent(), "Prendre une photo");
+    assert.equal(await page.locator(".movement-photo-field").evaluate((field) => {
+      const preview = field.querySelector(".movement-photo-preview-frame").getBoundingClientRect();
+      const actions = field.querySelector(".movement-photo-actions").getBoundingClientRect();
+      return actions.left >= preview.right && Math.abs(actions.top - preview.top) < 2;
+    }), true);
     const emptyPhotoHeight = await page.locator(".movement-photo-field")
       .evaluate((field) => field.getBoundingClientRect().height);
     assert.ok(emptyPhotoHeight <= 110);
@@ -130,7 +135,14 @@ async function main() {
         [{ id: "main", label: "Jeu 1" }, { id: "double", label: "Jeu 2" }]);
     });
     assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
-      ["Photo - Sorti - Jeu 1", "Photo - Sorti - Jeu 2", "Signature - Sorti"]);
+      ["Photo - Sorti", "Signature - Sorti"]);
+    assert.deepEqual(await page.locator(".movement-photo-set-label").allTextContents(), ["Jeu 1", "Jeu 2"]);
+    assert.equal(await page.locator(".movement-photo-field").first().evaluate((field) => {
+      const preview = field.querySelector(".movement-photo-preview-frame").getBoundingClientRect();
+      const actions = field.querySelector(".movement-photo-actions").getBoundingClientRect();
+      const neighbor = field.nextElementSibling.getBoundingClientRect();
+      return actions.top >= preview.bottom && Math.abs(neighbor.top - field.getBoundingClientRect().top) < 2;
+    }), true);
     assert.equal(await page.locator(".movement-signature-canvas").count(), 1);
     for (const [index, color] of ["#cc4455", "#336699"].entries()) {
       const chooserPromise = page.waitForEvent("filechooser");
@@ -165,6 +177,8 @@ async function main() {
       })));
     });
     assert.equal(await page.locator(".movement-photo-field").count(), 4);
+    assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 2);
     assert.equal(await page.locator(".movement-signature-canvas").count(), 1);
     assert.equal(await page.locator(".movement-signature-dialog").evaluate((dialog) => {
       const box = dialog.getBoundingClientRect();
@@ -173,6 +187,11 @@ async function main() {
     if (process.env.MULTI_PHOTO_DIALOG_SCREENSHOT) {
       await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MULTI_PHOTO_DIALOG_SCREENSHOT });
     }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 4);
+    assert.equal(await page.locator(".movement-photo-field").last().evaluate((field) =>
+      field.getBoundingClientRect().right <= field.closest("dialog").getBoundingClientRect().right), true);
     await page.locator(".movement-signature-cancel").click();
     assert.equal(await page.evaluate(() => window.__fourPhotoPrompt), null);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -709,8 +728,9 @@ async function main() {
     assert.equal(await page.locator("#multiSetSelectionLabel").isVisible(), true);
     assert.equal(await page.locator("#multiSetSelectionLabel").evaluate((label) => {
       const box = label.querySelector("input").getBoundingClientRect();
-      return label.getBoundingClientRect().height >= 44 && box.width >= 24 &&
-        parseFloat(getComputedStyle(label).fontSize) >= 15;
+      const fontSize = parseFloat(getComputedStyle(label).fontSize);
+      return label.getBoundingClientRect().height >= 44 && box.width === 20 &&
+        fontSize > 12 && fontSize < 15;
     }), true);
     await page.locator("#multiSetSelectionInput").check();
     assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 0);
