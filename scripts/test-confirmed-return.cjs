@@ -326,6 +326,8 @@ async function main() {
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
     assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Cachet de l'agence :");
+    assert.equal(await returnReceipt.locator(".receipt-stamp-label").evaluate((label) =>
+      getComputedStyle(label).textDecorationLine.includes("underline")), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp-hint").count(), 0);
     assert.equal(await returnReceipt.locator(".receipt-stamp").textContent(), "");
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
@@ -414,6 +416,8 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-footer a").evaluate((link) => link.href), "https://www.quialakey.com/");
     assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
       getComputedStyle(footer).whiteSpace), "nowrap");
+    assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
+      parseFloat(getComputedStyle(footer).paddingTop) >= 9), true);
     await returnReceipt.waitForFunction(() =>
       getComputedStyle(document.querySelector(".receipt-page")).backgroundColor === "rgb(255, 255, 255)" &&
       document.querySelector(".receipt-logo")?.naturalWidth > 0);

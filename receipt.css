@@ -134,6 +134,8 @@ body {
   margin-bottom: 2mm;
   color: #20302b;
   font-size: 11.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .receipt-stamp {
@@ -279,7 +281,7 @@ h1 {
   justify-content: center;
   gap: 2mm;
   margin-top: auto;
-  padding-top: 1mm;
+  padding-top: 2.5mm;
   border-top: 1px solid #d5dfd8;
   color: #42564b;
   font-size: 9px;
