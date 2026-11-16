@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261115-26";
+const appBuildVersion = "20261116-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10197,7 +10197,8 @@ async function addMovement(type, options = {}) {
   if (type !== "out" && !isReturningAfterCheckout && !ensureCompletePhoneNumber(movementPhoneInput, "num\u00e9ro de t\u00e9l\u00e9phone de l'intervenant")) return;
   if (type === "out") checkoutSets.forEach((set) => showCheckoutReservationWarning(set));
   const evidence = normalizeMovementSignatureResult(
-    await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9"));
+    await promptMovementSignature(type === "out" ? "Sorti" : isReturningAfterCheckout ? "Rentr\u00e9" : "Entr\u00e9",
+      type === "out" ? checkoutSets : []));
   if (!evidence) return;
   if (activeRegistry !== sourceRegistry || (selectedArchiveRecord?.id || "") !== sourceArchiveId ||
     getSelectedKey()?.id !== key.id || getSelectedSet()?.id !== selectedSet.id ||
@@ -10211,7 +10212,7 @@ async function addMovement(type, options = {}) {
     phone: formatPhoneNumber(forcedPhone || movementPhoneInput.value),
     note: formatSentenceStart(options.note ?? movementNoteInput.value).trim(),
     signature: evidence.signature,
-    movementPhoto: evidence.movementPhoto,
+    movementPhoto: evidence.movementPhotos?.[selectedSet.id] || evidence.movementPhoto,
     returnReason: type === "in" && isReturningAfterCheckout ? "returned" : "created",
     date: new Intl.DateTimeFormat("fr-FR", {
       dateStyle: "short",
@@ -10236,7 +10237,8 @@ async function addMovement(type, options = {}) {
   if (type === "out" && checkoutSets.length > 1 && !selectedArchiveRecord) {
     const snapshot = createUndoSnapshot();
     const movements = checkoutSets.map((set, index) => {
-      const setEntry = { ...entry, id: index ? createHistoryId() : entry.id, movementSetCount: checkoutSets.length };
+      const setEntry = { ...entry, id: index ? createHistoryId() : entry.id, movementSetCount: checkoutSets.length,
+        movementPhoto: evidence.movementPhotos?.[set.id] ?? evidence.movementPhoto };
       return {
         set,
         entry: setEntry,
@@ -10438,18 +10440,9 @@ function canvasHasInk(canvas) {
   return false;
 }
 
-function promptMovementSignature(actionLabel) {
+function promptMovementSignature(actionLabel, photoSets = []) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
-    const photoTitle = document.createElement("h3");
-    const photoField = document.createElement("div");
-    const photoPreviewFrame = document.createElement("div");
-    const photoEmpty = document.createElement("span");
-    const photoActions = document.createElement("div");
-    const photoButton = document.createElement("button");
-    const deletePhotoButton = document.createElement("button");
-    const photoInput = document.createElement("input");
-    const photoPreview = document.createElement("img");
     const title = document.createElement("h3");
     const field = document.createElement("div");
     const label = document.createElement("div");
@@ -10459,89 +10452,102 @@ function promptMovementSignature(actionLabel) {
     const cancelButton = document.createElement("button");
     const validateButton = document.createElement("button");
     let movementPhoto = "";
-    let photoImportActive = false;
+    const movementPhotos = {};
+    const photoImportCleanups = [];
     const canPhotographMovement = ["Sorti", "Entr\u00e9", "Rentr\u00e9"].includes(actionLabel);
 
     dialog.className = "movement-signature-dialog";
     dialog.addEventListener("pointerdown", (event) => event.stopPropagation());
     dialog.addEventListener("click", (event) => event.stopPropagation());
     if (canPhotographMovement) {
-      photoTitle.textContent = `Photo - ${actionLabel}`;
-      photoField.className = "movement-photo-field";
-      photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
-      photoEmpty.textContent = "Aucune photo";
-      photoPreviewFrame.append(photoEmpty, photoPreview);
-      photoActions.className = "photo-actions movement-photo-actions";
-      photoButton.type = "button";
-      photoButton.className = "photo-button movement-photo-button";
-      photoButton.textContent = "Prendre une photo";
-      deletePhotoButton.type = "button";
-      deletePhotoButton.className = "photo-delete-button movement-photo-delete-button";
-      deletePhotoButton.textContent = "Supprimer la photo";
-      deletePhotoButton.hidden = true;
-      photoInput.type = "file";
-      photoInput.className = "movement-photo-input";
-      photoInput.accept = "image/*";
-      photoInput.setAttribute("capture", "environment");
-      photoInput.hidden = true;
-      photoPreview.className = "movement-photo-preview";
-      photoPreview.alt = "Photo prise pour ce mouvement";
-      photoPreview.hidden = true;
-      photoButton.addEventListener("click", () => photoInput.click());
-      deletePhotoButton.addEventListener("click", () => {
-        movementPhoto = "";
-        photoPreview.removeAttribute("src");
-        photoPreview.hidden = true;
-        photoEmpty.hidden = false;
-        photoButton.textContent = "Prendre une photo";
-        deletePhotoButton.hidden = true;
-        photoField.classList.remove("has-photo");
-        photoInput.value = "";
-      });
-      photoInput.addEventListener("click", (event) => {
-        photoImportActive = true;
-        beginPhotoImport(event);
-      });
-      photoInput.addEventListener("cancel", () => {
-        if (photoImportActive) {
+      const photoTargets = photoSets.length > 1 ? photoSets : [null];
+      photoTargets.forEach((set) => {
+        const photoTitle = document.createElement("h3");
+        const photoField = document.createElement("div");
+        const photoPreviewFrame = document.createElement("div");
+        const photoEmpty = document.createElement("span");
+        const photoActions = document.createElement("div");
+        const photoButton = document.createElement("button");
+        const deletePhotoButton = document.createElement("button");
+        const photoInput = document.createElement("input");
+        const photoPreview = document.createElement("img");
+        let photoImportActive = false;
+        const finishImport = () => {
+          if (!photoImportActive) return;
           photoImportActive = false;
           finishPhotoImport();
-        }
-      });
-      photoInput.addEventListener("change", async () => {
-        const file = photoInput.files?.[0];
-        if (!file) {
-          if (photoImportActive) {
-            photoImportActive = false;
-            finishPhotoImport();
+        };
+        photoImportCleanups.push(finishImport);
+
+        photoTitle.textContent = `Photo - ${actionLabel}${set ? ` - ${set.label}` : ""}`;
+        photoField.className = "movement-photo-field";
+        photoPreviewFrame.className = "photo-preview movement-photo-preview-frame";
+        photoEmpty.textContent = "Aucune photo";
+        photoPreviewFrame.append(photoEmpty, photoPreview);
+        photoActions.className = "photo-actions movement-photo-actions";
+        photoButton.type = "button";
+        photoButton.className = "photo-button movement-photo-button";
+        photoButton.textContent = "Prendre une photo";
+        deletePhotoButton.type = "button";
+        deletePhotoButton.className = "photo-delete-button movement-photo-delete-button";
+        deletePhotoButton.textContent = "Supprimer la photo";
+        deletePhotoButton.hidden = true;
+        photoInput.type = "file";
+        photoInput.className = "movement-photo-input";
+        photoInput.accept = "image/*";
+        photoInput.setAttribute("capture", "environment");
+        photoInput.hidden = true;
+        photoPreview.className = "movement-photo-preview";
+        photoPreview.alt = set ? `Photo prise pour ${set.label}` : "Photo prise pour ce mouvement";
+        photoPreview.hidden = true;
+        photoButton.addEventListener("click", () => photoInput.click());
+        deletePhotoButton.addEventListener("click", () => {
+          if (set) delete movementPhotos[set.id];
+          else movementPhoto = "";
+          photoPreview.removeAttribute("src");
+          photoPreview.hidden = true;
+          photoEmpty.hidden = false;
+          photoButton.textContent = "Prendre une photo";
+          deletePhotoButton.hidden = true;
+          photoField.classList.remove("has-photo");
+          photoInput.value = "";
+        });
+        photoInput.addEventListener("click", (event) => {
+          photoImportActive = true;
+          beginPhotoImport(event);
+        });
+        photoInput.addEventListener("cancel", finishImport);
+        photoInput.addEventListener("change", async () => {
+          const file = photoInput.files?.[0];
+          if (!file) {
+            finishImport();
+            return;
           }
-          return;
-        }
-        validateButton.disabled = true;
-        photoButton.disabled = true;
-        try {
-          const photo = await compressPhotoFile(file);
-          if (!dialog.open) return;
-          movementPhoto = photo;
-          photoPreview.src = photo;
-          photoPreview.hidden = false;
-          photoEmpty.hidden = true;
-          photoButton.textContent = "Reprendre une photo";
-          deletePhotoButton.hidden = false;
-          photoField.classList.add("has-photo");
-        } catch {
-          alert("La photo n'a pas pu \u00eatre import\u00e9e. R\u00e9essayez.");
-        } finally {
-          validateButton.disabled = false;
-          photoButton.disabled = false;
-          if (photoImportActive) {
-            photoImportActive = false;
-            finishPhotoImport();
+          validateButton.disabled = true;
+          photoButton.disabled = true;
+          try {
+            const photo = await compressPhotoFile(file);
+            if (!dialog.open) return;
+            if (set) movementPhotos[set.id] = photo;
+            else movementPhoto = photo;
+            photoPreview.src = photo;
+            photoPreview.hidden = false;
+            photoEmpty.hidden = true;
+            photoButton.textContent = "Reprendre une photo";
+            deletePhotoButton.hidden = false;
+            photoField.classList.add("has-photo");
+          } catch {
+            alert("La photo n'a pas pu \u00eatre import\u00e9e. R\u00e9essayez.");
+          } finally {
+            validateButton.disabled = false;
+            photoButton.disabled = false;
+            finishImport();
           }
-        }
+        });
+        photoActions.append(photoButton, deletePhotoButton);
+        photoField.append(photoPreviewFrame, photoActions, photoInput);
+        dialog.append(photoTitle, photoField);
       });
-      photoActions.append(photoButton, deletePhotoButton);
-      photoField.append(photoPreviewFrame, photoActions, photoInput);
     }
     title.textContent = `Signature - ${actionLabel}`;
     field.className = "movement-signature-field";
@@ -10567,14 +10573,13 @@ function promptMovementSignature(actionLabel) {
     validateButton.addEventListener("click", () => {
       const signature = canvasHasInk(canvas) ? canvas.toDataURL("image/png") : "";
       dialog.close("validate");
-      resolve({ signature, movementPhoto });
+      resolve({ signature, movementPhoto, movementPhotos });
     });
 
     label.append(clearButton);
     field.append(label, canvas);
     actions.className = "movement-signature-actions";
     actions.append(cancelButton, validateButton);
-    if (canPhotographMovement) dialog.append(photoTitle, photoField);
     dialog.append(title, field, actions);
     document.body.append(dialog);
     setupInlineSignatureCanvas(canvas);
@@ -10582,10 +10587,7 @@ function promptMovementSignature(actionLabel) {
       "close",
       () => {
         if (dialog.returnValue !== "validate") resolve(null);
-        if (photoImportActive) {
-          photoImportActive = false;
-          finishPhotoImport();
-        }
+        photoImportCleanups.forEach((finishImport) => finishImport());
         dialog.remove();
       },
       { once: true },
@@ -10597,8 +10599,9 @@ function promptMovementSignature(actionLabel) {
 function normalizeMovementSignatureResult(result) {
   if (result === null) return null;
   return typeof result === "string"
-    ? { signature: result, movementPhoto: "" }
-    : { signature: result.signature || "", movementPhoto: result.movementPhoto || "" };
+    ? { signature: result, movementPhoto: "", movementPhotos: {} }
+    : { signature: result.signature || "", movementPhoto: result.movementPhoto || "",
+        movementPhotos: result.movementPhotos || {} };
 }
 
 async function toggleReservationMovement(reservationId, movementButton = null) {
