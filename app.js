@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-4";
+const appBuildVersion = "20261116-5";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10506,8 +10506,7 @@ function promptMovementSignature(actionLabel, photoSets = []) {
       const photoList = document.createElement("div");
       photoTitle.textContent = `Photo - ${actionLabel}`;
       photoList.className = `movement-photo-list${isMultiPhoto ? " is-multi-photo" : ""}`;
-      if (isMultiPhoto) dialog.classList.add("is-multi-photo", photoTargets.length === 3 ? "is-three-photo" :
-        photoTargets.length === 4 ? "is-four-photo" : "is-two-photo");
+      if (isMultiPhoto) dialog.classList.add("is-multi-photo");
       photoTargets.forEach((set) => {
         const photoField = document.createElement("div");
         const photoPreviewFrame = document.createElement("div");

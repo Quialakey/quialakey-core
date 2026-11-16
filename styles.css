@@ -3622,7 +3622,7 @@ body.is-moving-key .photo-hover {
 }
 
 .movement-signature-dialog.is-multi-photo {
-  width: min(720px, calc(100vw - 28px));
+  width: min(390px, calc(100vw - 28px));
 }
 
 .movement-photo-list.is-multi-photo {
@@ -3711,16 +3711,6 @@ body.is-moving-key .photo-hover {
 
 .movement-photo-preview[hidden] {
   display: none;
-}
-
-@media (min-width: 720px) {
-  .is-three-photo .movement-photo-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .is-four-photo .movement-photo-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 .movement-signature-field {

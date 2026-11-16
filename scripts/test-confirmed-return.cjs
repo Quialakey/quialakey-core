@@ -137,6 +137,13 @@ async function main() {
     assert.deepEqual(await page.locator(".movement-signature-dialog h3").allTextContents(),
       ["Photo - Sorti", "Signature - Sorti"]);
     assert.deepEqual(await page.locator(".movement-photo-set-label").allTextContents(), ["Jeu 1", "Jeu 2"]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.equal(await page.locator(".movement-signature-dialog").evaluate((dialog) =>
+      dialog.getBoundingClientRect().width <= 390), true);
+    if (process.env.MULTI_PHOTO_DESKTOP_SCREENSHOT) {
+      await page.locator(".movement-signature-dialog").screenshot({ path: process.env.MULTI_PHOTO_DESKTOP_SCREENSHOT });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.locator(".movement-photo-field").first().evaluate((field) => {
       const preview = field.querySelector(".movement-photo-preview-frame").getBoundingClientRect();
       const actions = field.querySelector(".movement-photo-actions").getBoundingClientRect();
@@ -189,7 +196,13 @@ async function main() {
     }
     await page.setViewportSize({ width: 1280, height: 800 });
     assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
-      getComputedStyle(list).gridTemplateColumns.split(" ").length), 4);
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 2);
+    assert.equal(await page.locator(".movement-signature-dialog").evaluate((dialog) =>
+      dialog.getBoundingClientRect().width <= 390), true);
+    assert.equal(await page.locator(".movement-photo-field").first().evaluate((field) => {
+      const width = field.getBoundingClientRect().width;
+      return width >= 150 && width <= 190;
+    }), true);
     assert.equal(await page.locator(".movement-photo-field").last().evaluate((field) =>
       field.getBoundingClientRect().right <= field.closest("dialog").getBoundingClientRect().right), true);
     await page.locator(".movement-signature-cancel").click();
