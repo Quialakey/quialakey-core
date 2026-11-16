@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-1";
+const appBuildVersion = "20261116-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -9738,8 +9738,6 @@ function renderPanel() {
     item.append(date);
     if (historySummary) {
       historySummary.append(date.cloneNode(true));
-      historySummary.classList.add("has-history-print");
-      historySummary.append(createHistoryPrintButton(key, selectedSet, entry));
       title.textContent = `${selectedSet.label} - ${title.textContent}`;
       activeReservationItems.push({
         item,
@@ -9748,8 +9746,10 @@ function renderPanel() {
       });
       if (shouldShowHistoryEntry) historyList.append(historySummary);
     } else if (shouldShowHistoryEntry) {
-      item.classList.add("has-history-print");
-      item.append(createHistoryPrintButton(key, selectedSet, entry));
+      if (entry.type !== "reserved") {
+        item.classList.add("has-history-print");
+        item.append(createHistoryPrintButton(key, selectedSet, entry));
+      }
       historyList.append(item);
     }
   });

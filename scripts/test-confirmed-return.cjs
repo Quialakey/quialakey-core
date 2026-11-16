@@ -1082,6 +1082,8 @@ async function main() {
     });
     const activeReservationCard = page.locator("#activeReservationPanel li").first();
     assert.equal(await activeReservationCard.getAttribute("data-history-action"), "reserved");
+    assert.equal(await activeReservationCard.locator(".history-print-button").count(), 0);
+    assert.equal(await page.locator('#historyList li[data-history-action="reserved"] .history-print-button').count(), 0);
     assert.equal(await activeReservationCard.locator(".reservation-edit-button").count(), 1);
     assert.deepEqual(await activeReservationCard.locator(".reservation-history-actions button").allTextContents(), ["Sorti", "Annulation"]);
     await activeReservationCard.locator(".reservation-history-button.out").click();
