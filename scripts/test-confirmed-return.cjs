@@ -394,6 +394,17 @@ async function main() {
       /Quialakey - Outils de gestion des clés immobilières\s+-\s+www\.quialakey\.com/);
     assert.equal(await returnReceipt.locator(".receipt-section h2").evaluateAll((titles) =>
       titles.every((title) => getComputedStyle(title).textAlign === "left")), true);
+    assert.equal(await returnReceipt.locator(".receipt-property").evaluate((property) => {
+      const checkout = document.querySelector(".receipt-out");
+      const headingStyles = [property.querySelector("h2"), checkout.querySelector("h2")]
+        .map((element) => getComputedStyle(element));
+      const detailStyles = [property.querySelector(".receipt-details"), checkout.querySelector(".receipt-details")]
+        .map((element) => getComputedStyle(element));
+      return ["fontSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]
+        .every((name) => headingStyles[0][name] === headingStyles[1][name]) &&
+        ["rowGap", "columnGap", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "lineHeight"]
+          .every((name) => detailStyles[0][name] === detailStyles[1][name]);
+    }), true);
     await returnReceipt.locator(".receipt-logo").evaluate((logo) => logo.decode());
     assert.equal(await returnReceipt.locator(".receipt-logo").evaluate((logo) => {
       const image = logo.getBoundingClientRect();

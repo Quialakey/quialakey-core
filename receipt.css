@@ -179,17 +179,9 @@ h1 {
 }
 
 .receipt-property h2 {
-  padding: 1mm 2mm;
   border-left-color: #66736c;
   color: #303734;
   background: #d8dcd8;
-  font-size: 12px;
-}
-
-.receipt-property .receipt-details {
-  gap: 0.8mm 3mm;
-  padding: 1mm 2mm;
-  line-height: 1.2;
 }
 
 .receipt-out {
