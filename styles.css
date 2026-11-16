@@ -3632,6 +3632,16 @@ body.is-moving-key .photo-hover {
   margin-bottom: 12px;
 }
 
+.is-three-photo .movement-photo-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.is-four-photo .movement-photo-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
 .movement-photo-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
@@ -3661,8 +3671,26 @@ body.is-moving-key .photo-hover {
   min-height: 250px;
 }
 
+.is-three-photo .movement-photo-field {
+  padding: 5px;
+}
+
+.is-four-photo .movement-photo-field {
+  padding: 3px;
+}
+
 .movement-photo-preview-frame {
   min-width: 0;
+}
+
+.is-three-photo .movement-photo-preview-frame {
+  font-size: 13px;
+  text-align: center;
+}
+
+.is-four-photo .movement-photo-preview-frame {
+  font-size: 11px;
+  text-align: center;
 }
 
 .movement-photo-set-label {
@@ -3700,6 +3728,21 @@ body.is-moving-key .photo-hover {
 
 .movement-photo-delete-button[hidden] {
   display: none;
+}
+
+.is-three-photo .movement-photo-button,
+.is-three-photo .movement-photo-delete-button,
+.is-four-photo .movement-photo-button,
+.is-four-photo .movement-photo-delete-button {
+  padding-inline: 2px;
+  font-size: 9px;
+}
+
+@media (max-width: 380px) {
+  .movement-signature-dialog.is-four-photo {
+    width: calc(100vw - 8px);
+    padding: 8px;
+  }
 }
 
 .movement-photo-preview {

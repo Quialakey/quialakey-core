@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261116-5";
+const appBuildVersion = "20261116-6";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10502,11 +10502,16 @@ function promptMovementSignature(actionLabel, photoSets = []) {
     if (canPhotographMovement) {
       const photoTargets = photoSets.length > 1 ? photoSets : [null];
       const isMultiPhoto = photoTargets.length > 1;
+      const compactPhotoLabels = photoTargets.length === 4;
       const photoTitle = document.createElement("h3");
       const photoList = document.createElement("div");
       photoTitle.textContent = `Photo - ${actionLabel}`;
       photoList.className = `movement-photo-list${isMultiPhoto ? " is-multi-photo" : ""}`;
-      if (isMultiPhoto) dialog.classList.add("is-multi-photo");
+      if (isMultiPhoto) {
+        dialog.classList.add("is-multi-photo");
+        if (photoTargets.length === 3) dialog.classList.add("is-three-photo");
+        if (photoTargets.length === 4) dialog.classList.add("is-four-photo");
+      }
       photoTargets.forEach((set) => {
         const photoField = document.createElement("div");
         const photoPreviewFrame = document.createElement("div");
@@ -10537,10 +10542,18 @@ function promptMovementSignature(actionLabel, photoSets = []) {
         photoActions.className = "photo-actions movement-photo-actions";
         photoButton.type = "button";
         photoButton.className = "photo-button movement-photo-button";
-        photoButton.textContent = "Prendre une photo";
+        const setPhotoButtonLabel = (hasPhoto) => {
+          const fullLabel = hasPhoto ? "Reprendre une photo" : "Prendre une photo";
+          photoButton.textContent = compactPhotoLabels ? (hasPhoto ? "Reprendre ph." : "Prendre ph.") : fullLabel;
+          photoButton.title = fullLabel;
+          photoButton.setAttribute("aria-label", fullLabel);
+        };
+        setPhotoButtonLabel(false);
         deletePhotoButton.type = "button";
         deletePhotoButton.className = "photo-delete-button movement-photo-delete-button";
-        deletePhotoButton.textContent = "Supprimer la photo";
+        deletePhotoButton.textContent = compactPhotoLabels ? "Supprimer ph." : "Supprimer la photo";
+        deletePhotoButton.title = "Supprimer la photo";
+        deletePhotoButton.setAttribute("aria-label", deletePhotoButton.title);
         deletePhotoButton.hidden = true;
         photoInput.type = "file";
         photoInput.className = "movement-photo-input";
@@ -10557,7 +10570,7 @@ function promptMovementSignature(actionLabel, photoSets = []) {
           photoPreview.removeAttribute("src");
           photoPreview.hidden = true;
           photoEmpty.hidden = false;
-          photoButton.textContent = "Prendre une photo";
+          setPhotoButtonLabel(false);
           deletePhotoButton.hidden = true;
           photoField.classList.remove("has-photo");
           photoInput.value = "";
@@ -10583,7 +10596,7 @@ function promptMovementSignature(actionLabel, photoSets = []) {
             photoPreview.src = photo;
             photoPreview.hidden = false;
             photoEmpty.hidden = true;
-            photoButton.textContent = "Reprendre une photo";
+            setPhotoButtonLabel(true);
             deletePhotoButton.hidden = false;
             photoField.classList.add("has-photo");
           } catch {

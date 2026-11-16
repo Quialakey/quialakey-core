@@ -177,7 +177,23 @@ async function main() {
     });
     assert.deepEqual(Object.keys(groupPhotoEvidence), ["main", "double"]);
     assert.notEqual(groupPhotoEvidence.main, groupPhotoEvidence.double);
+    await page.evaluate(() => {
+      window.__threePhotoPrompt = promptMovementSignature("Sorti", [1, 2, 3].map((number) => ({
+        id: `jeu-${number}`, label: `Jeu ${number}`,
+      })));
+    });
+    assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 3);
+    assert.deepEqual(await page.locator(".movement-photo-button").allTextContents(),
+      ["Prendre une photo", "Prendre une photo", "Prendre une photo"]);
     await page.setViewportSize({ width: 320, height: 568 });
+    assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
+      [...list.children].every((field) => field.getBoundingClientRect().right <= list.getBoundingClientRect().right)), true);
+    if (process.env.THREE_PHOTO_DIALOG_SCREENSHOT) {
+      await page.locator(".movement-signature-dialog").screenshot({ path: process.env.THREE_PHOTO_DIALOG_SCREENSHOT });
+    }
+    await page.locator(".movement-signature-cancel").click();
+    assert.equal(await page.evaluate(() => window.__threePhotoPrompt), null);
     await page.evaluate(() => {
       window.__fourPhotoPrompt = promptMovementSignature("Sorti", [1, 2, 3, 4].map((number) => ({
         id: `jeu-${number}`, label: `Jeu ${number}`,
@@ -185,7 +201,23 @@ async function main() {
     });
     assert.equal(await page.locator(".movement-photo-field").count(), 4);
     assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
-      getComputedStyle(list).gridTemplateColumns.split(" ").length), 2);
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 4);
+    assert.deepEqual(await page.locator(".movement-photo-button").allTextContents(),
+      ["Prendre ph.", "Prendre ph.", "Prendre ph.", "Prendre ph."]);
+    assert.equal(await page.locator(".movement-photo-preview-frame").nth(1).evaluate((preview) => {
+      const empty = preview.querySelector("span");
+      return empty.scrollWidth <= empty.clientWidth &&
+        empty.getBoundingClientRect().width <= preview.getBoundingClientRect().width;
+    }), true);
+    assert.equal(await page.locator(".movement-photo-button").first().getAttribute("aria-label"), "Prendre une photo");
+    const fourPhotoChooser = page.waitForEvent("filechooser");
+    await page.locator(".movement-photo-button").first().click();
+    await (await fourPhotoChooser).setFiles({ name: "jeu-1.png", mimeType: "image/png",
+      buffer: await makePhotoBuffer("#cc4455") });
+    await page.waitForFunction(() => document.querySelector(".movement-photo-button")?.textContent ===
+      "Reprendre ph." && !isPhotoImporting);
+    assert.equal(await page.locator(".movement-photo-delete-button").first().textContent(), "Supprimer ph.");
+    assert.equal(await page.locator(".movement-photo-delete-button").first().isVisible(), true);
     assert.equal(await page.locator(".movement-signature-canvas").count(), 1);
     assert.equal(await page.locator(".movement-signature-dialog").evaluate((dialog) => {
       const box = dialog.getBoundingClientRect();
@@ -196,12 +228,12 @@ async function main() {
     }
     await page.setViewportSize({ width: 1280, height: 800 });
     assert.equal(await page.locator(".movement-photo-list").evaluate((list) =>
-      getComputedStyle(list).gridTemplateColumns.split(" ").length), 2);
+      getComputedStyle(list).gridTemplateColumns.split(" ").length), 4);
     assert.equal(await page.locator(".movement-signature-dialog").evaluate((dialog) =>
       dialog.getBoundingClientRect().width <= 390), true);
     assert.equal(await page.locator(".movement-photo-field").first().evaluate((field) => {
       const width = field.getBoundingClientRect().width;
-      return width >= 150 && width <= 190;
+      return width >= 70 && width <= 100;
     }), true);
     assert.equal(await page.locator(".movement-photo-field").last().evaluate((field) =>
       field.getBoundingClientRect().right <= field.closest("dialog").getBoundingClientRect().right), true);

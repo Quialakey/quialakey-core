@@ -12,8 +12,9 @@ async function main() {
     if (!file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
     try {
       const type = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".json": "application/json" }[path.extname(file)];
+      const contents = await fs.readFile(file);
       response.writeHead(200, { "Content-Type": type || "application/octet-stream" });
-      response.end(await fs.readFile(file));
+      response.end(contents);
     } catch { response.writeHead(404).end(); }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
