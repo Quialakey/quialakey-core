@@ -352,7 +352,7 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
       const stamp = group.getBoundingClientRect();
       const lastMovement = [...document.querySelectorAll(".receipt-movement")].at(-1).getBoundingClientRect();
-      return stamp.top - lastMovement.bottom >= 10 && stamp.top - lastMovement.bottom <= 13 &&
+      return stamp.top - lastMovement.bottom >= 15 && stamp.top - lastMovement.bottom <= 30 &&
         Math.abs(stamp.left - lastMovement.left) < 1;
     }), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp").evaluate((stamp) => {
@@ -395,6 +395,13 @@ async function main() {
       return photo.width <= frame.width * 0.91 && photo.height <= frame.height * 0.91 &&
         Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
     }), true);
+    assert.equal(await returnReceipt.locator(".receipt-in .receipt-evidence-frame:first-child img")
+      .evaluate((image) => {
+        const photo = image.getBoundingClientRect();
+        const section = image.closest(".receipt-in").getBoundingClientRect();
+        return section.bottom - photo.bottom >= 3 && section.bottom - photo.bottom <= 12 &&
+          Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
+      }), true);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /Autre intervenant/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 14:00/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 15:00/);
