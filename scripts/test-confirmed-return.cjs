@@ -366,6 +366,7 @@ async function main() {
       });
     assert.ok(Math.max(...sectionGaps) - Math.min(...sectionGaps) <= 1,
       `Mobile section gaps: ${sectionGaps}`);
+    assert.ok(sectionGaps.every((gap) => gap >= 10 && gap <= 13), `Mobile section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
@@ -391,7 +392,7 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-evidence-visual img").first().evaluate((image) => {
       const photo = image.getBoundingClientRect();
       const frame = image.parentElement.getBoundingClientRect();
-      return photo.width <= frame.width && photo.height <= frame.height &&
+      return photo.width <= frame.width * 0.91 && photo.height <= frame.height * 0.91 &&
         Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
     }), true);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /Autre intervenant/);
@@ -440,6 +441,8 @@ async function main() {
         return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
       });
     assert.ok(Math.max(...desktopSectionGaps) - Math.min(...desktopSectionGaps) <= 1,
+      `Desktop section gaps: ${desktopSectionGaps}`);
+    assert.ok(desktopSectionGaps.every((gap) => gap >= 25 && gap <= 28),
       `Desktop section gaps: ${desktopSectionGaps}`);
     const mastheadAlignment = await returnReceipt.locator(".receipt-header").evaluate((header) => {
       const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
