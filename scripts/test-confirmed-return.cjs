@@ -18,6 +18,16 @@ function cardSpacing(item) {
   };
 }
 
+function detailColumnOffsets(groups) {
+  const columns = [[], [], [], []];
+  groups.forEach((group) => [...group.children].forEach((row, index) => {
+    const pair = index % 2;
+    columns[pair * 2].push(row.querySelector(".receipt-label").getBoundingClientRect().left);
+    columns[pair * 2 + 1].push(row.querySelector("strong").getBoundingClientRect().left);
+  }));
+  return columns.map((offsets) => Math.max(...offsets) - Math.min(...offsets));
+}
+
 async function main() {
   const root = path.resolve(__dirname, "..");
   const server = http.createServer(async (request, response) => {
@@ -372,6 +382,13 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
       rows.every((row) => getComputedStyle(row.querySelector(".receipt-label")).fontSize ===
         getComputedStyle(row.querySelector("strong")).fontSize)), true);
+    const mobileColumnOffsets = await returnReceipt.locator(".receipt-details").evaluateAll(detailColumnOffsets);
+    assert.ok(mobileColumnOffsets.every((offset) => offset <= 1),
+      `Mobile detail column offsets: ${mobileColumnOffsets}`);
+    assert.equal(await returnReceipt.locator(".receipt-property .receipt-label").evaluateAll((labels) => {
+      const postal = labels.find((label) => label.textContent.includes("Code postal"));
+      return postal.getBoundingClientRect().height <= 18;
+    }), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-evidence-frame h3").evaluateAll((labels) =>
@@ -442,6 +459,15 @@ async function main() {
       evidence: document.querySelector(".receipt-evidence-visual").getBoundingClientRect().height,
     }));
     assert.ok(compactSize.page < 1100 && compactSize.evidence >= 140, JSON.stringify(compactSize));
+    if (process.env.MOVEMENT_RECEIPT_PHONE_SCREENSHOT) {
+      await returnReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_PHONE_SCREENSHOT, fullPage: true });
+    }
+    await returnReceipt.setViewportSize({ width: 320, height: 700 });
+    assert.equal(await returnReceipt.evaluate(() =>
+      document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    const narrowColumnOffsets = await returnReceipt.locator(".receipt-details").evaluateAll(detailColumnOffsets);
+    assert.ok(narrowColumnOffsets.every((offset) => offset <= 1),
+      `Narrow detail column offsets: ${narrowColumnOffsets}`);
     await returnReceipt.setViewportSize({ width: 1280, height: 900 });
     const desktopSectionGaps = await returnReceipt.locator(".receipt-header, .receipt-property, .receipt-out, .receipt-in")
       .evaluateAll((items) => {
@@ -452,6 +478,9 @@ async function main() {
       `Desktop section gaps: ${desktopSectionGaps}`);
     assert.ok(desktopSectionGaps.every((gap) => gap >= 18 && gap <= 20),
       `Desktop section gaps: ${desktopSectionGaps}`);
+    const desktopColumnOffsets = await returnReceipt.locator(".receipt-details").evaluateAll(detailColumnOffsets);
+    assert.ok(desktopColumnOffsets.every((offset) => offset <= 1),
+      `Desktop detail column offsets: ${desktopColumnOffsets}`);
     const mastheadAlignment = await returnReceipt.locator(".receipt-header").evaluate((header) => {
       const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
       const right = header.querySelector(".receipt-agency-block").getBoundingClientRect();

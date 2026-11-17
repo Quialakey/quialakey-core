@@ -67,6 +67,7 @@ body {
 
 .receipt-page {
   --receipt-section-gap: 5mm;
+  --receipt-label-width: 27mm;
   display: flex;
   flex-direction: column;
   width: 210mm;
@@ -217,7 +218,7 @@ h1 {
 
 .receipt-detail {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--receipt-label-width)) minmax(0, 1fr);
   align-items: baseline;
   gap: 3px;
   min-width: 0;
@@ -312,6 +313,7 @@ h1 {
 
   body:not(.receipt-in-app) .receipt-page {
     --receipt-section-gap: 2mm;
+    --receipt-label-width: 23mm;
     width: 100%;
     min-height: 0;
     padding: 14px;
@@ -348,11 +350,6 @@ h1 {
   body:not(.receipt-in-app) .receipt-detail strong {
     font-size: 12px;
   }
-
-  body:not(.receipt-in-app) .receipt-detail.has-company {
-    grid-column: 1 / -1;
-  }
-
 }
 
 @media screen and (max-width: 360px) {
