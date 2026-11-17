@@ -66,7 +66,7 @@ body {
 }
 
 .receipt-page {
-  --receipt-section-gap: 7mm;
+  --receipt-section-gap: 5mm;
   display: flex;
   flex-direction: column;
   width: 210mm;
@@ -265,7 +265,7 @@ h1 {
   height: 38mm;
 }
 
-.receipt-in .receipt-evidence-frame:first-child .receipt-evidence-visual {
+.receipt-movement .receipt-evidence-frame:first-child .receipt-evidence-visual {
   box-sizing: border-box;
   align-items: flex-end;
   padding-bottom: 1mm;
@@ -311,7 +311,7 @@ h1 {
   }
 
   body:not(.receipt-in-app) .receipt-page {
-    --receipt-section-gap: 3mm;
+    --receipt-section-gap: 2mm;
     width: 100%;
     min-height: 0;
     padding: 14px;

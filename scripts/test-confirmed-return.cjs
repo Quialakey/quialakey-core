@@ -366,7 +366,7 @@ async function main() {
       });
     assert.ok(Math.max(...sectionGaps) - Math.min(...sectionGaps) <= 1,
       `Mobile section gaps: ${sectionGaps}`);
-    assert.ok(sectionGaps.every((gap) => gap >= 10 && gap <= 13), `Mobile section gaps: ${sectionGaps}`);
+    assert.ok(sectionGaps.every((gap) => gap >= 7 && gap <= 9), `Mobile section gaps: ${sectionGaps}`);
     assert.equal(await returnReceipt.locator(".receipt-label").evaluateAll((labels) =>
       labels.every((label) => label.textContent.trim().endsWith(":"))), true);
     assert.equal(await returnReceipt.locator(".receipt-detail").evaluateAll((rows) =>
@@ -395,13 +395,14 @@ async function main() {
       return photo.width <= frame.width * 0.91 && photo.height <= frame.height * 0.91 &&
         Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
     }), true);
-    assert.equal(await returnReceipt.locator(".receipt-in .receipt-evidence-frame:first-child img")
-      .evaluate((image) => {
+    const photoBottomGaps = await returnReceipt.locator(".receipt-movement .receipt-evidence-frame:first-child img")
+      .evaluateAll((images) => images.map((image) => {
         const photo = image.getBoundingClientRect();
-        const section = image.closest(".receipt-in").getBoundingClientRect();
-        return section.bottom - photo.bottom >= 3 && section.bottom - photo.bottom <= 12 &&
-          Math.abs(photo.width / photo.height - image.naturalWidth / image.naturalHeight) < 0.01;
-      }), true);
+        const section = image.closest(".receipt-movement").getBoundingClientRect();
+        return section.bottom - photo.bottom;
+      }));
+    assert.ok(photoBottomGaps.every((gap) => gap >= 3 && gap <= 12) &&
+      Math.abs(photoBottomGaps[0] - photoBottomGaps[1]) <= 1, `Photo bottom gaps: ${photoBottomGaps}`);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /Autre intervenant/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 14:00/);
     assert.match(await returnReceipt.locator(".receipt-page").innerText(), /15\/11\/2026 15:00/);
@@ -449,7 +450,7 @@ async function main() {
       });
     assert.ok(Math.max(...desktopSectionGaps) - Math.min(...desktopSectionGaps) <= 1,
       `Desktop section gaps: ${desktopSectionGaps}`);
-    assert.ok(desktopSectionGaps.every((gap) => gap >= 25 && gap <= 28),
+    assert.ok(desktopSectionGaps.every((gap) => gap >= 18 && gap <= 20),
       `Desktop section gaps: ${desktopSectionGaps}`);
     const mastheadAlignment = await returnReceipt.locator(".receipt-header").evaluate((header) => {
       const logo = header.querySelector(".receipt-logo").getBoundingClientRect();
