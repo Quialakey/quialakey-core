@@ -449,6 +449,12 @@ async function main() {
       getComputedStyle(footer).whiteSpace), "nowrap");
     assert.equal(await returnReceipt.locator(".receipt-footer").evaluate((footer) =>
       parseFloat(getComputedStyle(footer).paddingTop) >= 9), true);
+    assert.equal(await returnReceipt.evaluate(() => {
+      const pageRule = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((rule) => rule.type === CSSRule.PAGE_RULE);
+      return pageRule && parseFloat(pageRule.style.margin) === 0;
+    }), true);
     await returnReceipt.waitForFunction(() =>
       getComputedStyle(document.querySelector(".receipt-page")).backgroundColor === "rgb(255, 255, 255)" &&
       document.querySelector(".receipt-logo")?.naturalWidth > 0);
@@ -521,6 +527,10 @@ async function main() {
     }
     if (process.env.MOVEMENT_RECEIPT_PDF) {
       await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_PDF, format: "A4", printBackground: true });
+    }
+    if (process.env.MOVEMENT_RECEIPT_HEADERS_PDF) {
+      await returnReceipt.pdf({ path: process.env.MOVEMENT_RECEIPT_HEADERS_PDF, format: "A4",
+        printBackground: true, displayHeaderFooter: true });
     }
     let mobilePrintMarkup = null;
     const receiptClosed = returnReceipt.waitForEvent("close");
@@ -638,7 +648,7 @@ async function main() {
         bodyWidth: document.body.getBoundingClientRect().width,
         columns: getComputedStyle(receiptPage.querySelector(".receipt-details")).gridTemplateColumns.split(" ").length,
       }));
-    assert.ok(mobilePrintLayout.pageWidth >= 700 && mobilePrintLayout.pageWidth <= 730);
+    assert.ok(mobilePrintLayout.pageWidth >= 790 && mobilePrintLayout.pageWidth <= 800);
     assert.ok(Math.abs(mobilePrintLayout.pageWidth - mobilePrintLayout.bodyWidth) < 1);
     assert.equal(mobilePrintLayout.columns, 2);
     await touchPage.emulateMedia({ media: "screen" });

@@ -1,6 +1,7 @@
+/* Keep the gutter inside the document, leaving no page margin for browser headers. */
 @page {
   size: A4;
-  margin: 10mm;
+  margin: 0;
 }
 
 * {
@@ -384,8 +385,8 @@ h1 {
 @media print {
   html,
   body {
-    width: 190mm;
-    min-width: 190mm;
+    width: 210mm;
+    min-width: 210mm;
   }
 
   body {
@@ -399,7 +400,7 @@ h1 {
   }
 
   .receipt-in-app .receipt-preview-stage {
-    width: 190mm !important;
+    width: 210mm !important;
     height: auto !important;
     margin: 0;
     overflow: visible;
@@ -407,11 +408,11 @@ h1 {
 
   .receipt-page,
   .receipt-in-app .receipt-page {
-    width: 190mm;
-    min-width: 190mm;
-    min-height: 274mm;
+    width: 210mm;
+    min-width: 210mm;
+    min-height: 296mm;
     margin: 0;
-    padding: 0;
+    padding: 10mm;
     border: 0;
     box-shadow: none;
     transform: none !important;
