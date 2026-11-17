@@ -198,6 +198,7 @@ h1 {
 }
 
 .receipt-in {
+  margin-bottom: 3mm;
   border-color: #55aa73;
   background: rgba(202, 235, 213, 0.35);
 }

@@ -352,7 +352,7 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-stamp-group").evaluate((group) => {
       const stamp = group.getBoundingClientRect();
       const lastMovement = [...document.querySelectorAll(".receipt-movement")].at(-1).getBoundingClientRect();
-      return stamp.top - lastMovement.bottom >= 15 && stamp.top - lastMovement.bottom <= 30 &&
+      return stamp.top - lastMovement.bottom >= 10 && stamp.top - lastMovement.bottom <= 13 &&
         Math.abs(stamp.left - lastMovement.left) < 1;
     }), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp").evaluate((stamp) => {
