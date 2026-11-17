@@ -239,7 +239,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 3mm;
-  padding: 0 3mm 2mm;
+  padding: 0 3mm 1mm;
 }
 
 .receipt-evidence-frame h3 {

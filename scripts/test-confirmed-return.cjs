@@ -325,6 +325,11 @@ async function main() {
     assert.equal(await returnReceipt.locator(".receipt-agency").textContent(), "Century 21 Les Minimes");
     assert.deepEqual(await returnReceipt.locator(".receipt-movement h2").allTextContents(),
       ["Sortie du jeu de clés", "Retour du jeu de clés"]);
+    assert.equal(await returnReceipt.locator(".receipt-movement .receipt-evidence").evaluateAll((items) =>
+      items.every((item) => {
+        const padding = parseFloat(getComputedStyle(item).paddingBottom);
+        return padding >= 3 && padding <= 5;
+      })), true);
     assert.equal(await returnReceipt.locator(".receipt-stamp-label").textContent(), "Cachet de l'agence :");
     assert.equal(await returnReceipt.locator(".receipt-stamp-label").evaluate((label) =>
       getComputedStyle(label).textDecorationLine.includes("underline")), true);
