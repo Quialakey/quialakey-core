@@ -863,7 +863,7 @@ async function main() {
               getComputedStyle(title).backgroundColor === "rgba(238, 241, 239, 0.78)",
             titleHint: title.querySelectorAll(".photo-set-pointer-icon path").length === 2 &&
               title.querySelector(".photo-set-pointer-icon path")?.getAttribute("d") === "M12.586 12.586 19 19" &&
-              getComputedStyle(title.querySelector(".photo-set-pointer-icon")).width === "14px" &&
+              Math.abs(parseFloat(getComputedStyle(title.querySelector(".photo-set-pointer-icon")).width) - 15.4) < 0.1 &&
               getComputedStyle(title.querySelector(".photo-set-pointer-icon")).color === "rgb(0, 0, 0)" &&
               parseFloat(getComputedStyle(title.querySelector(".photo-set-pointer-icon")).strokeWidth) === 2.2 &&
               title.querySelector(".photo-set-pointer-icon")?.getAttribute("aria-hidden") === "true" &&
@@ -927,7 +927,8 @@ async function main() {
                 title.scrollWidth <= title.clientWidth &&
                 title.querySelectorAll(".photo-set-pointer-icon path").length === 2 &&
                 title.querySelector(".photo-set-pointer-icon path")?.getAttribute("d") === "M12.586 12.586 19 19" &&
-                getComputedStyle(title.querySelector(".photo-set-pointer-icon")).width === (count === 4 ? "12px" : "14px") &&
+                Math.abs(parseFloat(getComputedStyle(title.querySelector(".photo-set-pointer-icon")).width) -
+                  (count === 4 ? 13.2 : 15.4)) < 0.1 &&
                 getComputedStyle(title.querySelector(".photo-set-pointer-icon")).color === "rgb(0, 0, 0)" &&
                 parseFloat(getComputedStyle(title.querySelector(".photo-set-pointer-icon")).strokeWidth) === 2.2 &&
                 getComputedStyle(title).fontSize === (count === 4 ? "11px" : "14.3px") &&

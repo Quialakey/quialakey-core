@@ -884,6 +884,12 @@ async function main() {
     }), true);
     await page.locator("#multiSetSelectionInput").check();
     assert.equal(await page.locator('.photo-set-select[aria-pressed="true"]').count(), 0);
+    assert.equal(await page.locator(".photo-set-check-icon").first().evaluate((check) => {
+      const style = getComputedStyle(check);
+      return Math.abs(parseFloat(style.width) - 16.5) < 0.1 &&
+        Math.abs(parseFloat(style.height) - 16.5) < 0.1 &&
+        Math.abs(parseFloat(style.fontSize) - 13.2) < 0.1;
+    }), true);
     assert.equal(await page.locator("#checkoutBtn").isDisabled(), true);
     await page.evaluate(() => { keys[0].sets[1].needsCheckIn = true; renderPanel(); });
     await page.locator(".photo-set-check-icon").nth(1).click();

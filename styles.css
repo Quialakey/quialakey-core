@@ -2651,8 +2651,8 @@ body.is-moving-key .photo-hover {
 }
 
 .key-set-photo-list.is-four-set .photo-set-pointer-icon {
-  width: 12px;
-  height: 12px;
+  width: 13.2px;
+  height: 13.2px;
 }
 
 .key-set-photo-card.is-selected {
@@ -2666,18 +2666,18 @@ body.is-moving-key .photo-hover {
 .photo-set-check-icon {
   display: inline-grid;
   place-items: center;
-  width: 15px;
-  height: 15px;
+  width: 16.5px;
+  height: 16.5px;
   border: 1.5px solid currentColor;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: 13.2px;
   line-height: 1;
 }
 
 .key-set-photo-list.is-four-set .photo-set-check-icon {
-  width: 12px;
-  height: 12px;
-  font-size: 10px;
+  width: 13.2px;
+  height: 13.2px;
+  font-size: 11px;
 }
 
 .key-form.is-archive-view .key-set-photo-card {
@@ -2755,8 +2755,8 @@ body.is-moving-key .photo-hover {
 }
 
 .photo-set-pointer-icon {
-  width: 14px;
-  height: 14px;
+  width: 15.4px;
+  height: 15.4px;
   flex: none;
   color: #000;
   fill: none;
