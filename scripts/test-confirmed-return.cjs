@@ -537,6 +537,37 @@ async function main() {
     await returnReceipt.locator(".receipt-close-button").click();
     await receiptClosed;
     await page.evaluate(() => {
+      const history = keys[0].sets[0].history;
+      window.__receiptEvidenceBackup = history.map((entry) => ({
+        signature: entry.signature, movementPhoto: entry.movementPhoto,
+      }));
+      history.forEach((entry) => { entry.signature = ""; entry.movementPhoto = ""; });
+      renderPanel();
+    });
+    const emptyReceiptPromise = page.waitForEvent("popup");
+    await page.locator("#historyList .history-print-button").first().click();
+    const emptyReceipt = await emptyReceiptPromise;
+    await emptyReceipt.locator(".receipt-page").waitFor();
+    assert.deepEqual(await emptyReceipt.locator(".receipt-movement").evaluateAll((sections) =>
+      sections.map((section) => {
+        const visuals = [...section.querySelectorAll(".receipt-evidence-visual")];
+        const centers = visuals.map((visual) => {
+          const text = visual.querySelector("span").getBoundingClientRect();
+          return text.top + text.height / 2;
+        });
+        return visuals.every((visual) => visual.classList.contains("is-empty")) &&
+          Math.abs(centers[0] - centers[1]) < 1;
+      })), [true, true]);
+    if (process.env.MOVEMENT_RECEIPT_EMPTY_SCREENSHOT) {
+      await emptyReceipt.screenshot({ path: process.env.MOVEMENT_RECEIPT_EMPTY_SCREENSHOT, fullPage: true });
+    }
+    await emptyReceipt.close();
+    await page.evaluate(() => {
+      keys[0].sets[0].history.forEach((entry, index) =>
+        Object.assign(entry, window.__receiptEvidenceBackup[index]));
+      renderPanel();
+    });
+    await page.evaluate(() => {
       window.__originalMatchMedia = window.matchMedia;
       window.matchMedia = (query) => query === "(pointer: coarse)"
         ? { matches: true } : window.__originalMatchMedia(query);

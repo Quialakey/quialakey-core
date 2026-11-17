@@ -267,7 +267,7 @@ h1 {
   height: 38mm;
 }
 
-.receipt-movement .receipt-evidence-frame:first-child .receipt-evidence-visual {
+.receipt-movement .receipt-evidence-frame:first-child .receipt-evidence-visual:not(.is-empty) {
   box-sizing: border-box;
   align-items: flex-end;
   padding-bottom: 1mm;

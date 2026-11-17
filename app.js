@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261117-8";
+const appBuildVersion = "20261117-9";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -8756,6 +8756,7 @@ function renderMovementReceipt(receiptWindow, key, set, entry, closeReceipt, emb
         image.alt = `${label} - ${action}`;
         visual.append(image);
       } else {
+        visual.classList.add("is-empty");
         visual.append(element("span", "", label === "Photo" ? "Aucune photo enregistrée" : "Aucune signature enregistrée"));
       }
       frame.append(visual);
