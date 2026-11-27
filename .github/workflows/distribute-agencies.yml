@@ -22,7 +22,12 @@ jobs:
           IFS=',' read -ra repositories <<< "$AGENCY_REPOSITORIES"
           for repository in "${repositories[@]}"; do
             repository="$(echo "$repository" | xargs)"
-            if [ -n "$repository" ]; then
-              gh api --method POST "repos/Quialakey/$repository/dispatches" -f event_type=quialakey_release
-            fi
+            case "$repository" in
+              century21lesminimes|quialakeycentury21)
+                gh api --method POST "repos/Quialakey/$repository/dispatches" -f event_type=quialakey_release
+                ;;
+              *)
+                echo "Ignoring repository outside the active agency list: $repository"
+                ;;
+            esac
           done
