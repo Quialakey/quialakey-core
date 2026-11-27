@@ -2544,6 +2544,7 @@ body.is-moving-key .photo-hover {
   display: flex;
   align-items: center;
   width: fit-content;
+  max-width: 100%;
   min-height: 28px;
   gap: 8px;
   padding: 2px 4px;
@@ -2552,6 +2553,10 @@ body.is-moving-key .photo-hover {
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.multi-set-selection-label span {
+  min-width: 0;
 }
 
 .key-form .multi-set-selection-label[hidden] {

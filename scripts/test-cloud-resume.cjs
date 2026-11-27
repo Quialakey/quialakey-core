@@ -852,6 +852,7 @@ async function main() {
           const previewRect = preview.getBoundingClientRect();
           const titleRect = title.getBoundingClientRect();
           return {
+            heading: keySetPhotoHeading.textContent,
             height: cardRect.height,
             titleInsidePreview: titleRect.left >= previewRect.left && titleRect.top >= previewRect.top &&
               titleRect.right <= previewRect.right && titleRect.bottom <= previewRect.bottom,
@@ -879,6 +880,7 @@ async function main() {
           };
         }, withPhoto);
         assert.deepEqual(layout, {
+          heading: "Jeu de clé",
           height: 140,
           titleInsidePreview: true,
           titleTopLeft: true,
@@ -906,6 +908,7 @@ async function main() {
           const cardRects = cards.map((card) => card.getBoundingClientRect());
           const listRect = keySetPhotoList.getBoundingClientRect();
           return {
+            heading: keySetPhotoHeading.textContent,
             columns: getComputedStyle(keySetPhotoList).gridTemplateColumns.split(" ").length,
             selectedOutline: getComputedStyle(cards[0]).outlineColor === "rgb(63, 63, 63)" &&
               getComputedStyle(cards[0]).outlineWidth === "3px" &&
@@ -956,6 +959,7 @@ async function main() {
           };
         }, setCount);
         assert.deepEqual(layout, {
+          heading: "Jeux de clés",
           columns: setCount,
           selectedOutline: true,
           firstRowAligned: true,

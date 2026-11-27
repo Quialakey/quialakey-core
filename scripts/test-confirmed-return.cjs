@@ -909,7 +909,12 @@ async function main() {
     assert.equal(await page.locator("#multiSetSelectionLabel").evaluate((label) => {
       const box = label.querySelector("input").getBoundingClientRect();
       const fontSize = parseFloat(getComputedStyle(label).fontSize);
-      return label.getBoundingClientRect().height >= 24 && label.getBoundingClientRect().height <= 30 &&
+      const labelRect = label.getBoundingClientRect();
+      const photos = document.querySelector("#keySetPhotoList").getBoundingClientRect();
+      return label.textContent.trim() === "Sélectionner plusieurs jeux (Cocher les jeux concernés)" &&
+        labelRect.height >= 24 && labelRect.height <= 50 &&
+        labelRect.right <= document.querySelector(".photo-box").getBoundingClientRect().right &&
+        labelRect.bottom < photos.top &&
         box.width === 20 &&
         fontSize > 12 && fontSize < 15;
     }), true);

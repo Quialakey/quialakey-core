@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261117-9";
+const appBuildVersion = "20261127-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -768,6 +768,7 @@ const notesInput = document.querySelector("#notesInput");
 const keyDetailsHeading = document.querySelector("#keyDetailsHeading");
 const keyDetailsToggleBtn = document.querySelector("#keyDetailsToggleBtn");
 const keyDetailsContent = document.querySelector("#keyDetailsContent");
+const keySetPhotoHeading = document.querySelector("#keySetPhotoHeading");
 const keySetPhotoList = document.querySelector("#keySetPhotoList");
 const multiSetSelectionLabel = document.querySelector("#multiSetSelectionLabel");
 const multiSetSelectionInput = document.querySelector("#multiSetSelectionInput");
@@ -8932,6 +8933,7 @@ function isSelectedCompromiseEditable() {
 }
 
 function renderKeySetPhotos(key) {
+  keySetPhotoHeading.textContent = key.sets.length === 1 ? "Jeu de clé" : "Jeux de clés";
   keySetPhotoList.innerHTML = "";
   keySetPhotoList.classList.toggle("is-multi-set", key.sets.length > 1);
   const isMultiSelection = isMultiSelectingSets(key);
