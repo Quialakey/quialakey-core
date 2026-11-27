@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261127-3";
+const appBuildVersion = "20261127-4";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -10432,7 +10432,7 @@ function clearInlineSignature(canvas) {
   canvas.dataset.signed = "false";
 }
 
-const signatureStreamLineAmount = 0.35;
+const signatureStreamLineAmount = 0.5;
 
 function smoothSignaturePoint(previous, point) {
   if (!previous) return point;
