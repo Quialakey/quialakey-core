@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261127-1" />
-    <link rel="stylesheet" href="styles.css?v=20261127-1" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261127-2" />
+    <link rel="stylesheet" href="styles.css?v=20261127-2" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -187,6 +187,13 @@
           </section>
         </section>
 
+        <section id="otherRegistrySearchPrompt" class="other-registry-search-prompt" aria-label="Recherche dans l'autre registre" hidden>
+          <span id="otherRegistrySearchMessage"></span>
+          <div class="other-registry-search-actions">
+            <button id="otherRegistrySearchYes" type="button">Oui</button>
+            <button id="otherRegistrySearchNo" type="button">Non</button>
+          </div>
+        </section>
         <section id="keyGrid" class="key-grid" aria-label="Jeux de cles"></section>
         <div class="backup-panel-row">
           <section class="backup-panel backup-main-panel" aria-label="Sauvegarde et export des données">
@@ -604,10 +611,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261127-1"></script>
+    <script src="agency-config.js?v=20261127-2"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261127-1";
+        const fallbackVersion = "20261127-2";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

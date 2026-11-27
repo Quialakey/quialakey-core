@@ -1544,6 +1544,44 @@ async function main() {
       return kept;
     });
     assert.equal(lateSyncKeepsNewPhoto, true);
+    await photoPage.evaluate(() => {
+      const locationKey = {
+        ...keys.find((key) => key.id === "T3-1"), owner: "DUPONT", property: "9 rue Recherche",
+      };
+      setRuntimeStorageValue(registryConfig.location.keysStorageKey, JSON.stringify([locationKey]));
+      setKeyStatusFilter("all");
+    });
+    await photoPage.locator("#searchInput").fill("MEYER");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), false);
+    assert.equal(await photoPage.locator("#keyGrid .key-tile").count(), 1);
+    await photoPage.locator("#searchInput").fill("DUPONT");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), true);
+    assert.match(await photoPage.locator("#otherRegistrySearchMessage").textContent(),
+      /Aucun résultat dans le registre TRANSACTION.*registre LOCATION/);
+    assert.equal(await photoPage.locator("#keyGrid .key-tile").count(), 0);
+    await photoPage.locator("#otherRegistrySearchNo").click();
+    assert.equal(await photoPage.evaluate(() => activeRegistry), "transaction");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), false);
+    await photoPage.evaluate(() => render());
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), false);
+    await photoPage.locator("#searchInput").fill("");
+    await photoPage.locator("#searchInput").fill("DUPONT");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), true);
+    await photoPage.setViewportSize({ width: 390, height: 844 });
+    if (process.env.OTHER_REGISTRY_SEARCH_SCREENSHOT) {
+      await photoPage.screenshot({ path: process.env.OTHER_REGISTRY_SEARCH_SCREENSHOT });
+    }
+    await photoPage.locator("#otherRegistrySearchYes").click();
+    assert.equal(await photoPage.evaluate(() => activeRegistry), "location");
+    assert.equal(await photoPage.locator("#searchInput").inputValue(), "DUPONT");
+    assert.equal(await photoPage.locator("#keyGrid .key-tile").count(), 1);
+    assert.match(await photoPage.locator("#keyGrid .key-tile").first().textContent(), /DUPONT/);
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), false);
+    await photoPage.locator("#searchInput").fill("SANSRESULTAT");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), true);
+    await photoPage.locator("#otherRegistrySearchYes").click();
+    assert.equal(await photoPage.evaluate(() => activeRegistry), "transaction");
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), false);
     await photoPage.close();
     process.stdout.write("Cloud startup, wake reload, reservation edit, compromise colors, and photo persistence passed.\n");
   } finally {

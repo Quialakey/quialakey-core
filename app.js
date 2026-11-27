@@ -35,7 +35,7 @@ const browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261127-1";
+const appBuildVersion = "20261127-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -797,6 +797,10 @@ const clearSignatureBtn = document.querySelector("#clearSignatureBtn");
 const historyList = document.querySelector("#historyList");
 const keyHistoryToggleBtn = document.querySelector("#keyHistoryToggleBtn");
 const searchInput = document.querySelector("#searchInput");
+const otherRegistrySearchPrompt = document.querySelector("#otherRegistrySearchPrompt");
+const otherRegistrySearchMessage = document.querySelector("#otherRegistrySearchMessage");
+const otherRegistrySearchYes = document.querySelector("#otherRegistrySearchYes");
+const otherRegistrySearchNo = document.querySelector("#otherRegistrySearchNo");
 const textViewBtn = document.querySelector("#textViewBtn");
 const photoViewBtn = document.querySelector("#photoViewBtn");
 const keyStatusFilterButtons = [...document.querySelectorAll(".key-status-filter-button")];
@@ -880,6 +884,7 @@ let tableSettings = loadTableSettings();
 let hasResolvedInitialAccessSettings = !supabaseClient;
 let settingsDraft = null;
 let activeRegistry = loadActiveRegistry();
+let suppressedOtherRegistrySearch = null;
 let shouldSanitizeCachedArchivedResidues = true;
 let keys = loadKeys();
 let archives = loadArchives();
@@ -8346,9 +8351,22 @@ function matchesFilter(key) {
   return statusMatches && keyHasSetStatus(key, keyStatusFilter) && (!query || haystack.includes(query));
 }
 
+function updateOtherRegistrySearchPrompt(resultCount) {
+  const query = searchInput.value.trim().toLowerCase();
+  if (!query || resultCount > 0) suppressedOtherRegistrySearch = null;
+  const isSuppressed = suppressedOtherRegistrySearch?.registry === activeRegistry &&
+    query.startsWith(suppressedOtherRegistrySearch.query);
+  otherRegistrySearchPrompt.hidden = !query || resultCount > 0 || isSuppressed;
+  if (otherRegistrySearchPrompt.hidden) return;
+  const current = registryConfig[activeRegistry].title;
+  const other = registryConfig[activeRegistry === "location" ? "transaction" : "location"].title;
+  otherRegistrySearchMessage.textContent = `Aucun résultat dans le registre ${current}. Consulter le registre ${other} ?`;
+}
+
 function renderGrid() {
   grid.innerHTML = "";
   updateKeyStatusFilterBar();
+  let resultCount = 0;
 
   getTableCategories().forEach((category) => {
     const row = document.createElement("section");
@@ -8365,6 +8383,7 @@ function renderGrid() {
     const visibleKeys = keys
       .filter((key) => key.category === category.id && key.number <= getSlotsPerCategory())
       .filter(matchesFilter);
+    resultCount += visibleKeys.length;
 
     visibleKeys.forEach((key) => {
       const tileShell = document.createElement("span");
@@ -8553,6 +8572,7 @@ function renderGrid() {
     row.append(title, keyRow);
     grid.append(row);
   });
+  updateOtherRegistrySearchPrompt(resultCount);
 }
 
 function renderKeySetSelect(key) {
@@ -11872,6 +11892,18 @@ signatureCanvas.addEventListener("pointermove", drawSignature);
 signatureCanvas.addEventListener("pointerup", stopSignature);
 signatureCanvas.addEventListener("pointercancel", stopSignature);
 searchInput.addEventListener("input", render);
+otherRegistrySearchNo.addEventListener("click", () => {
+  suppressedOtherRegistrySearch = { registry: activeRegistry, query: searchInput.value.trim().toLowerCase() };
+  otherRegistrySearchPrompt.hidden = true;
+  searchInput.focus();
+});
+otherRegistrySearchYes.addEventListener("click", () => {
+  const targetRegistry = activeRegistry === "location" ? "transaction" : "location";
+  suppressedOtherRegistrySearch = { registry: targetRegistry, query: searchInput.value.trim().toLowerCase() };
+  switchRegistry();
+  if (activeRegistry !== targetRegistry) suppressedOtherRegistrySearch = null;
+  searchInput.focus();
+});
 archiveSearchInput?.addEventListener("input", renderArchivesPanel);
 textViewBtn.addEventListener("click", () => setTileViewMode("text"));
 photoViewBtn.addEventListener("click", () => setTileViewMode("photo"));

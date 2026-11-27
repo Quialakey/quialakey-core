@@ -717,6 +717,44 @@ h3 {
   align-items: end;
 }
 
+.other-registry-search-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: -8px 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.other-registry-search-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.other-registry-search-actions button {
+  min-width: 56px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  background: #d8dcd8;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.other-registry-search-actions button:first-child {
+  border-color: var(--blue);
+  color: #fff;
+  background: var(--blue);
+}
+
 .view-filter-action,
 .filter-action {
   display: grid;
