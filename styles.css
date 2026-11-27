@@ -755,6 +755,13 @@ h3 {
   background: var(--blue);
 }
 
+@media (max-width: 720px), (orientation: landscape) and (pointer: coarse) and (max-width: 1180px) {
+  .other-registry-search-actions {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .view-filter-action,
 .filter-action {
   display: grid;

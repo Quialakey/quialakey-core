@@ -1568,6 +1568,12 @@ async function main() {
     await photoPage.locator("#searchInput").fill("DUPONT");
     assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").isVisible(), true);
     await photoPage.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await photoPage.locator("#otherRegistrySearchPrompt").evaluate((prompt) => {
+      const promptRect = prompt.getBoundingClientRect();
+      const actionsRect = prompt.querySelector(".other-registry-search-actions").getBoundingClientRect();
+      return Math.abs((actionsRect.left + actionsRect.right) / 2 -
+        (promptRect.left + promptRect.right) / 2) < 1;
+    }), true);
     if (process.env.OTHER_REGISTRY_SEARCH_SCREENSHOT) {
       await photoPage.screenshot({ path: process.env.OTHER_REGISTRY_SEARCH_SCREENSHOT });
     }
