@@ -496,9 +496,7 @@ button {
 }
 
 .agency-name-label {
-  position: absolute;
-  bottom: calc(100% + 14px);
-  left: 0;
+  position: static;
   width: max-content;
   margin: 0;
   padding-bottom: 2px;
@@ -507,6 +505,25 @@ button {
   font-size: 15px;
   font-weight: 600;
   line-height: 1.2;
+}
+.agency-identity {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+.agency-sign-out {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .eyebrow {
@@ -4215,7 +4232,7 @@ body.is-moving-key .photo-hover {
     padding-top: calc(34px + env(safe-area-inset-top, 0px));
   }
 
-  .agency-name-label {
+  .agency-identity {
     bottom: calc(100% + 12px);
     right: auto;
     left: 50%;

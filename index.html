@@ -18,8 +18,8 @@
     <link rel="icon" type="image/png" sizes="838x838" href="quialakey-icon-20260908-1.png" />
     <link rel="shortcut icon" type="image/png" href="quialakey-icon-20260908-1.png" />
     <link rel="apple-touch-icon" sizes="838x838" href="quialakey-icon-20260908-1.png" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261127-4" />
-    <link rel="stylesheet" href="styles.css?v=20261127-4" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261128-1" />
+    <link rel="stylesheet" href="styles.css?v=20261128-1" />
     <style>
       /* Preserve this control when an older service worker serves cached CSS. */
       #keyDetailsToggleBtn {
@@ -73,13 +73,21 @@
         <img class="access-logo" src="quialakey-opening-banner-20261025.webp" alt="Quialakey" />
         <h1 id="accessAgencyTitle">Agence</h1>
         <form id="accessForm" class="access-form">
-          <label for="accessCodeInput">Code d'acc&egrave;s</label>
+          <label id="accessAgencyCodeLabel" for="accessAgencyCodeInput" hidden>Code agence</label>
+          <input
+            id="accessAgencyCodeInput"
+            type="text"
+            autocomplete="username"
+            autocapitalize="characters"
+            placeholder="Code agence"
+            hidden
+          />
+          <label id="accessCodeLabel" for="accessCodeInput">Code d'acc&egrave;s</label>
           <input
             id="accessCodeInput"
             type="password"
-            inputmode="numeric"
             autocomplete="current-password"
-            placeholder="Code"
+            placeholder="Mot de passe"
             aria-describedby="accessError"
           />
           <button type="submit">Entrer</button>
@@ -102,7 +110,10 @@
       <section class="workspace">
         <header class="topbar">
           <div class="registry-switcher">
-            <p id="agencyNameLabel" class="agency-name-label">Agence</p>
+            <div class="agency-identity">
+              <button id="agencySignOutBtn" class="agency-sign-out" type="button" hidden>Se déconnecter</button>
+              <p id="agencyNameLabel" class="agency-name-label">Agence</p>
+            </div>
             <button id="registryToggleBtn" class="registry-toggle-button" type="button">BASCULER VERS TABLEAU TRANSACTION</button>
           </div>
           <div class="app-title-container">
@@ -548,6 +559,10 @@
               <span class="settings-switch-track" aria-hidden="true"></span>
             </label>
           </section>
+          <section class="settings-section settings-shared-password-section" hidden>
+            <h3>Mot de passe de l'agence</h3>
+            <button id="changeAgencyPasswordBtn" class="settings-secondary-button" type="button">Modifier le mot de passe</button>
+          </section>
 
           <button class="settings-save-button" type="submit">Enregistrer les réglages</button>
           <button id="resetTablesBtn" class="settings-reset-button" type="button" hidden>Réinitialiser les tableaux</button>
@@ -611,10 +626,10 @@
       </aside>
     </main>
 
-    <script src="agency-config.js?v=20261127-4"></script>
+    <script src="agency-config.js?v=20261128-1"></script>
     <script>
       (() => {
-        const fallbackVersion = "20261127-4";
+        const fallbackVersion = "20261128-1";
         let loadAttempts = 0;
         const loadApp = () => {
           loadAttempts += 1;

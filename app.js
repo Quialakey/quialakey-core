@@ -22,22 +22,25 @@ const defaultAddressReplacements = [
   { id: "esplanade", word: "Esplanade", replacement: "Esp." },
 ];
 const rawAgencyConfig = globalThis.QUIALAKEY_CONFIG || {};
-const agencyId =
+let agencyId =
   String(rawAgencyConfig.agencyId || "default-agency")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "default-agency";
-const configuredAgencyName = String(rawAgencyConfig.agencyName || "Agence").trim() || "Agence";
+let configuredAgencyName = String(rawAgencyConfig.agencyName || "Agence").trim() || "Agence";
 const shouldMigrateLegacyStorage = rawAgencyConfig.migrateLegacyStorage === true;
-const browserStorageNamespace = `quialakey:${agencyId}:`;
+let browserStorageNamespace = `quialakey:${agencyId}:`;
 const supabaseUrl = String(rawAgencyConfig.supabaseUrl || "").trim();
 const supabasePublishableKey = String(rawAgencyConfig.supabasePublishableKey || "").trim();
+const sharedProjectMode = rawAgencyConfig.sharedProjectMode === true;
+const agencyLogins = rawAgencyConfig.agencyLogins || {};
+const legacyAgencyLoginCode = String(rawAgencyConfig.agencyLoginCode || "").trim().toUpperCase();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261127-4";
+const appBuildVersion = "20261128-1";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
-const appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
+let appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
 const accessUnlockedStorageKey = "quialakey-access-unlocked-v1";
 const defaultAccessCode = "0000";
@@ -62,7 +65,7 @@ const lastLocalEditStorageKey = "cles-last-local-edit-v1";
 const newKeyDraftStorageKey = "cles-new-key-draft-v1";
 const addedKeySetDraftStorageKey = "cles-added-key-set-draft-v1";
 const addedKeySetPhotoResumeStorageKey = "cles-added-key-set-photo-resume-v1";
-const keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
+let keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
 const indexedStorageKeys = new Set([
   "cles-immobilieres-v1",
   "cles-transaction-v1",
@@ -90,6 +93,7 @@ const supabaseProjectRef = (() => {
 })();
 const syncMetadataVersion = `20260917-1-${supabaseProjectRef}`;
 const cloudSyncHeartbeatStorageKey = "cles-cloud-sync-heartbeat-v1";
+const sharedAgencyReadyKey = "quialakey-shared-ready-v1";
 const keySlotCloudSeparator = "::slot::";
 const automaticBackupKeyPrefix = "cles-auto-backup-";
 const keySlotRecoveryBackupPrefix = "cles-key-recovery-v1::";
@@ -556,6 +560,10 @@ function createSupabaseClient() {
     console.warn("Configuration Supabase manquante pour cette agence.");
     return null;
   }
+  if (sharedProjectMode && !Object.keys(agencyLogins).length && !legacyAgencyLoginCode) {
+    console.error("Code agence manquant.");
+    return null;
+  }
   return createRestSupabaseClient(supabaseUrl, supabasePublishableKey);
 }
 
@@ -563,7 +571,6 @@ function createRestSupabaseClient(projectUrl, publishableKey) {
   const restBaseUrl = `${projectUrl.replace(/\/$/, "")}/rest/v1`;
   const baseHeaders = {
     apikey: publishableKey,
-    Authorization: `Bearer ${publishableKey}`,
   };
 
   class RestQuery {
@@ -571,6 +578,7 @@ function createRestSupabaseClient(projectUrl, publishableKey) {
       this.table = table;
       this.method = "GET";
       this.params = new URLSearchParams();
+      if (sharedProjectMode && table === "app_state") this.params.set("agency_id", `eq.${agencyId}`);
       this.body = null;
       this.prefer = "";
       this.readSingle = false;
@@ -617,8 +625,12 @@ function createRestSupabaseClient(projectUrl, publishableKey) {
 
     upsert(value) {
       this.method = "POST";
-      this.body = JSON.stringify(value);
-      this.params.set("on_conflict", "key");
+      this.params.delete("agency_id");
+      const withAgency = (row) => sharedProjectMode && this.table === "app_state"
+        ? { ...row, agency_id: agencyId }
+        : row;
+      this.body = JSON.stringify(Array.isArray(value) ? value.map(withAgency) : withAgency(value));
+      this.params.set("on_conflict", sharedProjectMode && this.table === "app_state" ? "agency_id,key" : "key");
       this.prefer = "resolution=merge-duplicates,return=representation";
       return this.execute();
     }
@@ -662,10 +674,14 @@ function createRestSupabaseClient(projectUrl, publishableKey) {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
+        const authorization = sharedProjectMode
+          ? await getSharedAgencyAccessToken()
+          : publishableKey;
         const response = await fetch(`${restBaseUrl}/${this.table}${query ? `?${query}` : ""}`, {
           method: this.method,
           headers: {
             ...baseHeaders,
+            Authorization: `Bearer ${authorization}`,
             Accept: "application/json",
             ...(this.body ? { "Content-Type": "application/json" } : {}),
             ...(this.prefer ? { Prefer: this.prefer } : {}),
@@ -743,6 +759,9 @@ const startupLoadingMessage = document.querySelector("#startupLoadingMessage");
 const retryInitialLoadBtn = document.querySelector("#retryInitialLoadBtn");
 const accessForm = document.querySelector("#accessForm");
 const accessAgencyTitle = document.querySelector("#accessAgencyTitle");
+const accessAgencyCodeLabel = document.querySelector("#accessAgencyCodeLabel");
+const accessAgencyCodeInput = document.querySelector("#accessAgencyCodeInput");
+const accessCodeLabel = document.querySelector("#accessCodeLabel");
 const accessCodeInput = document.querySelector("#accessCodeInput");
 const accessError = document.querySelector("#accessError");
 const forgotPasswordBtn = document.querySelector("#forgotPasswordBtn");
@@ -750,6 +769,7 @@ const forgotPasswordMessage = document.querySelector("#forgotPasswordMessage");
 const appTitle = document.querySelector("#appTitle");
 const appTitleText = document.querySelector(".app-title-text");
 const agencyNameLabel = document.querySelector("#agencyNameLabel");
+const agencySignOutBtn = document.querySelector("#agencySignOutBtn");
 const registryToggleBtn = document.querySelector("#registryToggleBtn");
 const topActions = document.querySelector(".top-actions");
 const grid = document.querySelector("#keyGrid");
@@ -881,7 +901,7 @@ const importDataBtn = document.querySelector("#importDataBtn");
 const backupFileInput = document.querySelector("#backupFileInput");
 
 let tableSettings = loadTableSettings();
-let hasResolvedInitialAccessSettings = !supabaseClient;
+let hasResolvedInitialAccessSettings = sharedProjectMode || !supabaseClient;
 let settingsDraft = null;
 let activeRegistry = loadActiveRegistry();
 let suppressedOtherRegistrySearch = null;
@@ -894,6 +914,11 @@ let selectedSetId = "main";
 let multiSelectionKey = "";
 let multiSelectedSetIds = new Set();
 let unlockedAccessLockVersion = null;
+let sharedAgencySession = null;
+let nextSharedSessionCheckAt = 0;
+let resolveSharedAgencyLogin = null;
+let sharedAgencyLoginPromise = null;
+let sharedInitialCloudLoading = false;
 let selectedArchiveRecord = null;
 let draggedKeyId = null;
 let suppressKeyTileClickUntil = 0;
@@ -987,6 +1012,7 @@ let areSettingsOrganizationVisible = false;
 let areSettingsReplacementsVisible = false;
 
 function getAccessAgencyTitle() {
+  if (sharedProjectMode) return Object.keys(agencyLogins).length ? "Quialakey" : configuredAgencyName;
   const agencyName = String(tableSettings?.agencyName || "Agence").trim() || "Agence";
   return agencyName;
 }
@@ -996,6 +1022,7 @@ function updateAccessLockTitle() {
 }
 
 function isAccessUnlocked() {
+  if (sharedProjectMode) return Boolean(sharedAgencySession);
   if (tableSettings?.accessLockEnabled === false) return true;
   return unlockedAccessLockVersion === String(tableSettings?.accessLockVersion || 1);
 }
@@ -1004,7 +1031,7 @@ function showAccessLock() {
   updateAccessLockTitle();
   if (accessLock) accessLock.hidden = false;
   document.body.classList.add("is-access-locked");
-  window.setTimeout(() => accessCodeInput?.focus(), 0);
+  window.setTimeout(() => (sharedProjectMode ? accessAgencyCodeInput : accessCodeInput)?.focus(), 0);
 }
 
 function unlockAccess() {
@@ -1019,6 +1046,12 @@ function hideAccessLock() {
 }
 
 function updateAccessLockState() {
+  if (sharedProjectMode && sharedInitialCloudLoading) {
+    document.body.classList.remove("is-access-locked");
+    document.body.classList.add("is-access-loading");
+    if (accessLock) accessLock.hidden = true;
+    return;
+  }
   if (!hasResolvedInitialAccessSettings) {
     document.body.classList.remove("is-access-locked");
     document.body.classList.add("is-access-loading");
@@ -1032,6 +1065,93 @@ function updateAccessLockState() {
     return;
   }
   showAccessLock();
+}
+
+async function getSharedAgencyAuthClient() {
+  if (!sharedProjectMode) return null;
+  if (!supabaseClient) throw new Error("Configuration de l'agence incomplete.");
+  const library = await loadCloudRealtimeLibrary();
+  cloudRealtimeClient ||= library.createClient(supabaseUrl, supabasePublishableKey, {
+    auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
+  });
+  return cloudRealtimeClient;
+}
+
+async function getSharedAgencyAccessToken() {
+  const client = await getSharedAgencyAuthClient();
+  const { data, error } = await client.auth.getSession();
+  if (error || !data?.session?.access_token) {
+    sharedAgencySession = null;
+    sharedInitialCloudLoading = false;
+    updateAccessLockState();
+    throw new Error("Session expiree. Reconnectez-vous au tableau.");
+  }
+  if (Date.now() >= nextSharedSessionCheckAt) {
+    nextSharedSessionCheckAt = Date.now() + 30000;
+    const { data: authorizedAgency, error: agencyError } = await client.rpc("current_agency_id");
+    if (agencyError) {
+      nextSharedSessionCheckAt = 0;
+      throw new Error("Vérification de l'accès impossible.");
+    }
+    if (authorizedAgency !== agencyId) {
+      sharedAgencySession = null;
+      await client.auth.signOut();
+      window.location.reload();
+      throw new Error("Accès expiré. Reconnectez-vous au tableau.");
+    }
+  }
+  sharedAgencySession = data.session;
+  return data.session.access_token;
+}
+
+function waitForSharedAgencyLogin() {
+  if (!sharedProjectMode || sharedAgencySession) return Promise.resolve();
+  if (!sharedAgencyLoginPromise) {
+    sharedAgencyLoginPromise = new Promise((resolve) => { resolveSharedAgencyLogin = resolve; });
+  }
+  updateAccessLockState();
+  return sharedAgencyLoginPromise;
+}
+
+async function signInSharedAgency() {
+  const enteredCode = String(accessAgencyCodeInput?.value || "").trim().toUpperCase();
+  const selectedAgency = Object.keys(agencyLogins).length
+    ? agencyLogins[enteredCode]
+    : enteredCode === legacyAgencyLoginCode
+      ? { agencyId, agencyName: configuredAgencyName }
+      : null;
+  if (!selectedAgency) throw new Error("Identifiants incorrects.");
+  const password = String(accessCodeInput?.value || "");
+  if (!password) throw new Error("Mot de passe manquant.");
+  const client = await getSharedAgencyAuthClient();
+  const { data, error } = await client.auth.signInAnonymously();
+  if (error || !data?.session) throw new Error("Connexion temporairement impossible.");
+  const { data: authorizedAgency, error: agencyError } = await client.rpc("login_agency", {
+    p_login_code: enteredCode,
+    p_password: password,
+  });
+  if (agencyError || authorizedAgency !== selectedAgency.agencyId) {
+    await client.auth.signOut();
+    throw new Error("Ce compte n'a pas acces a cette agence.");
+  }
+  agencyId = selectedAgency.agencyId;
+  configuredAgencyName = selectedAgency.agencyName;
+  browserStorageNamespace = `quialakey:${agencyId}:`;
+  appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
+  keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
+  runtimeStorageFallback.clear();
+  activeRegistry = loadActiveRegistry();
+  nextSharedSessionCheckAt = 0;
+  sharedAgencySession = data.session;
+  if (accessCodeInput) accessCodeInput.value = "";
+  if (accessError) accessError.hidden = true;
+  const resolve = resolveSharedAgencyLogin;
+  resolveSharedAgencyLogin = null;
+  sharedAgencyLoginPromise = null;
+  sharedInitialCloudLoading = true;
+  hideAccessLock();
+  updateAccessLockState();
+  resolve?.();
 }
 
 function markLocalEdit() {
@@ -3518,7 +3638,7 @@ async function loadStorageFromCloud(options = {}) {
       if (legacyKeyRowsError) throw legacyKeyRowsError;
       const cloudBaseRows = Array.isArray(data) ? [...data] : [];
       if (!cloudBaseRows.length && (!Array.isArray(legacyKeyRows) || !legacyKeyRows.length) && !slotRows.length) {
-        if (shouldMigrateLegacyStorage) {
+        if (shouldMigrateLegacyStorage || sharedProjectMode) {
           console.warn("Supabase initial load returned no app state rows; cloud writes remain locked.");
           return;
         }
@@ -7399,7 +7519,7 @@ function updateSettingsDraftFromDom() {
     settingsDraft.saleCelebrationEnabled = settingsCelebrationInput.checked;
   }
   settingsDraft.keepKeysAfterCompromise = Boolean(settingsKeepKeysYes?.checked);
-  if (settingsAccessLockInput) {
+  if (settingsAccessLockInput && !sharedProjectMode) {
     const wasEnabled = tableSettings?.accessLockEnabled !== false;
     const previousAccessCode = String(tableSettings?.accessCode || defaultAccessCode).trim() || defaultAccessCode;
     const nextAccessCode = String(settingsDraft.accessCode || defaultAccessCode).trim() || defaultAccessCode;
@@ -7575,6 +7695,11 @@ function createSettingsReplacementRow(replacement, index) {
 function renderSettingsPanel() {
   if (!settingsPanel || !settingsForm) return;
   if (!settingsDraft) settingsDraft = cloneTableSettings();
+
+  const legacyAccessSection = settingsForm.querySelector(".settings-access-section");
+  if (legacyAccessSection) legacyAccessSection.hidden = sharedProjectMode;
+  const sharedPasswordSection = settingsForm.querySelector(".settings-shared-password-section");
+  if (sharedPasswordSection) sharedPasswordSection.hidden = !sharedProjectMode;
 
   if (settingsAgencyNameInput) settingsAgencyNameInput.value = settingsDraft.agencyName || "Agence";
   if (settingsRowCountInput) settingsRowCountInput.value = String(settingsDraft.categories.length);
@@ -12186,7 +12311,21 @@ cloudSleepOverlay?.addEventListener("click", (event) => {
 });
 
 async function initializeApp() {
+  if (sharedProjectMode) await waitForSharedAgencyLogin();
+  if (sharedProjectMode) {
+    const { data, error } = await supabaseClient
+      .from("app_state")
+      .select("key")
+      .eq("key", sharedAgencyReadyKey)
+      .maybeSingle();
+    if (error || !data) {
+      if (startupLoadingMessage) startupLoadingMessage.textContent = "Tableau non disponible. Contactez Quialakey.";
+      if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = false;
+      return;
+    }
+  }
   await hydrateIndexedStorage();
+  activeRegistry = loadActiveRegistry();
   tableSettings = loadTableSettings();
   dirtyCloudKeys = loadPendingCloudKeys();
   dirtyKeySlots = loadDirtyKeySlots();
@@ -12217,6 +12356,7 @@ async function initializeApp() {
     if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = false;
     return;
   }
+  sharedInitialCloudLoading = false;
   updateAccessLockState();
   restorePendingNewKeyDraft();
   if (!pendingNewKeyDraft) restorePendingAddedKeySetDraft();
@@ -12272,8 +12412,24 @@ retryInitialLoadBtn?.addEventListener("click", () => {
   void initializeApp();
 });
 
-accessForm?.addEventListener("submit", (event) => {
+accessForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (sharedProjectMode) {
+    const submitButton = accessForm.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+    try {
+      await signInSharedAgency();
+    } catch (error) {
+      if (accessError) {
+        accessError.textContent = error.message || "Connexion impossible.";
+        accessError.hidden = false;
+      }
+      accessCodeInput?.select();
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
+    return;
+  }
   const typedCode = String(accessCodeInput?.value || "").trim();
   const expectedCode = String(tableSettings?.accessCode || defaultAccessCode).trim();
   if (typedCode === expectedCode) {
@@ -12286,6 +12442,9 @@ accessForm?.addEventListener("submit", (event) => {
 });
 
 accessCodeInput?.addEventListener("input", () => {
+  if (accessError) accessError.hidden = true;
+});
+accessAgencyCodeInput?.addEventListener("input", () => {
   if (accessError) accessError.hidden = true;
 });
 
@@ -12331,4 +12490,53 @@ forgotPasswordBtn?.addEventListener("click", () => {
   if (forgotPasswordMessage) forgotPasswordMessage.hidden = false;
 });
 
+if (sharedProjectMode) {
+  if (agencySignOutBtn) agencySignOutBtn.hidden = false;
+  if (accessAgencyCodeLabel) accessAgencyCodeLabel.hidden = false;
+  if (accessAgencyCodeInput) accessAgencyCodeInput.hidden = false;
+  if (accessCodeLabel) accessCodeLabel.textContent = "Mot de passe";
+  if (accessError) accessError.textContent = "Code agence ou mot de passe incorrect.";
+  updateAccessLockState();
+} else if (accessCodeInput) {
+  accessCodeInput.placeholder = "Code";
+  accessCodeInput.inputMode = "numeric";
+}
+agencySignOutBtn?.addEventListener("click", async () => {
+  if (!sharedProjectMode) return;
+  agencySignOutBtn.disabled = true;
+  try {
+    const client = await getSharedAgencyAuthClient();
+    await client.rpc("logout_agency");
+    await client.auth.signOut();
+  } finally {
+    window.location.reload();
+  }
+});
+document.querySelector("#changeAgencyPasswordBtn")?.addEventListener("click", async () => {
+  const currentPassword = window.prompt("Mot de passe actuel de l'agence :");
+  if (currentPassword === null) return;
+  const newPassword = window.prompt("Nouveau mot de passe à 6 chiffres :");
+  if (newPassword === null) return;
+  if (!/^[0-9]{6}$/.test(newPassword)) {
+    window.alert("Saisissez exactement 6 chiffres.");
+    return;
+  }
+  const confirmation = window.prompt("Confirmez le nouveau mot de passe :");
+  if (confirmation !== newPassword) {
+    window.alert("Les mots de passe ne correspondent pas.");
+    return;
+  }
+  const client = await getSharedAgencyAuthClient();
+  const { data, error } = await client.rpc("change_agency_password", {
+    p_current_password: currentPassword,
+    p_new_password: newPassword,
+  });
+  if (error || data !== true) {
+    window.alert("Le mot de passe n'a pas pu être modifié.");
+    return;
+  }
+  await client.auth.signOut();
+  window.alert("Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe.");
+  window.location.reload();
+});
 initializeApp();

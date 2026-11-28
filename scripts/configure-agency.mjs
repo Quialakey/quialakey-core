@@ -15,6 +15,9 @@ const agencyId =
 const agencyName = String(source.agencyName || "").trim();
 const supabaseUrl = String(source.supabaseUrl || "").trim().replace(/\/$/, "");
 const supabasePublishableKey = String(source.supabasePublishableKey || "").trim();
+const sharedProjectMode = source.sharedProjectMode === true;
+const agencyLoginCode = String(source.agencyLoginCode || "").trim().toUpperCase();
+const agencyLogins = source.agencyLogins || null;
 
 if (!agencyId) throw new Error("agencyId est obligatoire.");
 if (!agencyName) throw new Error("agencyName est obligatoire.");
@@ -24,6 +27,16 @@ if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)) {
 if (!supabasePublishableKey.startsWith("sb_publishable_") && !supabasePublishableKey.startsWith("eyJ")) {
   throw new Error("Utilisez uniquement la Publishable key ou l'ancienne cle anon.");
 }
+if (sharedProjectMode && !agencyLogins && !/^[A-Z0-9-]{4,32}$/.test(agencyLoginCode)) {
+  throw new Error("agencyLoginCode doit contenir 4 a 32 lettres, chiffres ou tirets.");
+}
+if (agencyLogins && (!sharedProjectMode || typeof agencyLogins !== "object" || Array.isArray(agencyLogins)
+  || Object.keys(agencyLogins).length < 2 || Object.entries(agencyLogins).some(([code, login]) =>
+    !/^[A-Z0-9-]{4,32}$/.test(code)
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(login?.agencyId || "")
+    || !String(login?.agencyName || "").trim()))) {
+  throw new Error("agencyLogins doit contenir des codes, identifiants et noms valides.");
+}
 
 const publicConfig = {
   agencyId,
@@ -31,6 +44,9 @@ const publicConfig = {
   supabaseUrl,
   supabasePublishableKey,
   migrateLegacyStorage: source.migrateLegacyStorage === true,
+  sharedProjectMode,
+  ...(sharedProjectMode && agencyLogins ? { agencyLogins } : {}),
+  ...(sharedProjectMode && !agencyLogins ? { agencyLoginCode } : {}),
 };
 const configContents = `window.QUIALAKEY_CONFIG = Object.freeze(${JSON.stringify(publicConfig, null, 2)});\n`;
 await writeFile(resolve(outputDirectory, "agency-config.js"), configContents, "utf8");
