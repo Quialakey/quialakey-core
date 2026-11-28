@@ -40,24 +40,34 @@ async function main() {
       status: 200,
       contentType: "text/javascript",
       body: `window.__authAttempts = [];
-        window.supabase = { createClient() {
-          let session = null;
-          let activeAgency = null;
+        window.__clientModes = [];
+        window.supabase = { createClient(_url, _key, options) {
+          const persistent = options?.auth?.persistSession === true;
+          window.__clientModes.push(persistent);
+          let session = persistent ? JSON.parse(localStorage.getItem('test-auth-session') || 'null') : null;
+          let activeAgency = persistent ? localStorage.getItem('test-auth-agency') : null;
           return {
             auth: {
               async signInAnonymously() {
                 window.__authAttempts.push({ anonymous: true });
                 session = { access_token: "agency-token" };
+                if (persistent) localStorage.setItem('test-auth-session', JSON.stringify(session));
                 return { data: { session }, error: null };
               },
               async getSession() { return { data: { session }, error: null }; },
-              async signOut() { session = null; activeAgency = null; return { error: null }; }
+              async signOut() {
+                session = null; activeAgency = null;
+                localStorage.removeItem('test-auth-session');
+                localStorage.removeItem('test-auth-agency');
+                return { error: null };
+              }
             },
             async rpc(name, args) {
               if (name === "login_agency") {
                 activeAgency = args.p_password === "correct-password"
                   ? { "TEST-42": "agency-test", "OTHER-42": "agency-other" }[args.p_login_code] || null
                   : null;
+                if (persistent && activeAgency) localStorage.setItem('test-auth-agency', activeAgency);
                 return { data: activeAgency, error: null };
               }
               return { data: activeAgency, error: null };
@@ -105,6 +115,7 @@ async function main() {
     await page.goto(url);
     await page.locator("#accessLock").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.locator('#accessRememberInput').isVisible(), true);
     const formBounds = await page.locator("#accessForm").boundingBox();
     assert.ok(formBounds && formBounds.x >= 0 && formBounds.x + formBounds.width <= 390);
     assert.equal(await page.locator("#accessAgencyCodeInput").isVisible(), true);
@@ -177,6 +188,30 @@ async function main() {
     await page.locator("#accessForm button[type=submit]").click();
     await page.locator("#retryInitialLoadBtn").waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => hasCompletedInitialCloudLoad), false);
+    rows.set("quialakey-shared-ready-v1", {
+      agency_id: "agency-test", key: "quialakey-shared-ready-v1",
+      value: { validatedAt: "2026-11-27" }, updated_at: "2026-11-27T09:00:00Z",
+    });
+    rows.set("cles-cloud-sync-heartbeat-v1", {
+      agency_id: "agency-test", key: "cles-cloud-sync-heartbeat-v1",
+      value: { version: "test" }, updated_at: "2026-11-27T09:00:00Z",
+    });
+    await page.reload();
+    await page.locator("#accessLock").waitFor({ state: "visible" });
+    await page.locator("#accessAgencyCodeInput").fill("TEST-42");
+    await page.locator("#accessCodeInput").fill("correct-password");
+    await page.locator('#accessRememberInput').check();
+    await page.locator("#accessForm button[type=submit]").click();
+    await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), 'TEST-42');
+    await page.reload();
+    await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
+    assert.equal(await page.locator("#accessLock").isVisible(), false);
+    await page.locator("#agencySignOutBtn").click();
+    await page.locator("#accessLock").waitFor({ state: "visible" });
+    assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), null);
+    await page.reload();
+    await page.locator("#accessLock").waitFor({ state: "visible" });
     console.log("Shared agency login, second agency and scoped cloud requests passed.");
   } finally {
     await browser?.close();

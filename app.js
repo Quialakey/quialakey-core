@@ -38,11 +38,12 @@ const sharedProjectMode = rawAgencyConfig.sharedProjectMode === true;
 const agencyLogins = rawAgencyConfig.agencyLogins || {};
 const legacyAgencyLoginCode = String(rawAgencyConfig.agencyLoginCode || "").trim().toUpperCase();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261128-1";
+const appBuildVersion = "20261128-2";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 let appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
 const accessUnlockedStorageKey = "quialakey-access-unlocked-v1";
+const rememberedAgencyStorageKey = "quialakey-remembered-agency-v1";
 const defaultAccessCode = "0000";
 const registryStorageKey = "cles-location-active-registry-v1";
 const sharedContactsStorageKey = "cles-location-intervenants-v1";
@@ -763,6 +764,7 @@ const accessAgencyCodeLabel = document.querySelector("#accessAgencyCodeLabel");
 const accessAgencyCodeInput = document.querySelector("#accessAgencyCodeInput");
 const accessCodeLabel = document.querySelector("#accessCodeLabel");
 const accessCodeInput = document.querySelector("#accessCodeInput");
+const accessRememberInput = document.querySelector("#accessRememberInput");
 const accessError = document.querySelector("#accessError");
 const forgotPasswordBtn = document.querySelector("#forgotPasswordBtn");
 const forgotPasswordMessage = document.querySelector("#forgotPasswordMessage");
@@ -919,6 +921,8 @@ let nextSharedSessionCheckAt = 0;
 let resolveSharedAgencyLogin = null;
 let sharedAgencyLoginPromise = null;
 let sharedInitialCloudLoading = false;
+let didAttemptRememberedAgencyRestore = false;
+let sharedAuthClientPersistence = null;
 let selectedArchiveRecord = null;
 let draggedKeyId = null;
 let suppressKeyTileClickUntil = 0;
@@ -1071,10 +1075,63 @@ async function getSharedAgencyAuthClient() {
   if (!sharedProjectMode) return null;
   if (!supabaseClient) throw new Error("Configuration de l'agence incomplete.");
   const library = await loadCloudRealtimeLibrary();
+  const persistSession = Boolean(getRememberedAgencyLogin() || accessRememberInput?.checked);
+  if (cloudRealtimeClient && sharedAuthClientPersistence !== persistSession && !sharedAgencySession) {
+    cloudRealtimeClient = null;
+  }
   cloudRealtimeClient ||= library.createClient(supabaseUrl, supabasePublishableKey, {
-    auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
+    auth: { persistSession, autoRefreshToken: true, detectSessionInUrl: false },
   });
+  sharedAuthClientPersistence = persistSession;
   return cloudRealtimeClient;
+}
+
+function getRememberedAgencyLogin() {
+  try {
+    const code = window.localStorage.getItem(rememberedAgencyStorageKey);
+    return code && agencyLogins[code] ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetRememberedAgency() {
+  try { window.localStorage.removeItem(rememberedAgencyStorageKey); } catch {}
+}
+
+function selectSharedAgency(selectedAgency) {
+  agencyId = selectedAgency.agencyId;
+  configuredAgencyName = selectedAgency.agencyName;
+  browserStorageNamespace = `quialakey:${agencyId}:`;
+  appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
+  keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
+  runtimeStorageFallback.clear();
+  activeRegistry = loadActiveRegistry();
+  nextSharedSessionCheckAt = 0;
+}
+
+async function restoreRememberedAgency() {
+  if (didAttemptRememberedAgencyRestore) return;
+  didAttemptRememberedAgencyRestore = true;
+  const code = getRememberedAgencyLogin();
+  if (!code) return;
+  try {
+    const client = await getSharedAgencyAuthClient();
+    const { data, error } = await client.auth.getSession();
+    if (error || !data?.session) throw new Error("Session absente.");
+    const { data: authorizedAgency, error: agencyError } = await client.rpc("current_agency_id");
+    if (agencyError || authorizedAgency !== agencyLogins[code].agencyId) {
+      throw new Error("Session non autorisée.");
+    }
+    selectSharedAgency(agencyLogins[code]);
+    sharedAgencySession = data.session;
+    sharedInitialCloudLoading = true;
+  } catch {
+    try { await cloudRealtimeClient?.auth.signOut(); } catch {}
+    cloudRealtimeClient = null;
+    sharedAuthClientPersistence = null;
+    forgetRememberedAgency();
+  }
 }
 
 async function getSharedAgencyAccessToken() {
@@ -1082,6 +1139,7 @@ async function getSharedAgencyAccessToken() {
   const { data, error } = await client.auth.getSession();
   if (error || !data?.session?.access_token) {
     sharedAgencySession = null;
+    forgetRememberedAgency();
     sharedInitialCloudLoading = false;
     updateAccessLockState();
     throw new Error("Session expiree. Reconnectez-vous au tableau.");
@@ -1096,6 +1154,7 @@ async function getSharedAgencyAccessToken() {
     if (authorizedAgency !== agencyId) {
       sharedAgencySession = null;
       await client.auth.signOut();
+      forgetRememberedAgency();
       window.location.reload();
       throw new Error("Accès expiré. Reconnectez-vous au tableau.");
     }
@@ -1123,6 +1182,15 @@ async function signInSharedAgency() {
   if (!selectedAgency) throw new Error("Identifiants incorrects.");
   const password = String(accessCodeInput?.value || "");
   if (!password) throw new Error("Mot de passe manquant.");
+  if (accessRememberInput?.checked) {
+    try {
+      const probe = `${rememberedAgencyStorageKey}-probe`;
+      window.localStorage.setItem(probe, "1");
+      window.localStorage.removeItem(probe);
+    } catch {
+      throw new Error("Cet appareil ne permet pas de garder la connexion.");
+    }
+  }
   const client = await getSharedAgencyAuthClient();
   const { data, error } = await client.auth.signInAnonymously();
   if (error || !data?.session) throw new Error("Connexion temporairement impossible.");
@@ -1134,15 +1202,10 @@ async function signInSharedAgency() {
     await client.auth.signOut();
     throw new Error("Ce compte n'a pas acces a cette agence.");
   }
-  agencyId = selectedAgency.agencyId;
-  configuredAgencyName = selectedAgency.agencyName;
-  browserStorageNamespace = `quialakey:${agencyId}:`;
-  appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
-  keyInfoSessionDraftStorageKey = `${browserStorageNamespace}cles-key-info-draft-v1`;
-  runtimeStorageFallback.clear();
-  activeRegistry = loadActiveRegistry();
-  nextSharedSessionCheckAt = 0;
+  selectSharedAgency(selectedAgency);
   sharedAgencySession = data.session;
+  if (accessRememberInput?.checked) window.localStorage.setItem(rememberedAgencyStorageKey, enteredCode);
+  else forgetRememberedAgency();
   if (accessCodeInput) accessCodeInput.value = "";
   if (accessError) accessError.hidden = true;
   const resolve = resolveSharedAgencyLogin;
@@ -12311,7 +12374,10 @@ cloudSleepOverlay?.addEventListener("click", (event) => {
 });
 
 async function initializeApp() {
-  if (sharedProjectMode) await waitForSharedAgencyLogin();
+  if (sharedProjectMode) {
+    await restoreRememberedAgency();
+    await waitForSharedAgencyLogin();
+  }
   if (sharedProjectMode) {
     const { data, error } = await supabaseClient
       .from("app_state")
@@ -12495,6 +12561,7 @@ if (sharedProjectMode) {
   if (accessAgencyCodeLabel) accessAgencyCodeLabel.hidden = false;
   if (accessAgencyCodeInput) accessAgencyCodeInput.hidden = false;
   if (accessCodeLabel) accessCodeLabel.textContent = "Mot de passe";
+  if (accessRememberInput?.parentElement) accessRememberInput.parentElement.hidden = false;
   if (accessError) accessError.textContent = "Code agence ou mot de passe incorrect.";
   updateAccessLockState();
 } else if (accessCodeInput) {
@@ -12509,6 +12576,7 @@ agencySignOutBtn?.addEventListener("click", async () => {
     await client.rpc("logout_agency");
     await client.auth.signOut();
   } finally {
+    forgetRememberedAgency();
     window.location.reload();
   }
 });
@@ -12536,6 +12604,7 @@ document.querySelector("#changeAgencyPasswordBtn")?.addEventListener("click", as
     return;
   }
   await client.auth.signOut();
+  forgetRememberedAgency();
   window.alert("Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe.");
   window.location.reload();
 });
