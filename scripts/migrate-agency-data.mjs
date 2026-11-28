@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 
 const [action, fileArgument, flag] = process.argv.slice(2);
 if (!["export", "import"].includes(action) || !fileArgument) {
@@ -86,7 +87,13 @@ if (action === "export") {
   let targetToken = "";
   if (!serviceKey) {
     const loginCode = environment("QUIALAKEY_TARGET_AGENCY_CODE");
-    const password = environment("QUIALAKEY_TARGET_PASSWORD");
+    let password = String(process.env.QUIALAKEY_TARGET_PASSWORD || "").trim();
+    if (!password) {
+      const prompt = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+      password = (await prompt.question("Mot de passe de l'agence : ")).trim();
+      prompt.close();
+    }
+    if (!password) throw new Error("Mot de passe de l'agence manquant.");
     const authResponse = await fetch(`${targetUrl.replace(/\/$/, "")}/auth/v1/signup`, {
       method: "POST",
       headers: { apikey: targetKey, "Content-Type": "application/json" },
