@@ -70,6 +70,12 @@ async function main() {
                 if (persistent && activeAgency) localStorage.setItem('test-auth-agency', activeAgency);
                 return { data: activeAgency, error: null };
               }
+              if (name === "current_agency_id" && persistent && activeAgency) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                if (localStorage.getItem('test-auth-rpc-fail') === '1') {
+                  return { data: null, error: new Error('Network unavailable') };
+                }
+              }
               return { data: activeAgency, error: null };
             },
             channel() { return { on() { return this; }, subscribe() { return this; } }; },
@@ -205,13 +211,33 @@ async function main() {
     await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
     assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), 'TEST-42');
     await page.reload();
+    assert.equal(await page.locator('#startupLoading').isVisible(), true);
+    assert.equal(await page.locator('#accessLock').isVisible(), false);
     await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
     assert.equal(await page.locator("#accessLock").isVisible(), false);
+    await page.evaluate(() => localStorage.setItem('test-auth-rpc-fail', '1'));
+    await page.reload();
+    await page.locator('#retryInitialLoadBtn').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#accessLock').isVisible(), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), 'TEST-42');
+    await page.evaluate(() => localStorage.removeItem('test-auth-rpc-fail'));
+    await page.locator('#retryInitialLoadBtn').click();
+    await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
     await page.locator("#agencySignOutBtn").click();
     await page.locator("#accessLock").waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), null);
     await page.reload();
     await page.locator("#accessLock").waitFor({ state: "visible" });
+    await page.locator("#accessAgencyCodeInput").fill("TEST-42");
+    await page.locator("#accessCodeInput").fill("correct-password");
+    await page.locator('#accessRememberInput').check();
+    await page.locator("#accessForm button[type=submit]").click();
+    await page.waitForFunction(() => hasCompletedInitialCloudLoad, null, { timeout: 15000 });
+    await page.evaluate(() => localStorage.removeItem('test-auth-session'));
+    await page.reload();
+    await page.locator("#accessLock").waitFor({ state: "visible" });
+    assert.equal(await page.locator('#startupLoading').isVisible(), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('quialakey-remembered-agency-v1')), null);
     console.log("Shared agency login, second agency and scoped cloud requests passed.");
   } finally {
     await browser?.close();

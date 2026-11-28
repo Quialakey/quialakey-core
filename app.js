@@ -38,7 +38,7 @@ const sharedProjectMode = rawAgencyConfig.sharedProjectMode === true;
 const agencyLogins = rawAgencyConfig.agencyLogins || {};
 const legacyAgencyLoginCode = String(rawAgencyConfig.agencyLoginCode || "").trim().toUpperCase();
 const supabaseClient = createSupabaseClient();
-const appBuildVersion = "20261128-2";
+const appBuildVersion = "20261128-3";
 const appBuildVersionStorageKey = "cles-app-build-version-v1";
 let appBuildReloadStorageKey = `${browserStorageNamespace}cles-app-build-reload-v1`;
 const appBuildVersionUrl = "app-version.json";
@@ -920,7 +920,7 @@ let sharedAgencySession = null;
 let nextSharedSessionCheckAt = 0;
 let resolveSharedAgencyLogin = null;
 let sharedAgencyLoginPromise = null;
-let sharedInitialCloudLoading = false;
+let sharedInitialCloudLoading = sharedProjectMode && Boolean(getRememberedAgencyLogin());
 let didAttemptRememberedAgencyRestore = false;
 let sharedAuthClientPersistence = null;
 let selectedArchiveRecord = null;
@@ -1118,19 +1118,27 @@ async function restoreRememberedAgency() {
   try {
     const client = await getSharedAgencyAuthClient();
     const { data, error } = await client.auth.getSession();
-    if (error || !data?.session) throw new Error("Session absente.");
+    if (error) throw Object.assign(new Error("Vérification indisponible."), { retryable: true });
+    if (!data?.session) throw new Error("Session absente.");
     const { data: authorizedAgency, error: agencyError } = await client.rpc("current_agency_id");
-    if (agencyError || authorizedAgency !== agencyLogins[code].agencyId) {
+    if (agencyError) throw Object.assign(new Error("Vérification indisponible."), { retryable: true });
+    if (authorizedAgency !== agencyLogins[code].agencyId) {
       throw new Error("Session non autorisée.");
     }
     selectSharedAgency(agencyLogins[code]);
     sharedAgencySession = data.session;
     sharedInitialCloudLoading = true;
-  } catch {
+  } catch (error) {
+    if (error.retryable || !["Session absente.", "Session non autorisée."].includes(error.message)) {
+      didAttemptRememberedAgencyRestore = false;
+      throw error;
+    }
     try { await cloudRealtimeClient?.auth.signOut(); } catch {}
     cloudRealtimeClient = null;
     sharedAuthClientPersistence = null;
     forgetRememberedAgency();
+    sharedInitialCloudLoading = false;
+    updateAccessLockState();
   }
 }
 
@@ -12375,7 +12383,13 @@ cloudSleepOverlay?.addEventListener("click", (event) => {
 
 async function initializeApp() {
   if (sharedProjectMode) {
-    await restoreRememberedAgency();
+    try {
+      await restoreRememberedAgency();
+    } catch {
+      if (startupLoadingMessage) startupLoadingMessage.textContent = "Connexion temporairement indisponible.";
+      if (retryInitialLoadBtn) retryInitialLoadBtn.hidden = false;
+      return;
+    }
     await waitForSharedAgencyLogin();
   }
   if (sharedProjectMode) {
