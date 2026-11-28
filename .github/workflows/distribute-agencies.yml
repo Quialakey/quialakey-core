@@ -23,8 +23,8 @@ jobs:
           for repository in "${repositories[@]}"; do
             repository="$(echo "$repository" | xargs)"
             case "$repository" in
-              century21lesminimes)
-                gh api --method POST "repos/Quialakey/$repository/dispatches" -f event_type=quialakey_release
+              century21lesminimes|agence)
+                gh api --method POST "repos/Quialakey/agence/dispatches" -f event_type=quialakey_release
                 ;;
               *)
                 echo "Ignoring repository outside the active agency list: $repository"

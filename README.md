@@ -1,22 +1,7 @@
 # Quialakey Core
 
-Code maître partagé de l'application Quialakey. Chaque agence possède son propre dépôt de déploiement et son propre projet Supabase, tandis que les améliorations communes sont publiées depuis ce dépôt.
+Code commun de l'application Quialakey. Le depot [`Quialakey/agence`](https://github.com/Quialakey/agence) publie le [tableau en ligne](https://quialakey.github.io/agence/).
 
-## Agences reliées
+Les codes agence `3101` (Century 21 Les Minimes) et `0000` (Quialakey) ouvrent deux espaces distincts dans un seul projet Supabase. Les mots de passe et les donnees de chaque agence restent separes.
 
-| Agence | Dépôt de déploiement | Tableau en ligne | Données | État |
-| --- | --- | --- | --- | --- |
-| Century 21 Les Minimes | [`century21lesminimes`](https://github.com/Quialakey/century21lesminimes) | [Ouvrir le tableau](https://quialakey.github.io/century21lesminimes/) | Projet Supabase indépendant | Actif |
-| Quialakey Century 21 | [`quialakeycentury21`](https://github.com/Quialakey/quialakeycentury21) | [Ouvrir le tableau](https://quialakey.github.io/quialakeycentury21/) | Projet Supabase indépendant | Actif |
-
-## Organisation
-
-```text
-quialakey-core
-├── century21lesminimes
-└── quialakeycentury21
-```
-
-Les changements publiés dans `quialakey-core` déclenchent automatiquement le redéploiement de chaque agence enregistrée. Les données d'une agence ne sont jamais partagées avec une autre.
-
-Consulter [le guide multi-agences](MULTI-AGENCES.md) pour ajouter un nouveau tableau.
+Les changements publies dans `quialakey-core` declenchent le redeploiement du site `agence`. Voir [MULTI-AGENCES.md](MULTI-AGENCES.md) pour l'organisation technique.
